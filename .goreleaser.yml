@@ -1,0 +1,80 @@
+# Make sure to check the documentation at http://goreleaser.com
+version: 2
+project_name: cascade
+before:
+  hooks:
+    # You may remove this if you don't use go modules.
+    - go mod download
+    # you may remove this if you don't need go generate
+    # - go generate ./...
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      # - windows
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+    main: "./cmd/cascade/main.go"
+    binary: "cascade"
+    ldflags:
+      - -s -w
+      - -X github.com/goliatone/cascade/pkg/version.Tag=v{{.Version}}
+      - -X github.com/goliatone/cascade/pkg/version.Time={{.Date}}
+      - -X github.com/goliatone/cascade/pkg/version.User=goliatone
+archives:
+  - id: cascade
+    name_template: >-
+      {{- .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end -}}
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  version_template: "{{ .Tag }}-next"
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^style:"
+      - "^Update README"
+      - "merge fix"
+  format: '{{ .SHA }}: {{ .Message }} ({{ with .AuthorUsername }}@{{ . }}{{ else }}{{ .AuthorName }} <{{ .AuthorEmail }}>{{ end }})'
+brews:
+  - name: cascade
+    repository:
+      owner: goliatone
+      name: homebrew-tap
+    description: managed release cycles.
+    homepage: https://github.com/goliatone/cascade
+    license: "MIT"
+    test: |
+      system "#{bin}/cascade -version"
+nfpms:
+  - id: cascade
+    file_name_template: >-
+      {{- .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end -}}
+    bindir: /usr/local/bin/
+    maintainer: goliatone <cascade@goliatone.com>
+    description: managed release cycles.
+    homepage: https://github.com/goliatone/cascade
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
