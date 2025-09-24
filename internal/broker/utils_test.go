@@ -395,7 +395,7 @@ func TestSanitizeLabels(t *testing.T) {
 		{
 			name:   "sanitize invalid characters",
 			labels: []string{"bug,fix", "enhancement;test", "good:first:issue", "\"quoted\""},
-			want:   []string{"bugfix", "enhancementtest", "goodfirstissue", "quoted"},
+			want:   []string{"bugfix", "enhancementtest", "good:first:issue", "quoted"},
 		},
 		{
 			name:   "truncate long labels",
@@ -404,8 +404,8 @@ func TestSanitizeLabels(t *testing.T) {
 		},
 		{
 			name:   "remove labels that become empty after sanitization",
-			labels: []string{"bug", ",:;\"'<>&", "enhancement"},
-			want:   []string{"bug", "enhancement"},
+			labels: []string{"bug", ";\"'<>&", ":", "enhancement"},
+			want:   []string{"bug", ":", "enhancement"},
 		},
 		{
 			name:   "limit to 100 labels",
@@ -507,7 +507,7 @@ func TestIsValidLabelName(t *testing.T) {
 		{"empty string", "", false},
 		{"contains comma", "bug,fix", false},
 		{"contains semicolon", "bug;fix", false},
-		{"contains colon", "type:bug", false},
+		{"contains colon", "type:bug", true},
 		{"contains quotes", `"bug"`, false},
 		{"contains angle brackets", "<bug>", false},
 		{"contains ampersand", "bug&fix", false},
