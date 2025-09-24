@@ -13,11 +13,26 @@ import (
 // PRValidationError represents validation errors for PR input data.
 type PRValidationError struct {
 	Field   string
+	Value   string
 	Message string
+	Err     error
 }
 
 func (e *PRValidationError) Error() string {
+	if e.Value != "" && e.Err != nil {
+		return fmt.Sprintf("broker: PR validation failed for field %s (value: %s): %s: %v", e.Field, e.Value, e.Message, e.Err)
+	}
+	if e.Value != "" {
+		return fmt.Sprintf("broker: PR validation failed for field %s (value: %s): %s", e.Field, e.Value, e.Message)
+	}
+	if e.Err != nil {
+		return fmt.Sprintf("broker: PR validation failed for field %s: %s: %v", e.Field, e.Message, e.Err)
+	}
 	return fmt.Sprintf("broker: PR validation failed for field %s: %s", e.Field, e.Message)
+}
+
+func (e *PRValidationError) Unwrap() error {
+	return e.Err
 }
 
 // ParseRepoString parses a repository string in "owner/name" format.

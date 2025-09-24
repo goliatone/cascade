@@ -87,24 +87,6 @@ func (e *TemplateRenderError) Unwrap() error {
 	return e.Err
 }
 
-// PRValidationError wraps pull request input validation failures.
-type PRValidationError struct {
-	Field   string
-	Value   string
-	Message string
-	Err     error
-}
-
-func (e *PRValidationError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("broker: PR validation failed for field %s (value: %s): %s: %v", e.Field, e.Value, e.Message, e.Err)
-	}
-	return fmt.Sprintf("broker: PR validation failed for field %s (value: %s): %s", e.Field, e.Value, e.Message)
-}
-
-func (e *PRValidationError) Unwrap() error {
-	return e.Err
-}
 
 // Error detection helpers using errors.As for type checking
 
