@@ -70,7 +70,7 @@ func (g *gitOperations) EnsureClone(ctx context.Context, repo, workspace string)
 
 // EnsureWorktree ensures a worktree exists for the given branch and returns the worktree path.
 // If the branch doesn't exist, it creates it from the current default branch.
-func (g *gitOperations) EnsureWorktree(ctx context.Context, repoPath, branch string) (string, error) {
+func (g *gitOperations) EnsureWorktree(ctx context.Context, repoPath, branch string, base string) (string, error) {
 	// First, fetch the latest changes
 	_, err := g.runner.Run(ctx, repoPath, "fetch", "origin")
 	if err != nil {
@@ -109,12 +109,15 @@ func (g *gitOperations) EnsureWorktree(ctx context.Context, repoPath, branch str
 	} else if remoteBranchExists {
 		_, err = g.runner.Run(ctx, repoPath, "worktree", "add", "-b", branch, worktreePath, "origin/"+branch)
 	} else {
-		// Branch doesn't exist, create new branch from default branch
-		defaultBranch, err := g.getDefaultBranch(ctx, repoPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to determine default branch: %w", err)
+		baseRef := base
+		if baseRef == "" {
+			var derr error
+			baseRef, derr = g.getDefaultBranch(ctx, repoPath)
+			if derr != nil {
+				return "", fmt.Errorf("failed to determine default branch: %w", derr)
+			}
 		}
-		_, err = g.runner.Run(ctx, repoPath, "worktree", "add", "-b", branch, worktreePath, "origin/"+defaultBranch)
+		_, err = g.runner.Run(ctx, repoPath, "worktree", "add", "-b", branch, worktreePath, "origin/"+baseRef)
 	}
 
 	if err != nil {
