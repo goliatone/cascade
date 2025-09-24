@@ -1,0 +1,21 @@
+manifest_version: 2  # Invalid: unsupported version
+defaults:
+  branch: main
+  tests:
+    - cmd: ["go", "test", "./..."]
+  labels: ["automation:cascade"]
+  commit_template: "chore(deps): bump {{ module }} to {{ version }}"
+  notifications:
+    slack_channel: "#releases"
+  pr:
+    title: "chore: update dependencies"
+
+modules:
+  - name: "valid-module"
+    module: "github.com/example/valid-module"
+    repo: "example/valid-module"
+    release_artifact: "release.json"
+    dependents:
+      - repo: "example/dependent"
+        module: "github.com/example/dependent"
+        module_path: "."

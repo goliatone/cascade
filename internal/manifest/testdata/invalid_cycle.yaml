@@ -1,0 +1,39 @@
+manifest_version: 1
+defaults:
+  branch: main
+  tests:
+    - cmd: ["go", "test", "./..."]
+  labels: ["automation:cascade"]
+  commit_template: "chore(deps): bump {{ module }} to {{ version }}"
+  notifications:
+    slack_channel: "#releases"
+  pr:
+    title: "chore: update dependencies"
+
+modules:
+  - name: "module-a"
+    module: "github.com/example/module-a"
+    repo: "example/module-a"
+    release_artifact: "release.json"
+    dependents:
+      - repo: "example/module-b"
+        module: "github.com/example/module-b"
+        module_path: "."
+
+  - name: "module-b"
+    module: "github.com/example/module-b"
+    repo: "example/module-b"
+    release_artifact: "release.json"
+    dependents:
+      - repo: "example/module-c"
+        module: "github.com/example/module-c"
+        module_path: "."
+
+  - name: "module-c"
+    module: "github.com/example/module-c"
+    repo: "example/module-c"
+    release_artifact: "release.json"
+    dependents:
+      - repo: "example/module-a"
+        module: "github.com/example/module-a"
+        module_path: "."

@@ -1,0 +1,34 @@
+manifest_version: 1
+defaults:
+  branch: main
+  tests:
+    - cmd: ["go", "test", "./..."]
+  labels: ["automation:cascade"]
+
+modules:
+  - name: ""  # Invalid: empty name
+    module: "github.com/example/module-a"
+    repo: ""  # Invalid: empty repo
+    release_artifact: "release.json"
+    dependents:
+      - repo: ""  # Invalid: empty repo
+        module: ""  # Invalid: empty module
+        module_path: ""  # Invalid: empty module_path
+
+  - name: "duplicate-name"
+    module: "github.com/example/module-b"
+    repo: "example/module-b"
+    release_artifact: "release.json"
+    dependents: []
+
+  - name: "duplicate-name"  # Invalid: duplicate name
+    module: "github.com/example/module-c"
+    repo: "example/module-c"
+    release_artifact: "release.json"
+    dependents:
+      - repo: "example/dependent-1"
+        module: "github.com/example/dependent-1"
+        module_path: "."
+      - repo: "example/dependent-1"  # Invalid: duplicate dependent repo
+        module: "github.com/example/dependent-1"
+        module_path: "."
