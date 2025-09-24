@@ -45,6 +45,8 @@ var (
 	ErrCorrupt = errors.New("state: corrupt data")
 	// ErrLocked indicates that a state file is locked by another process.
 	ErrLocked = errors.New("state: locked")
+	// ErrNotImplemented indicates functionality is not yet implemented.
+	ErrNotImplemented = errors.New("state: not implemented")
 )
 
 // Clock exposes time retrieval for deterministic testing.

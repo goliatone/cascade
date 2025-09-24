@@ -52,10 +52,10 @@ func (e *executor) Apply(ctx context.Context, input WorkItemContext) (*Result, e
 
 	// Create worktree for branch
 	if input.Logger != nil {
-		input.Logger.Info("creating worktree", "branch", input.Item.BranchName)
+		input.Logger.Info("creating worktree", "branch", input.Item.BranchName, "base", input.Item.Branch)
 	}
 
-	workPath, err := input.Git.EnsureWorktree(ctx, repoPath, input.Item.BranchName)
+	workPath, err := input.Git.EnsureWorktree(ctx, repoPath, input.Item.BranchName, input.Item.Branch)
 	if err != nil {
 		e.handleExecutionError(result, err, "git worktree")
 		return result, err
@@ -161,27 +161,35 @@ func (e *executor) validateInput(input WorkItemContext) error {
 	if input.Item.Repo == "" {
 		return fmt.Errorf("work item repo is required")
 	}
+
 	if input.Item.SourceModule == "" {
 		return fmt.Errorf("work item source module is required")
 	}
+
 	if input.Item.BranchName == "" {
 		return fmt.Errorf("work item branch name is required")
 	}
+
 	if input.Item.CommitMessage == "" {
 		return fmt.Errorf("work item commit message is required")
 	}
+
 	if input.Workspace == "" {
 		return fmt.Errorf("workspace is required")
 	}
+
 	if input.Git == nil {
 		return fmt.Errorf("git operations is required")
 	}
+
 	if input.Go == nil {
 		return fmt.Errorf("go operations is required")
 	}
+
 	if input.Runner == nil {
 		return fmt.Errorf("command runner is required")
 	}
+
 	return nil
 }
 
@@ -198,12 +206,12 @@ func (e *executor) executeCommands(ctx context.Context, input WorkItemContext, w
 		results = append(results, result)
 
 		if err != nil {
-			return results, fmt.Errorf("command failed: %v", err)
+			return results, fmt.Errorf("command failed: %w", err)
 		}
 
 		// Check if command result has an error
 		if result.Err != nil {
-			return results, fmt.Errorf("command execution error: %v", result.Err)
+			return results, fmt.Errorf("command execution error: %w", result.Err)
 		}
 	}
 
