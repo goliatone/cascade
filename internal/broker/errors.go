@@ -38,3 +38,18 @@ func (e *NotificationError) Error() string {
 func (e *NotificationError) Unwrap() error {
 	return e.Err
 }
+
+// GitHubAPIError wraps GitHub API operation failures.
+type GitHubAPIError struct {
+	Operation string
+	Repo      string
+	Err       error
+}
+
+func (e *GitHubAPIError) Error() string {
+	return fmt.Sprintf("broker: GitHub API operation %s failed for repo %s: %v", e.Operation, e.Repo, e.Err)
+}
+
+func (e *GitHubAPIError) Unwrap() error {
+	return e.Err
+}
