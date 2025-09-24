@@ -1,7 +1,6 @@
 package manifest
 
 import (
-	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -23,12 +22,12 @@ type loader struct{}
 func (l *loader) Load(path string) (*Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("manifest: failed to read file %s: %w", path, err)
+		return nil, &LoadError{Path: path, Err: err}
 	}
 
 	var manifest Manifest
 	if err := yaml.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("manifest: failed to unmarshal YAML from %s: %w", path, err)
+		return nil, &ParseError{Path: path, Err: err}
 	}
 
 	// ensure main slices are initialized for stability
@@ -40,5 +39,5 @@ func (l *loader) Load(path string) (*Manifest, error) {
 }
 
 func (l *loader) Generate(workdir string) (*Manifest, error) {
-	return nil, fmt.Errorf("manifest: Generate not supported")
+	return nil, &GenerateError{WorkDir: workdir, Reason: "not supported"}
 }
