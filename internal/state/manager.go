@@ -23,12 +23,15 @@ func NewManager(opts ...ManagerOption) Manager {
 	if cfg.Storage == nil {
 		cfg.Storage = &nopStorage{}
 	}
+
 	if cfg.Locker == nil {
 		cfg.Locker = nopLocker{}
 	}
+
 	if cfg.Clock == nil {
 		cfg.Clock = systemClock{}
 	}
+
 	if cfg.Logger == nil {
 		cfg.Logger = nopLogger{}
 	}

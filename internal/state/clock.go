@@ -8,6 +8,7 @@ func (systemClock) Now() time.Time {
 	return time.Now().UTC()
 }
 
+// TODO: move to top level, each module should take a logger
 type nopLogger struct{}
 
 func (nopLogger) Debug(string, ...any) {}
