@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/go-github/v66/github"
 )
@@ -30,7 +29,7 @@ func NewGitHubProvider(client *github.Client) Provider {
 
 // CreateOrUpdatePullRequest creates a new pull request or updates an existing one.
 func (p *GitHubProvider) CreateOrUpdatePullRequest(ctx context.Context, input PRInput) (*PullRequest, error) {
-	owner, repo, err := parseRepoString(input.Repo)
+	owner, repo, err := ParseRepoString(input.Repo)
 	if err != nil {
 		return nil, fmt.Errorf("invalid repository format %q: %w", input.Repo, err)
 	}
@@ -96,7 +95,7 @@ func (p *GitHubProvider) AddLabels(ctx context.Context, repo string, number int,
 		return nil
 	}
 
-	owner, repoName, err := parseRepoString(repo)
+	owner, repoName, err := ParseRepoString(repo)
 	if err != nil {
 		return fmt.Errorf("invalid repository format %q: %w", repo, err)
 	}
@@ -119,7 +118,7 @@ func (p *GitHubProvider) RequestReviewers(ctx context.Context, repo string, numb
 		return nil
 	}
 
-	owner, repoName, err := parseRepoString(repo)
+	owner, repoName, err := ParseRepoString(repo)
 	if err != nil {
 		return fmt.Errorf("invalid repository format %q: %w", repo, err)
 	}
@@ -167,15 +166,6 @@ func (p *GitHubProvider) findExistingPR(ctx context.Context, owner, repo, headBr
 	}
 
 	return nil, nil
-}
-
-// parseRepoString parses a repository string in the format "owner/repo".
-func parseRepoString(repo string) (owner, name string, err error) {
-	parts := strings.Split(repo, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", errors.New("repository must be in format 'owner/repo'")
-	}
-	return parts[0], parts[1], nil
 }
 
 // IsRateLimitError checks if an error is a GitHub rate limit error.

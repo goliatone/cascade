@@ -87,7 +87,6 @@ func (e *TemplateRenderError) Unwrap() error {
 	return e.Err
 }
 
-
 // Error detection helpers using errors.As for type checking
 
 // IsGitHubAPIError returns true if the error is a GitHubAPIError.
