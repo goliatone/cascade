@@ -110,7 +110,7 @@ func TestExecutor_Apply_TableDriven(t *testing.T) {
 			},
 			gitShouldFail:  true,
 			expectedStatus: executor.StatusFailed,
-			expectedReason: "failed to clone repository: mock clone error",
+			expectedReason: "git clone failed: mock clone error",
 		},
 		{
 			name: "go operations failure",
@@ -123,7 +123,7 @@ func TestExecutor_Apply_TableDriven(t *testing.T) {
 			},
 			goShouldFail:   true,
 			expectedStatus: executor.StatusFailed,
-			expectedReason: "failed to update module dependencies: mock go get error",
+			expectedReason: "dependency update failed: mock go get error",
 		},
 		{
 			name: "test command failure",
