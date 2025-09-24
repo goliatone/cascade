@@ -1,0 +1,16 @@
+{
+  "Status": "failed",
+  "Reason": "test command failed with exit code 1",
+  "CommitHash": "",
+  "TestResults": [
+    {
+      "Command": {
+        "cmd": ["go", "test", "./..."],
+        "dir": ""
+      },
+      "Output": "=== RUN   TestExample\n--- FAIL: TestExample (0.00s)\n    example_test.go:10: expected 42, got 24\nFAIL\nexit status 1\nFAIL\tgithub.com/example/repo\t0.001s",
+      "Err": {}
+    }
+  ],
+  "ExtraResults": []
+}

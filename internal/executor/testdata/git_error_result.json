@@ -1,0 +1,7 @@
+{
+  "Status": "failed",
+  "Reason": "git clone operation failed: repository not found",
+  "CommitHash": "",
+  "TestResults": [],
+  "ExtraResults": []
+}

@@ -1,0 +1,7 @@
+{
+  "Status": "failed",
+  "Reason": "go get operation failed: module version not found",
+  "CommitHash": "",
+  "TestResults": [],
+  "ExtraResults": []
+}

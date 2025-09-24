@@ -1,0 +1,16 @@
+{
+  "Status": "failed",
+  "Reason": "command execution timed out after 30s",
+  "CommitHash": "",
+  "TestResults": [
+    {
+      "Command": {
+        "cmd": ["go", "test", "./..."],
+        "dir": ""
+      },
+      "Output": "=== RUN   TestLongRunning\n",
+      "Err": {}
+    }
+  ],
+  "ExtraResults": []
+}
