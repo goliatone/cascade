@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/goliatone/cascade/internal/manifest"
@@ -11,7 +12,6 @@ import (
 )
 
 func TestLoader_Load_GeneratesExpectedManifest(t *testing.T) {
-	t.Skip("pending implementation")
 
 	loader := manifest.NewLoader()
 	manifestPath := filepath.Join("testdata", "basic.yaml")
@@ -44,6 +44,51 @@ func TestValidate_BasicManifest(t *testing.T) {
 		t.Fatalf("Validate returned error: %v", err)
 	}
 }
+
+func TestLoader_Load_ErrorCases(t *testing.T) {
+	loader := manifest.NewLoader()
+
+	tests := []struct {
+		name    string
+		path    string
+		wantErr string
+	}{
+		{
+			name:    "missing file",
+			path:    "testdata/nonexistent.yaml",
+			wantErr: "failed to read file",
+		},
+		{
+			name:    "invalid yaml",
+			path:    "testdata/invalid.yaml",
+			wantErr: "failed to unmarshal YAML",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loader.Load(tt.path)
+			if err == nil {
+				t.Fatalf("Load() expected error but got none")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Load() error = %v, want to contain %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoader_Generate_NotSupported(t *testing.T) {
+	loader := manifest.NewLoader()
+	_, err := loader.Generate("/tmp")
+	if err == nil {
+		t.Fatalf("Generate() expected error but got none")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("Generate() error = %v, want to contain 'not supported'", err)
+	}
+}
+
 
 func TestFindModule_ReturnsMatch(t *testing.T) {
 	t.Skip("pending implementation")
