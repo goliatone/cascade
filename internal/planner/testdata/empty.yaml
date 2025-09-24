@@ -1,0 +1,19 @@
+manifest_version: 1
+defaults:
+  branch: main
+  tests:
+    - cmd: ["go", "test", "./...", "-race"]
+      dir: ""
+  extra_commands:
+    - cmd: ["task", "lint"]
+      dir: ""
+  labels: ["automation:cascade"]
+  commit_template: "chore(deps): bump {{ module }} to {{ version }}"
+  notifications:
+    slack_channel: "#releases"
+modules:
+  - name: go-repository-bun
+    module: github.com/goliatone/go-repository-bun
+    repo: goliatone/go-repository-bun
+    release_artifact: release.json
+    dependents: []

@@ -1,0 +1,46 @@
+manifest_version: 1
+defaults:
+  branch: main
+  tests:
+    - cmd: ["go", "test", "./...", "-race"]
+      dir: ""
+  extra_commands:
+    - cmd: ["task", "lint"]
+      dir: ""
+  labels: ["automation:cascade"]
+  commit_template: "chore(deps): bump {{ module }} to {{ version }}"
+  notifications:
+    slack_channel: "#releases"
+  pr:
+    title: "chore: update dependencies"
+    body_template: "default.pr.tpl.md"
+    reviewers: ["octocat"]
+modules:
+  - name: go-errors
+    module: github.com/goliatone/go-errors
+    repo: goliatone/go-errors
+    release_artifact: release.json
+    dependents:
+      - repo: goliatone/go-logger
+        module: github.com/goliatone/go-logger
+        module_path: .
+        branch: main
+        canary: true
+        tests:
+          - cmd: ["task", "test"]
+            dir: ""
+        extra_commands:
+          - cmd: ["task", "lint"]
+            dir: ""
+        labels: ["package:go-logger"]
+        pr:
+          title: "chore: update go-logger deps"
+          body_template: "logger.pr.tpl.md"
+      - repo: goliatone/go-router
+        module: github.com/goliatone/go-router
+        module_path: .
+        branch: develop
+        skip: true
+        tests:
+          - cmd: ["go", "test", "./..."]
+            dir: "router"

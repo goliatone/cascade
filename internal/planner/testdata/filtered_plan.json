@@ -1,0 +1,40 @@
+{
+  "Target": {
+    "Module": "github.com/goliatone/go-errors",
+    "Version": "v1.2.3"
+  },
+  "Items": [
+    {
+      "Repo": "goliatone/go-logger",
+      "Module": "github.com/goliatone/go-logger",
+      "ModulePath": ".",
+      "SourceModule": "github.com/goliatone/go-errors",
+      "SourceVersion": "v1.2.3",
+      "Branch": "main",
+      "BranchName": "auto/go-errors-v1.2.3",
+      "CommitMessage": "chore(deps): bump github.com/goliatone/go-errors to v1.2.3",
+      "Tests": [
+        { "Cmd": ["go", "test", "./...", "-race"], "Dir": "" },
+        { "Cmd": ["task", "test"], "Dir": "" }
+      ],
+      "ExtraCommands": [
+        { "Cmd": ["task", "lint"], "Dir": "" }
+      ],
+      "Labels": ["automation:cascade", "package:go-logger"],
+      "PR": {
+        "TitleTemplate": "chore: update go-logger deps",
+        "BodyTemplate": "logger.pr.tpl.md",
+        "Reviewers": null,
+        "TeamReviewers": null
+      },
+      "Notifications": {
+        "SlackChannel": "#releases",
+        "Webhook": ""
+      },
+      "Env": null,
+      "Timeout": 0,
+      "Canary": true,
+      "Skip": false
+    }
+  ]
+}
