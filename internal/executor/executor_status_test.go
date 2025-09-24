@@ -120,7 +120,7 @@ func TestExecutor_Apply_StatusLogic(t *testing.T) {
 			},
 			testError:              context.DeadlineExceeded,
 			expectedStatus:         executor.StatusFailed,
-			expectedReasonContains: "test execution failed",
+			expectedReasonContains: "timed out or was canceled",
 		},
 		{
 			name: "no changes to commit",

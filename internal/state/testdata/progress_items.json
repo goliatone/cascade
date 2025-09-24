@@ -1,0 +1,75 @@
+{
+  "module": "example.com/test-module",
+  "version": "v1.2.3",
+  "start_time": "2023-12-01T10:00:00Z",
+  "end_time": "0001-01-01T00:00:00Z",
+  "retry_count": 1,
+  "items": [
+    {
+      "repo": "github.com/example/repo1",
+      "branch": "update-deps-v1.2.3",
+      "status": "completed",
+      "reason": "Successfully updated dependencies",
+      "commit_hash": "abc123def456",
+      "pr_url": "https://github.com/example/repo1/pull/42",
+      "last_updated": "2023-12-01T10:15:00Z",
+      "attempts": 1,
+      "command_logs": [
+        {
+          "command": {
+            "name": "go mod tidy",
+            "args": [],
+            "env": {},
+            "timeout": "30s"
+          },
+          "output": "go: downloading example.com/test-module v1.2.3\n",
+          "err": null
+        }
+      ]
+    },
+    {
+      "repo": "github.com/example/repo2",
+      "branch": "update-deps-v1.2.3",
+      "status": "failed",
+      "reason": "Build tests failed",
+      "commit_hash": "",
+      "pr_url": "",
+      "last_updated": "2023-12-01T10:20:00Z",
+      "attempts": 2,
+      "command_logs": [
+        {
+          "command": {
+            "name": "go test",
+            "args": ["./..."],
+            "env": {},
+            "timeout": "60s"
+          },
+          "output": "--- FAIL: TestSomething (0.01s)\n    test.go:42: expected 1, got 2\nFAIL\n",
+          "err": "exit status 1"
+        }
+      ]
+    },
+    {
+      "repo": "github.com/example/repo3",
+      "branch": "update-deps-v1.2.3",
+      "status": "manual-review",
+      "reason": "Breaking API changes detected",
+      "commit_hash": "def789abc012",
+      "pr_url": "https://github.com/example/repo3/pull/15",
+      "last_updated": "2023-12-01T10:25:00Z",
+      "attempts": 1,
+      "command_logs": [
+        {
+          "command": {
+            "name": "go mod tidy",
+            "args": [],
+            "env": {},
+            "timeout": "30s"
+          },
+          "output": "go: downloading example.com/test-module v1.2.3\ngo: upgraded example.com/test-module v1.2.2 => v1.2.3\n",
+          "err": null
+        }
+      ]
+    }
+  ]
+}

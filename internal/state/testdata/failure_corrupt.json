@@ -1,0 +1,14 @@
+{
+  "module": "example.com/test-module",
+  "version": "v1.2.3",
+  "start_time": "invalid-timestamp",
+  "end_time": "2023-12-01T10:30:00Z"
+  "items": [
+    {
+      "repo": "github.com/example/broken"
+      "branch": "update-deps-v1.2.3",
+      "status": "unknown-status",
+      "last_updated": "not-a-date",
+      "attempts": "not-a-number"
+    }
+  ]

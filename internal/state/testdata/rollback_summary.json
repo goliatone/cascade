@@ -1,0 +1,63 @@
+{
+  "module": "example.com/test-module",
+  "version": "v1.2.2",
+  "start_time": "2023-12-01T11:00:00Z",
+  "end_time": "2023-12-01T11:15:00Z",
+  "retry_count": 0,
+  "items": [
+    {
+      "repo": "github.com/example/repo1",
+      "branch": "revert-update-deps-v1.2.3",
+      "status": "completed",
+      "reason": "Successfully reverted to v1.2.2",
+      "commit_hash": "fed321cba654",
+      "pr_url": "https://github.com/example/repo1/pull/43",
+      "last_updated": "2023-12-01T11:10:00Z",
+      "attempts": 1,
+      "command_logs": [
+        {
+          "command": {
+            "name": "go mod edit",
+            "args": ["-replace", "example.com/test-module=example.com/test-module@v1.2.2"],
+            "env": {},
+            "timeout": "30s"
+          },
+          "output": "",
+          "err": null
+        },
+        {
+          "command": {
+            "name": "go mod tidy",
+            "args": [],
+            "env": {},
+            "timeout": "30s"
+          },
+          "output": "go: downloading example.com/test-module v1.2.2\n",
+          "err": null
+        }
+      ]
+    },
+    {
+      "repo": "github.com/example/repo2",
+      "branch": "revert-update-deps-v1.2.3",
+      "status": "completed",
+      "reason": "Successfully reverted to v1.2.2",
+      "commit_hash": "987fedcba321",
+      "pr_url": "https://github.com/example/repo2/pull/28",
+      "last_updated": "2023-12-01T11:12:00Z",
+      "attempts": 1,
+      "command_logs": [
+        {
+          "command": {
+            "name": "go mod edit",
+            "args": ["-replace", "example.com/test-module=example.com/test-module@v1.2.2"],
+            "env": {},
+            "timeout": "30s"
+          },
+          "output": "",
+          "err": null
+        }
+      ]
+    }
+  ]
+}

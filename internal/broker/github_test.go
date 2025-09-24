@@ -53,6 +53,7 @@ func TestGitHubProvider_CreateOrUpdatePullRequest_CreateNew(t *testing.T) {
 			Number:  github.Int(1),
 			HTMLURL: github.String("https://github.com/owner/repo/pull/1"),
 		}),
+		"POST /repos/owner/repo/issues/1/labels": createJSONResponse(200, []*github.Label{}),
 	}
 
 	provider := newTestGitHubProvider(responses)
@@ -101,6 +102,7 @@ func TestGitHubProvider_CreateOrUpdatePullRequest_UpdateExisting(t *testing.T) {
 			Number:  github.Int(1),
 			HTMLURL: github.String("https://github.com/owner/repo/pull/1"),
 		}),
+		"POST /repos/owner/repo/issues/1/labels": createJSONResponse(200, []*github.Label{}),
 	}
 
 	provider := newTestGitHubProvider(responses)
