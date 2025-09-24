@@ -14,17 +14,42 @@
       "BranchName": "auto/go-errors-v1.2.3",
       "CommitMessage": "chore(deps): bump github.com/goliatone/go-errors to v1.2.3",
       "Tests": [
-        { "Cmd": ["go", "test", "./...", "-race"], "Dir": "" },
-        { "Cmd": ["task", "test"], "Dir": "" }
+        {
+          "Cmd": [
+            "go",
+            "test",
+            "./...",
+            "-race"
+          ],
+          "Dir": ""
+        },
+        {
+          "Cmd": [
+            "task",
+            "test"
+          ],
+          "Dir": ""
+        }
       ],
       "ExtraCommands": [
-        { "Cmd": ["task", "lint"], "Dir": "" }
+        {
+          "Cmd": [
+            "task",
+            "lint"
+          ],
+          "Dir": ""
+        }
       ],
-      "Labels": ["automation:cascade", "package:go-logger"],
+      "Labels": [
+        "automation:cascade",
+        "package:go-logger"
+      ],
       "PR": {
         "TitleTemplate": "chore: update go-logger deps",
         "BodyTemplate": "logger.pr.tpl.md",
-        "Reviewers": null,
+        "Reviewers": [
+          "octocat"
+        ],
         "TeamReviewers": null
       },
       "Notifications": {

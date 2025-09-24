@@ -4,17 +4,27 @@
     "Branch": "main",
     "Tests": [
       {
-        "Cmd": ["go", "test", "./...", "-race"],
+        "Cmd": [
+          "go",
+          "test",
+          "./...",
+          "-race"
+        ],
         "Dir": ""
       }
     ],
     "ExtraCommands": [
       {
-        "Cmd": ["task", "lint"],
+        "Cmd": [
+          "task",
+          "lint"
+        ],
         "Dir": ""
       }
     ],
-    "Labels": ["automation:cascade"],
+    "Labels": [
+      "automation:cascade"
+    ],
     "CommitTemplate": "chore(deps): bump {{ module }} to {{ version }}",
     "Notifications": {
       "SlackChannel": "#releases",
@@ -23,8 +33,10 @@
     "PR": {
       "TitleTemplate": "chore: update dependencies",
       "BodyTemplate": "default.pr.tpl.md",
-      "Reviewers": ["octocat"],
-      "TeamReviewers": []
+      "Reviewers": [
+        "octocat"
+      ],
+      "TeamReviewers": null
     }
   },
   "Modules": [
@@ -41,17 +53,25 @@
           "Branch": "main",
           "Tests": [
             {
-              "Cmd": ["task", "test"],
+              "Cmd": [
+                "task",
+                "test"
+              ],
               "Dir": ""
             }
           ],
           "ExtraCommands": [
             {
-              "Cmd": ["task", "lint"],
+              "Cmd": [
+                "task",
+                "lint"
+              ],
               "Dir": ""
             }
           ],
-          "Labels": ["package:go-logger"],
+          "Labels": [
+            "package:go-logger"
+          ],
           "Notifications": {
             "SlackChannel": "",
             "Webhook": ""
@@ -59,8 +79,8 @@
           "PR": {
             "TitleTemplate": "chore: update go-logger deps",
             "BodyTemplate": "logger.pr.tpl.md",
-            "Reviewers": [],
-            "TeamReviewers": []
+            "Reviewers": null,
+            "TeamReviewers": null
           },
           "Canary": true,
           "Skip": false,
@@ -74,7 +94,11 @@
           "Branch": "develop",
           "Tests": [
             {
-              "Cmd": ["go", "test", "./..."],
+              "Cmd": [
+                "go",
+                "test",
+                "./..."
+              ],
               "Dir": "router"
             }
           ],
@@ -87,8 +111,8 @@
           "PR": {
             "TitleTemplate": "",
             "BodyTemplate": "",
-            "Reviewers": [],
-            "TeamReviewers": []
+            "Reviewers": null,
+            "TeamReviewers": null
           },
           "Canary": false,
           "Skip": false,
@@ -110,17 +134,27 @@
           "Branch": "main",
           "Tests": [
             {
-              "Cmd": ["task", "test:integration"],
+              "Cmd": [
+                "task",
+                "test:integration"
+              ],
               "Dir": ""
             }
           ],
           "ExtraCommands": [
             {
-              "Cmd": ["go", "run", "./cmd/db/migrate", "--dry-run"],
+              "Cmd": [
+                "go",
+                "run",
+                "./cmd/db/migrate",
+                "--dry-run"
+              ],
               "Dir": ""
             }
           ],
-          "Labels": ["package:go-auth"],
+          "Labels": [
+            "package:go-auth"
+          ],
           "Notifications": {
             "SlackChannel": "#go-auth-releases",
             "Webhook": ""
@@ -128,8 +162,8 @@
           "PR": {
             "TitleTemplate": "",
             "BodyTemplate": "",
-            "Reviewers": [],
-            "TeamReviewers": []
+            "Reviewers": null,
+            "TeamReviewers": null
           },
           "Canary": false,
           "Skip": false,
