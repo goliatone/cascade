@@ -1,6 +1,5 @@
 package manifest
 
-import "fmt"
 
 // FindModule returns the module with the provided name.
 func FindModule(m *Manifest, name string) (*Module, error) {
@@ -12,14 +11,6 @@ func FindModule(m *Manifest, name string) (*Module, error) {
 	return nil, &ModuleNotFoundError{ModuleName: name}
 }
 
-// ModuleNotFoundError is returned when a module cannot be found.
-type ModuleNotFoundError struct {
-	ModuleName string
-}
-
-func (e *ModuleNotFoundError) Error() string {
-	return fmt.Sprintf("module not found: %s", e.ModuleName)
-}
 
 // ExpandDefaults applies defaults to a dependent and returns the result.
 func ExpandDefaults(d Dependent, defaults Defaults) Dependent {
