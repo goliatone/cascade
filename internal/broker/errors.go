@@ -53,3 +53,18 @@ func (e *GitHubAPIError) Error() string {
 func (e *GitHubAPIError) Unwrap() error {
 	return e.Err
 }
+
+// TemplateRenderError wraps template rendering failures.
+type TemplateRenderError struct {
+	TemplateName string
+	Operation    string
+	Err          error
+}
+
+func (e *TemplateRenderError) Error() string {
+	return fmt.Sprintf("broker: template render %s failed for template %s: %v", e.Operation, e.TemplateName, e.Err)
+}
+
+func (e *TemplateRenderError) Unwrap() error {
+	return e.Err
+}
