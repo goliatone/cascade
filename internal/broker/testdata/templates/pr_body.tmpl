@@ -1,0 +1,39 @@
+## Summary
+Updates {{.Module}} from current version to {{.SourceVersion}}.
+
+**Repository**: {{.Repo}}
+**Branch**: {{.BranchName}}
+**Status**: {{.Status}}
+{{if .CommitHash}}**Commit**: {{.CommitHash}}{{end}}
+
+{{if .Reason}}## Details
+{{.Reason}}
+{{end}}
+
+{{if .TestOutputs}}## Test Results
+{{range .TestOutputs}}
+<details>
+<summary>Test Output</summary>
+
+```
+{{.}}
+```
+
+</details>
+{{end}}
+{{end}}
+
+{{if .ExtraOutputs}}## Additional Command Results
+{{range .ExtraOutputs}}
+<details>
+<summary>Command Output</summary>
+
+```
+{{.}}
+```
+
+</details>
+{{end}}
+{{end}}
+
+Generated at {{.Timestamp.Format "2006-01-02 15:04:05 MST"}}

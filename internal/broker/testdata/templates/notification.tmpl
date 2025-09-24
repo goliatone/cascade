@@ -1,0 +1,15 @@
+🔄 **Dependency Update**
+
+**Module**: {{.Module}}
+**Version**: {{.SourceVersion}}
+**Repository**: {{.Repo}}
+**Status**: {{.Status | title}}
+{{if .CommitHash}}**Commit**: {{.CommitHash}}{{end}}
+
+{{if eq .Status "completed"}}✅ Update completed successfully{{else if eq .Status "failed"}}❌ Update failed{{else if eq .Status "manual-review"}}⏳ Manual review required{{else}}ℹ️ Status: {{.Status}}{{end}}
+
+{{if .Reason}}
+**Details**: {{.Reason}}
+{{end}}
+
+Updated: {{.Timestamp.Format "Jan 2, 2006 15:04 MST"}}
