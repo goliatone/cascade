@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+// Common errors
+var (
+	ErrEmptyCommand = errors.New("command cannot be empty")
+)
+
 // GitOperationError wraps git failures with context.
 type GitOperationError struct {
 	Repo      string
@@ -37,12 +42,15 @@ func (e *GoOperationError) Unwrap() error {
 
 // CommandExecutionError wraps command failures.
 type CommandExecutionError struct {
-	Command []string
-	Err     error
+	Command  []string
+	Dir      string
+	Output   string
+	ExitCode int
+	Err      error
 }
 
 func (e *CommandExecutionError) Error() string {
-	return fmt.Sprintf("executor: command %v failed: %v", e.Command, e.Err)
+	return fmt.Sprintf("executor: command %v failed in %s (exit %d): %v", e.Command, e.Dir, e.ExitCode, e.Err)
 }
 
 func (e *CommandExecutionError) Unwrap() error {
