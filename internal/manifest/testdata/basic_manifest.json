@@ -24,7 +24,7 @@
       "TitleTemplate": "chore: update dependencies",
       "BodyTemplate": "default.pr.tpl.md",
       "Reviewers": ["octocat"],
-      "TeamReviewers": null
+      "TeamReviewers": []
     }
   },
   "Modules": [
@@ -59,8 +59,8 @@
           "PR": {
             "TitleTemplate": "chore: update go-logger deps",
             "BodyTemplate": "logger.pr.tpl.md",
-            "Reviewers": null,
-            "TeamReviewers": null
+            "Reviewers": [],
+            "TeamReviewers": []
           },
           "Canary": true,
           "Skip": false,
@@ -78,8 +78,8 @@
               "Dir": "router"
             }
           ],
-          "ExtraCommands": null,
-          "Labels": null,
+          "ExtraCommands": [],
+          "Labels": [],
           "Notifications": {
             "SlackChannel": "",
             "Webhook": ""
@@ -87,8 +87,8 @@
           "PR": {
             "TitleTemplate": "",
             "BodyTemplate": "",
-            "Reviewers": null,
-            "TeamReviewers": null
+            "Reviewers": [],
+            "TeamReviewers": []
           },
           "Canary": false,
           "Skip": false,
@@ -128,8 +128,8 @@
           "PR": {
             "TitleTemplate": "",
             "BodyTemplate": "",
-            "Reviewers": null,
-            "TeamReviewers": null
+            "Reviewers": [],
+            "TeamReviewers": []
           },
           "Canary": false,
           "Skip": false,
