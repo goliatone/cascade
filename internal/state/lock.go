@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,63 +80,85 @@ func (fl *filesystemLocker) acquireLock(ctx context.Context, module, version str
 		return nil, fmt.Errorf("module and version cannot be empty")
 	}
 
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	lockKey := filepath.Join(module, version)
 	lockPath := filepath.Join(fl.rootDir, module, version, ".cascade.lock")
 
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
+	attempt := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		guard, err := fl.tryAcquireOnce(ctx, lockKey, lockPath, module, version)
+		if err == nil {
+			return guard, nil
+		}
+
+		if !errors.Is(err, ErrLocked) {
+			return nil, err
+		}
+
+		if nonBlocking {
+			return nil, err
+		}
+
+		// backoff before retrying
+		delay := time.Duration(100+attempt*50) * time.Millisecond
+		if delay > 500*time.Millisecond {
+			delay = 500 * time.Millisecond
+		}
+		attempt++
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
+}
 
+func (fl *filesystemLocker) tryAcquireOnce(ctx context.Context, lockKey, lockPath, module, version string) (LockGuard, error) {
 	fl.mu.Lock()
-	defer fl.mu.Unlock()
-
-	// Check if we already have this lock in the current process
 	if existing, exists := fl.activeLocks[lockKey]; exists && !existing.released {
+		fl.mu.Unlock()
 		return nil, fmt.Errorf("%w: already locked by this process", ErrLocked)
 	}
+	fl.mu.Unlock()
 
-	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
 	}
 
-	// Open/create lock file
-	flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
-	if nonBlocking {
-		flags |= os.O_EXCL
-	}
-
-	file, err := os.OpenFile(lockPath, flags, 0600)
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		if os.IsExist(err) && nonBlocking {
-			return nil, fmt.Errorf("%w: lock file exists", ErrLocked)
+		if os.IsExist(err) {
+			return nil, ErrLocked
 		}
 		return nil, fmt.Errorf("failed to create lock file %s: %w", lockPath, err)
 	}
 
-	// Write process information to lock file
 	pid := os.Getpid()
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	lockInfo := fmt.Sprintf("pid:%d\ntime:%s\nmodule:%s\nversion:%s\n", pid, timestamp, module, version)
-
 	if _, err := file.WriteString(lockInfo); err != nil {
 		file.Close()
 		os.Remove(lockPath)
 		return nil, fmt.Errorf("failed to write lock info: %w", err)
 	}
-
 	if err := file.Sync(); err != nil {
 		file.Close()
 		os.Remove(lockPath)
 		return nil, fmt.Errorf("failed to sync lock file: %w", err)
 	}
 
-	// Create context for lock lifecycle
 	lockCtx, cancel := context.WithCancel(ctx)
-
 	lock := &lockFile{
 		path:   lockPath,
 		file:   file,
@@ -143,7 +166,10 @@ func (fl *filesystemLocker) acquireLock(ctx context.Context, module, version str
 		cancel: cancel,
 	}
 
+	fl.mu.Lock()
 	fl.activeLocks[lockKey] = lock
+	fl.mu.Unlock()
+
 	fl.logger.Debug("acquired lock", "module", module, "version", version, "path", lockPath)
 
 	guard := &filesystemLockGuard{
@@ -154,7 +180,6 @@ func (fl *filesystemLocker) acquireLock(ctx context.Context, module, version str
 		version: version,
 	}
 
-	// Start goroutine to automatically release lock if context is cancelled
 	go func() {
 		<-lockCtx.Done()
 		if lockCtx.Err() == context.Canceled {
