@@ -427,7 +427,7 @@ func TestCreateConfiguredLogger(t *testing.T) {
 					t.Fatal("expected logger but got nil")
 				}
 				// Verify it's a valid slog.Logger
-				if _, ok := interface{}(logger).(*slog.Logger); !ok {
+				if _, ok := any(logger).(*slog.Logger); !ok {
 					t.Fatal("expected *slog.Logger")
 				}
 			}

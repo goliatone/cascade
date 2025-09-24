@@ -54,7 +54,7 @@ func TestLoadGoldenFiles(t *testing.T) {
 			}
 
 			// Verify it's valid JSON
-			var data interface{}
+			var data any
 			if err := json.Unmarshal(content, &data); err != nil {
 				t.Fatalf("Golden file %s contains invalid JSON: %v", tc.filename, err)
 			}
