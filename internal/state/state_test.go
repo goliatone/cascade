@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/manifest"
+	"github.com/goliatone/cascade/pkg/testsupport"
 )
 
 func TestManagerContract(t *testing.T) {
@@ -761,3 +763,243 @@ func TestLockRaceCondition(t *testing.T) {
 		t.Errorf("expected exactly 1 successful lock acquisition, got %d", successCount)
 	}
 }
+
+// TestFixtureRegression tests against known-good fixture files to guard against regressions
+func TestFixtureRegression(t *testing.T) {
+	tmpDir := t.TempDir()
+	storage, err := NewFilesystemStorage(tmpDir, nopLogger{})
+	if err != nil {
+		t.Fatalf("failed to create filesystem storage: %v", err)
+	}
+	manager := NewManager(WithStorage(storage))
+
+	t.Run("BasicSummaryFixture", func(t *testing.T) {
+		fixturePath := testsupport.GoldenPath("testdata", "basic_summary.json")
+
+		// Load fixture data for comparison
+		expected, err := testsupport.LoadStateSummary(fixturePath)
+		if err != nil {
+			t.Fatalf("failed to load basic summary fixture: %v", err)
+		}
+
+		// Parse the loaded fixture into our types for saving
+		startTime, _ := time.Parse(time.RFC3339, expected.StartTime)
+		endTime, _ := time.Parse(time.RFC3339, expected.EndTime)
+
+		summary := &Summary{
+			Module:     expected.Module,
+			Version:    expected.Version,
+			StartTime:  startTime,
+			EndTime:    endTime,
+			RetryCount: expected.RetryCount,
+			Items:      []ItemState{}, // Empty as in fixture
+		}
+
+		// Save and reload
+		if err := manager.SaveSummary(summary); err != nil {
+			t.Fatalf("failed to save basic summary: %v", err)
+		}
+
+		loaded, err := manager.LoadSummary(expected.Module, expected.Version)
+		if err != nil {
+			t.Fatalf("failed to load basic summary: %v", err)
+		}
+
+		// Verify against fixture data
+		if loaded.Module != expected.Module {
+			t.Errorf("expected module %s, got %s", expected.Module, loaded.Module)
+		}
+		if loaded.Version != expected.Version {
+			t.Errorf("expected version %s, got %s", expected.Version, loaded.Version)
+		}
+		if len(loaded.Items) != len(expected.Items) {
+			t.Errorf("expected %d items, got %d", len(expected.Items), len(loaded.Items))
+		}
+	})
+
+	t.Run("ProgressItemsFixture", func(t *testing.T) {
+		fixturePath := testsupport.GoldenPath("testdata", "progress_items.json")
+
+		// Load fixture data
+		expected, err := testsupport.LoadStateSummary(fixturePath)
+		if err != nil {
+			t.Fatalf("failed to load progress items fixture: %v", err)
+		}
+
+		// Verify fixture has expected structure for this test
+		if len(expected.Items) < 3 {
+			t.Fatalf("expected at least 3 items in progress fixture, got %d", len(expected.Items))
+		}
+
+		// Convert and save each item state
+		for _, expectedItem := range expected.Items {
+			lastUpdated, _ := time.Parse(time.RFC3339, expectedItem.LastUpdated)
+
+			// Convert command logs
+			var commandLogs []executor.CommandResult
+			for _, logItem := range expectedItem.CommandLogs {
+				result := executor.CommandResult{
+					Command: manifest.Command{
+						Cmd: append([]string{logItem.Command.Name}, logItem.Command.Args...),
+					},
+					Output: logItem.Output,
+				}
+				if logItem.Err != nil {
+					result.Err = fmt.Errorf(*logItem.Err)
+				}
+				commandLogs = append(commandLogs, result)
+			}
+
+			item := ItemState{
+				Repo:        expectedItem.Repo,
+				Branch:      expectedItem.Branch,
+				Status:      executor.Status(expectedItem.Status),
+				Reason:      expectedItem.Reason,
+				CommitHash:  expectedItem.CommitHash,
+				PRURL:       expectedItem.PRURL,
+				LastUpdated: lastUpdated,
+				Attempts:    expectedItem.Attempts - 1, // Will be incremented by storage
+				CommandLogs: commandLogs,
+			}
+
+			if err := manager.SaveItemState(expected.Module, expected.Version, item); err != nil {
+				t.Fatalf("failed to save item state for %s: %v", expectedItem.Repo, err)
+			}
+		}
+
+		// Load back and verify
+		items, err := manager.LoadItemStates(expected.Module, expected.Version)
+		if err != nil {
+			t.Fatalf("failed to load item states: %v", err)
+		}
+
+		if len(items) != len(expected.Items) {
+			t.Fatalf("expected %d items, got %d", len(expected.Items), len(items))
+		}
+
+		// Verify specific statuses from fixture
+		statusCounts := make(map[executor.Status]int)
+		for _, item := range items {
+			statusCounts[item.Status]++
+		}
+
+		if statusCounts[executor.StatusCompleted] == 0 {
+			t.Error("expected at least one completed item from fixture")
+		}
+		if statusCounts[executor.StatusFailed] == 0 {
+			t.Error("expected at least one failed item from fixture")
+		}
+		if statusCounts[executor.StatusManualReview] == 0 {
+			t.Error("expected at least one manual-review item from fixture")
+		}
+	})
+
+	t.Run("RollbackSummaryFixture", func(t *testing.T) {
+		fixturePath := testsupport.GoldenPath("testdata", "rollback_summary.json")
+
+		// Load fixture data
+		expected, err := testsupport.LoadStateSummary(fixturePath)
+		if err != nil {
+			t.Fatalf("failed to load rollback summary fixture: %v", err)
+		}
+
+		// Verify this is a rollback scenario (should have different version)
+		if expected.Version == "v1.2.3" {
+			t.Error("expected rollback fixture to have different version than v1.2.3")
+		}
+
+		// Save rollback items
+		for _, expectedItem := range expected.Items {
+			lastUpdated, _ := time.Parse(time.RFC3339, expectedItem.LastUpdated)
+
+			item := ItemState{
+				Repo:        expectedItem.Repo,
+				Branch:      expectedItem.Branch,
+				Status:      executor.Status(expectedItem.Status),
+				Reason:      expectedItem.Reason,
+				CommitHash:  expectedItem.CommitHash,
+				PRURL:       expectedItem.PRURL,
+				LastUpdated: lastUpdated,
+				Attempts:    expectedItem.Attempts - 1,  // Will be incremented
+				CommandLogs: []executor.CommandResult{}, // Simplified for test
+			}
+
+			if err := manager.SaveItemState(expected.Module, expected.Version, item); err != nil {
+				t.Fatalf("failed to save rollback item for %s: %v", expectedItem.Repo, err)
+			}
+		}
+
+		// Verify all rollback items completed successfully
+		items, err := manager.LoadItemStates(expected.Module, expected.Version)
+		if err != nil {
+			t.Fatalf("failed to load rollback item states: %v", err)
+		}
+
+		for _, item := range items {
+			if item.Status != executor.StatusCompleted {
+				t.Errorf("expected rollback item %s to be completed, got %s", item.Repo, item.Status)
+			}
+			if !strings.Contains(strings.ToLower(item.Reason), "revert") {
+				t.Errorf("expected rollback item %s reason to mention revert, got %s", item.Repo, item.Reason)
+			}
+		}
+	})
+
+	t.Run("CorruptFixtureHandling", func(t *testing.T) {
+		// Copy our corrupt fixture to storage location
+		module := "example.com/corrupt-test"
+		version := "v1.0.0"
+
+		// Create corrupt content directly (simpler than copying fixture)
+		corruptData := []byte(`{"invalid": json content`)
+		corruptPath := filepath.Join(tmpDir, module, version, "summary.json")
+		if err := os.MkdirAll(filepath.Dir(corruptPath), 0700); err != nil {
+			t.Fatalf("failed to create directory: %v", err)
+		}
+		if err := os.WriteFile(corruptPath, corruptData, 0600); err != nil {
+			t.Fatalf("failed to write corrupt data: %v", err)
+		}
+
+		// Attempt to load should return ErrCorrupt
+		summary, err := manager.LoadSummary(module, version)
+		if err != ErrCorrupt {
+			t.Errorf("expected ErrCorrupt for malformed JSON, got %v", err)
+		}
+		if summary != nil {
+			t.Error("expected nil summary for corrupt data")
+		}
+	})
+}
+
+// TestGenerateGolden generates golden files for testing (run with -update flag)
+func TestGenerateGolden(t *testing.T) {
+	if !*updateGoldens {
+		t.Skip("Skipping golden generation - use -update flag to regenerate")
+	}
+
+	testdataDir := "testdata"
+	if err := os.MkdirAll(testdataDir, 0755); err != nil {
+		t.Fatalf("failed to create testdata directory: %v", err)
+	}
+
+	t.Run("GenerateBasicSummary", func(t *testing.T) {
+		summary := &Summary{
+			Module:     "example.com/test-module",
+			Version:    "v1.2.3",
+			StartTime:  time.Date(2023, 12, 1, 10, 0, 0, 0, time.UTC),
+			EndTime:    time.Date(2023, 12, 1, 10, 30, 0, 0, time.UTC),
+			RetryCount: 0,
+			Items:      []ItemState{},
+		}
+
+		path := testsupport.GoldenPath(testdataDir, "basic_summary.json")
+		if err := testsupport.WriteGolden(path, summary); err != nil {
+			t.Fatalf("failed to write basic summary golden: %v", err)
+		}
+		t.Logf("Generated %s", path)
+	})
+
+	// Add more golden file generation as needed...
+}
+
+var updateGoldens = flag.Bool("update", false, "update golden files")
