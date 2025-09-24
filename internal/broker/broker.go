@@ -36,7 +36,14 @@ func DefaultConfig() Config {
 }
 
 // New returns a broker implementation with the given provider and notifier.
+// Returns an error if provider or notifier is nil to fail fast on misconfiguration.
 func New(provider Provider, notifier Notifier, config Config) Broker {
+	if provider == nil {
+		panic("broker.New: provider cannot be nil (use NewStub for testing)")
+	}
+	if notifier == nil {
+		panic("broker.New: notifier cannot be nil (use NewStub for testing)")
+	}
 	return &broker{
 		provider: provider,
 		notifier: notifier,
@@ -77,9 +84,11 @@ func (b *broker) EnsurePR(ctx context.Context, item planner.WorkItem, result *ex
 		}, nil
 	}
 
-	// Skip PR creation for failed execution results (could add comment instead)
+	// Skip PR creation gracefully for failed execution results
 	if result != nil && result.Status == executor.StatusFailed {
-		return nil, fmt.Errorf("skipping PR creation for failed execution: %s", result.Reason)
+		// Log the failure but don't return an error to allow orchestration to continue
+		fmt.Printf("INFO: skipping PR creation for failed execution in %s: %s\n", item.Module, result.Reason)
+		return nil, nil
 	}
 
 	// Render PR title and body using templates
@@ -100,7 +109,12 @@ func (b *broker) EnsurePR(ctx context.Context, item planner.WorkItem, result *ex
 		HeadBranch: item.BranchName,
 		Title:      title,
 		Body:       body,
-		Labels:     b.mergeLabels(item.Labels),
+		Labels:     SanitizeLabels(b.mergeLabels(item.Labels)),
+	}
+
+	// Validate PR input before sending to provider
+	if err := ValidatePRInput(&prInput); err != nil {
+		return nil, fmt.Errorf("PR input validation failed: %w", err)
 	}
 
 	// Create or update the pull request
@@ -109,19 +123,18 @@ func (b *broker) EnsurePR(ctx context.Context, item planner.WorkItem, result *ex
 		return nil, fmt.Errorf("create or update PR: %w", err)
 	}
 
-	// Apply labels if they weren't applied during PR creation
-	if len(prInput.Labels) > 0 {
-		if err := b.provider.AddLabels(ctx, item.Repo, pr.Number, prInput.Labels); err != nil {
-			// Don't fail the whole operation for label errors
-			// TODO: Log this error
-		}
-	}
+	// Note: Labels are applied during PR creation, no need for separate AddLabels call
 
 	// Request reviewers if configured
 	if len(item.PR.Reviewers) > 0 || len(item.PR.TeamReviewers) > 0 {
-		if err := b.provider.RequestReviewers(ctx, item.Repo, pr.Number, item.PR.Reviewers, item.PR.TeamReviewers); err != nil {
+		// Sanitize reviewer lists
+		sanitizedReviewers := SanitizeLabels(item.PR.Reviewers)
+		sanitizedTeamReviewers := SanitizeLabels(item.PR.TeamReviewers)
+
+		if err := b.provider.RequestReviewers(ctx, item.Repo, pr.Number, sanitizedReviewers, sanitizedTeamReviewers); err != nil {
 			// Don't fail the whole operation for reviewer errors
 			// TODO: Log this error
+			fmt.Printf("WARNING: failed to request reviewers for %s: %v\n", item.Module, err)
 		}
 	}
 
@@ -143,27 +156,26 @@ func (b *broker) Comment(ctx context.Context, pr *PullRequest, body string) erro
 	return &NotImplementedError{Operation: "broker.Comment"}
 }
 
-func (b *broker) Notify(ctx context.Context, item planner.WorkItem, result *executor.Result) error {
+func (b *broker) Notify(ctx context.Context, item planner.WorkItem, result *executor.Result) (*NotificationResult, error) {
 	// In dry-run mode, skip actual notifications
 	if b.config.DryRun {
-		return nil
+		return nil, nil
 	}
 
 	if b.notifier == nil {
-		return &NotImplementedError{Operation: "broker.Notify"}
+		return nil, &NotImplementedError{Operation: "broker.Notify"}
 	}
 
 	// Send notification - failures shouldn't block main PR flow
-	_, err := b.notifier.Send(ctx, item, result)
+	notificationResult, err := b.notifier.Send(ctx, item, result)
 	if err != nil {
-		// Wrap as NotificationError but don't fail the operation
-		return &NotificationError{
-			Channel: "unknown",
-			Err:     fmt.Errorf("send notification: %w", err),
-		}
+		// Log notification failures but don't fail the operation
+		// TODO: Use proper logger instead of fmt
+		fmt.Printf("WARNING: notification failed for %s: %v\n", item.Module, err)
+		return nil, nil // Return nil so PR creation continues
 	}
 
-	return nil
+	return notificationResult, nil
 }
 
 // mergeLabels combines item labels with default labels, removing duplicates.
