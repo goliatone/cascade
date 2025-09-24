@@ -13,6 +13,8 @@ type Provider interface {
 	CreateOrUpdatePullRequest(ctx context.Context, input PRInput) (*PullRequest, error)
 	AddLabels(ctx context.Context, repo string, number int, labels []string) error
 	RequestReviewers(ctx context.Context, repo string, number int, reviewers []string, teamReviewers []string) error
+	ListPullRequests(ctx context.Context, repo string, headBranch string) ([]*PullRequest, error)
+	AddComment(ctx context.Context, repo string, number int, body string) error
 }
 
 // GitHubProvider implements the Provider interface using the GitHub API.
@@ -132,6 +134,69 @@ func (p *GitHubProvider) RequestReviewers(ctx context.Context, repo string, numb
 	if err != nil {
 		return &GitHubAPIError{
 			Operation: "request reviewers",
+			Repo:      repo,
+			Err:       err,
+		}
+	}
+
+	return nil
+}
+
+// ListPullRequests lists pull requests for the given repository and head branch.
+func (p *GitHubProvider) ListPullRequests(ctx context.Context, repo string, headBranch string) ([]*PullRequest, error) {
+	owner, repoName, err := ParseRepoString(repo)
+	if err != nil {
+		return nil, fmt.Errorf("invalid repository format %q: %w", repo, err)
+	}
+
+	opts := &github.PullRequestListOptions{
+		Head:      owner + ":" + headBranch,
+		State:     "open",
+		Sort:      "created",
+		Direction: "desc",
+		ListOptions: github.ListOptions{
+			PerPage: 10,
+		},
+	}
+
+	githubPRs, _, err := p.client.PullRequests.List(ctx, owner, repoName, opts)
+	if err != nil {
+		return nil, &GitHubAPIError{
+			Operation: "list pull requests",
+			Repo:      repo,
+			Err:       err,
+		}
+	}
+
+	// Convert GitHub PR structs to our PullRequest structs
+	var prs []*PullRequest
+	for _, githubPR := range githubPRs {
+		prs = append(prs, &PullRequest{
+			URL:    githubPR.GetHTMLURL(),
+			Number: githubPR.GetNumber(),
+			Repo:   repo,
+			Labels: []string{}, // Note: Labels would need to be fetched separately if needed
+		})
+	}
+
+	return prs, nil
+}
+
+// AddComment adds a comment to a pull request.
+func (p *GitHubProvider) AddComment(ctx context.Context, repo string, number int, body string) error {
+	owner, repoName, err := ParseRepoString(repo)
+	if err != nil {
+		return fmt.Errorf("invalid repository format %q: %w", repo, err)
+	}
+
+	comment := &github.IssueComment{
+		Body: &body,
+	}
+
+	_, _, err = p.client.Issues.CreateComment(ctx, owner, repoName, number, comment)
+	if err != nil {
+		return &GitHubAPIError{
+			Operation: "add comment",
 			Repo:      repo,
 			Err:       err,
 		}
