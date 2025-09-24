@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-
 // Validate performs schema and dependency checks on a manifest.
 func Validate(m *Manifest) error {
 	if m == nil {
@@ -14,17 +13,16 @@ func Validate(m *Manifest) error {
 
 	var issues []string
 
-	// Schema validation
 	if m.ManifestVersion != 1 {
 		issues = append(issues, fmt.Sprintf("unsupported manifest version: %d (expected 1)", m.ManifestVersion))
 	}
 
-	// Validate modules are not nil
 	if m.Modules == nil {
 		issues = append(issues, "modules cannot be nil")
 	} else {
-		// Check for duplicate module names
+		// check for duplicate module names and build moduleByPath map
 		moduleNames := make(map[string]bool)
+		moduleByPath := make(map[string]string) // modulePath -> name
 		for i, module := range m.Modules {
 			if module.Name == "" {
 				issues = append(issues, fmt.Sprintf("module[%d] name cannot be empty", i))
@@ -34,19 +32,22 @@ func Validate(m *Manifest) error {
 				moduleNames[module.Name] = true
 			}
 
-			// Validate required module fields
+			// validate required module fields
 			if module.Module == "" {
 				issues = append(issues, fmt.Sprintf("module[%d] (%s) module path cannot be empty", i, module.Name))
+			} else {
+				// Build moduleByPath map for later validation
+				moduleByPath[module.Module] = module.Name
 			}
 			if module.Repo == "" {
 				issues = append(issues, fmt.Sprintf("module[%d] (%s) repo cannot be empty", i, module.Name))
 			}
 
-			// Validate dependents are not nil
+			// dependents are not nil
 			if module.Dependents == nil {
 				issues = append(issues, fmt.Sprintf("module[%d] (%s) dependents cannot be nil", i, module.Name))
 			} else {
-				// Check for duplicate dependents within a module
+				// check for duplicate dependents within a module
 				dependentRepos := make(map[string]bool)
 				for j, dep := range module.Dependents {
 					if dep.Repo == "" {
@@ -67,8 +68,8 @@ func Validate(m *Manifest) error {
 			}
 		}
 
-		// Check for dependency cycles
-		if cycleIssues := detectCycles(m.Modules); len(cycleIssues) > 0 {
+		// check for dependency cycles using the moduleByPath map
+		if cycleIssues := detectCycles(m.Modules, moduleByPath); len(cycleIssues) > 0 {
 			issues = append(issues, cycleIssues...)
 		}
 	}
@@ -81,22 +82,20 @@ func Validate(m *Manifest) error {
 }
 
 // detectCycles uses DFS to find dependency cycles in the module graph.
-func detectCycles(modules []Module) []string {
+func detectCycles(modules []Module, moduleByPath map[string]string) []string {
 	var issues []string
 
-	// Build a graph of module dependencies
 	moduleMap := make(map[string]*Module)
 	for i := range modules {
 		moduleMap[modules[i].Name] = &modules[i]
 	}
 
-	// Track visited states: 0=unvisited, 1=visiting, 2=visited
+	// track visited states 0=unvisited, 1=visiting, 2=visited
 	visited := make(map[string]int)
 
-	// Perform DFS from each unvisited module
 	for _, module := range modules {
 		if visited[module.Name] == 0 {
-			if cycle := dfs(module.Name, moduleMap, visited, []string{}); len(cycle) > 0 {
+			if cycle := dfs(module.Name, moduleMap, moduleByPath, visited, []string{}); len(cycle) > 0 {
 				issues = append(issues, fmt.Sprintf("dependency cycle detected: %s", strings.Join(cycle, " -> ")))
 			}
 		}
@@ -107,9 +106,9 @@ func detectCycles(modules []Module) []string {
 
 // dfs performs depth-first search to detect cycles.
 // Returns the cycle path if found, empty slice otherwise.
-func dfs(moduleName string, moduleMap map[string]*Module, visited map[string]int, path []string) []string {
+func dfs(moduleName string, moduleMap map[string]*Module, moduleByPath map[string]string, visited map[string]int, path []string) []string {
 	if visited[moduleName] == 1 {
-		// Found a cycle - find where it starts
+		// found a cycle, find where it starts
 		cycleStart := -1
 		for i, name := range path {
 			if name == moduleName {
@@ -132,21 +131,18 @@ func dfs(moduleName string, moduleMap map[string]*Module, visited map[string]int
 
 	module := moduleMap[moduleName]
 	if module != nil {
-		// Check dependencies through dependents
+		// Check dependencies through dependents - find modules that this dependent's module matches
 		for _, dep := range module.Dependents {
-			// Look for modules that this dependent depends on
-			for depModuleName := range moduleMap {
-				if depModuleName == moduleName {
-					continue // Skip self
-				}
-				// Check if this dependent's module matches any other module
-				depModule := moduleMap[depModuleName]
-				if depModule != nil && dep.Module == depModule.Module {
-					if cycle := dfs(depModuleName, moduleMap, visited, path); len(cycle) > 0 {
+			// Look for modules that this dependent depends on by matching Module field
+			if referencedModuleName, exists := moduleByPath[dep.Module]; exists {
+				if referencedModuleName != moduleName { // Skip self
+					if cycle := dfs(referencedModuleName, moduleMap, moduleByPath, visited, path); len(cycle) > 0 {
 						return cycle
 					}
 				}
 			}
+			// If dep.Module doesn't match any module in our manifest, that's okay
+			// It means this dependent uses external modules not managed by cascade
 		}
 	}
 
