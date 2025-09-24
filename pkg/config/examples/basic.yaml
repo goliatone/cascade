@@ -1,0 +1,36 @@
+# basic.yaml - Minimal working configuration for Cascade
+# This is the simplest configuration needed to get started with Cascade.
+
+# Workspace configuration - where Cascade performs operations
+workspace:
+  # Primary workspace directory (required)
+  path: "/home/user/.cache/cascade"
+  # Path to your deps.yaml manifest file
+  manifest_path: "/home/user/project/deps.yaml"
+
+# Executor configuration - controls operation behavior
+executor:
+  # Default timeout for operations
+  timeout: "5m"
+  # Maximum concurrent operations
+  concurrent_limit: 4
+
+# Integration configuration - external services
+integration:
+  github:
+    # GitHub token loaded from environment variable CASCADE_GITHUB_TOKEN
+    # token: ""  # Leave empty to load from environment
+    organization: "myorg"
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "text"
+
+# State management
+state:
+  # State directory for persistence
+  dir: "/home/user/.local/state/cascade"
+  # Number of state snapshots to keep
+  retention_count: 10
+  enabled: true

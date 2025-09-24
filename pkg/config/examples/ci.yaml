@@ -1,0 +1,62 @@
+# ci.yaml - Configuration optimized for CI/CD environments
+# This configuration is designed for automated CI/CD pipelines with appropriate
+# timeouts, logging, and security considerations.
+
+# Workspace configuration - CI-friendly paths
+workspace:
+  # Use CI workspace directory
+  path: "${GITHUB_WORKSPACE}/.cascade"
+  # Use CI runner's temp directory
+  temp_dir: "${RUNNER_TEMP}/cascade"
+  # Manifest path relative to repository root
+  manifest_path: ".github/cascade/deps.yaml"
+
+# Executor configuration - CI-optimized settings
+executor:
+  # Shorter timeout for CI environments
+  timeout: "10m"
+  # Match CI runner CPU count (typically 2-4)
+  concurrent_limit: 2
+  # Dry-run mode for pull request validation
+  dry_run: false
+
+# Integration configuration - CI security best practices
+integration:
+  # GitHub integration using CI secrets
+  github:
+    # Token loaded from CI environment (set by CI system)
+    # Uses GITHUB_TOKEN or CASCADE_GITHUB_TOKEN
+    token: ""
+    # Use default GitHub endpoint
+    endpoint: ""
+    # Organization from repository context
+    organization: "${GITHUB_REPOSITORY_OWNER}"
+
+  # Slack notifications for build status
+  slack:
+    # Slack token from CI secrets
+    token: ""
+    # Webhook URL from CI secrets
+    webhook_url: ""
+    # Build notification channel
+    channel: "#ci-cascade"
+
+# Logging configuration - CI-friendly logging
+logging:
+  # Info level for CI logs (not too verbose)
+  level: "info"
+  # JSON format for log parsing and analysis
+  format: "json"
+  # No verbose mode in CI
+  verbose: false
+  # No quiet mode in CI (need visibility)
+  quiet: false
+
+# State management - CI state handling
+state:
+  # State directory in CI workspace
+  dir: "${GITHUB_WORKSPACE}/.cascade/state"
+  # Minimal retention for CI (storage constraints)
+  retention_count: 3
+  # Enable state for build reproducibility
+  enabled: true

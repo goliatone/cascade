@@ -1,0 +1,60 @@
+# development.yaml - Development-friendly configuration
+# This configuration is optimized for local development with debugging,
+# verbose output, and developer-friendly defaults.
+
+# Workspace configuration - development workspace
+workspace:
+  # Local development workspace
+  path: "/home/developer/cascade/workspace"
+  # Use system temp directory
+  temp_dir: ""
+  # Development manifest in project root
+  manifest_path: "/home/developer/project/deps.yaml"
+
+# Executor configuration - development settings
+executor:
+  # Longer timeout for debugging
+  timeout: "30m"
+  # Single-threaded for easier debugging
+  concurrent_limit: 1
+  # Enable dry-run for safe development
+  dry_run: true
+
+# Integration configuration - development integrations
+integration:
+  # GitHub integration for development
+  github:
+    # Token from environment (developer's personal token)
+    token: ""
+    # Use standard GitHub endpoint
+    endpoint: ""
+    # Development organization or personal account
+    organization: "mydev"
+
+  # Slack integration disabled for development
+  slack:
+    # No Slack integration in development
+    token: ""
+    webhook_url: ""
+    # Development notification channel (optional)
+    channel: "#dev-cascade"
+
+# Logging configuration - verbose development logging
+logging:
+  # Debug level for detailed troubleshooting
+  level: "debug"
+  # Human-readable text format
+  format: "text"
+  # Enable verbose mode
+  verbose: true
+  # Disable quiet mode (want all output)
+  quiet: false
+
+# State management - development state
+state:
+  # Local state directory
+  dir: "/home/developer/cascade/state"
+  # Keep many snapshots for debugging
+  retention_count: 50
+  # Enable state for development workflow
+  enabled: true

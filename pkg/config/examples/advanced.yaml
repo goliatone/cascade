@@ -1,0 +1,60 @@
+# advanced.yaml - Full-featured configuration with all available options
+# This configuration demonstrates all available Cascade configuration options.
+
+# Workspace configuration - comprehensive workspace management
+workspace:
+  # Primary workspace directory for all operations
+  path: "/var/cache/cascade"
+  # Custom temporary directory for intermediate files
+  temp_dir: "/tmp/cascade"
+  # Default manifest file path
+  manifest_path: "/var/cache/cascade/config/deps.yaml"
+
+# Executor configuration - fine-tuned execution control
+executor:
+  # Extended timeout for complex operations
+  timeout: "15m"
+  # High concurrency for powerful systems
+  concurrent_limit: 8
+  # Enable dry-run mode by default (can be overridden by CLI flags)
+  dry_run: false
+
+# Integration configuration - full external service integration
+integration:
+  # GitHub integration settings
+  github:
+    # GitHub token (prefer environment variable CASCADE_GITHUB_TOKEN)
+    token: ""
+    # Custom GitHub Enterprise endpoint
+    endpoint: "https://github.company.com/api/v3"
+    # Default organization for operations
+    organization: "engineering"
+
+  # Slack integration for notifications
+  slack:
+    # Slack bot token (prefer environment variable CASCADE_SLACK_TOKEN)
+    token: ""
+    # Webhook URL for notifications
+    webhook_url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+    # Default notification channel
+    channel: "#cascade-updates"
+
+# Logging configuration - detailed logging setup
+logging:
+  # Detailed logging level
+  level: "debug"
+  # Structured JSON logging for log aggregation systems
+  format: "json"
+  # Verbose mode disabled (controlled by level)
+  verbose: false
+  # Quiet mode disabled
+  quiet: false
+
+# State management - comprehensive state persistence
+state:
+  # Custom state directory with more space
+  dir: "/var/lib/cascade/state"
+  # Retain more state snapshots for debugging
+  retention_count: 25
+  # State persistence enabled
+  enabled: true
