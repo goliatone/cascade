@@ -140,7 +140,7 @@ func sanitizeForBranch(input string) string {
 
 // FindExistingPR searches for an existing PR with the same head branch.
 // This is a placeholder that should use the provider's list/search methods.
-func FindExistingPR(ctx context.Context, provider interface{}, repo, headBranch string) (*PullRequest, error) {
+func FindExistingPR(ctx context.Context, provider any, repo, headBranch string) (*PullRequest, error) {
 	// TODO: Implement using provider list/search methods
 	// For now, return nil to indicate no existing PR found
 	return nil, nil

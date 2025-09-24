@@ -77,7 +77,7 @@ func (s *SlackNotifier) Send(ctx context.Context, item planner.WorkItem, result 
 		}
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"channel": s.channel,
 		"text":    message,
 		"as_user": true,
@@ -87,7 +87,7 @@ func (s *SlackNotifier) Send(ctx context.Context, item planner.WorkItem, result 
 }
 
 // sendWithRetry sends the message with retry logic.
-func (s *SlackNotifier) sendWithRetry(ctx context.Context, payload map[string]interface{}) (*NotificationResult, error) {
+func (s *SlackNotifier) sendWithRetry(ctx context.Context, payload map[string]any) (*NotificationResult, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= s.config.MaxRetries; attempt++ {
@@ -123,7 +123,7 @@ func (s *SlackNotifier) sendWithRetry(ctx context.Context, payload map[string]in
 }
 
 // sendSlackMessage sends a single message to Slack API.
-func (s *SlackNotifier) sendSlackMessage(ctx context.Context, payload map[string]interface{}) (*NotificationResult, error) {
+func (s *SlackNotifier) sendSlackMessage(ctx context.Context, payload map[string]any) (*NotificationResult, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal payload: %w", err)
@@ -182,7 +182,7 @@ func (w *WebhookNotifier) Send(ctx context.Context, item planner.WorkItem, resul
 		}
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"text":   message,
 		"module": item.Module,
 		"repo":   item.Repo,
@@ -193,7 +193,7 @@ func (w *WebhookNotifier) Send(ctx context.Context, item planner.WorkItem, resul
 }
 
 // sendWithRetry sends the webhook with retry logic.
-func (w *WebhookNotifier) sendWithRetry(ctx context.Context, payload map[string]interface{}) (*NotificationResult, error) {
+func (w *WebhookNotifier) sendWithRetry(ctx context.Context, payload map[string]any) (*NotificationResult, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= w.config.MaxRetries; attempt++ {
@@ -229,7 +229,7 @@ func (w *WebhookNotifier) sendWithRetry(ctx context.Context, payload map[string]
 }
 
 // sendWebhook sends a single webhook request.
-func (w *WebhookNotifier) sendWebhook(ctx context.Context, payload map[string]interface{}) (*NotificationResult, error) {
+func (w *WebhookNotifier) sendWebhook(ctx context.Context, payload map[string]any) (*NotificationResult, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal payload: %w", err)

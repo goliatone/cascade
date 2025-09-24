@@ -11,7 +11,7 @@ import (
 type Broker interface {
 	EnsurePR(ctx context.Context, item planner.WorkItem, result *executor.Result) (*PullRequest, error)
 	Comment(ctx context.Context, pr *PullRequest, body string) error
-	Notify(ctx context.Context, item planner.WorkItem, result *executor.Result) error
+	Notify(ctx context.Context, item planner.WorkItem, result *executor.Result) (*NotificationResult, error)
 }
 
 // PullRequest represents metadata returned from the provider.
