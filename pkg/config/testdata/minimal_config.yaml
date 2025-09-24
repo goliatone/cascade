@@ -1,0 +1,3 @@
+# Minimal required configuration for testing
+workspace:
+  base_path: "/tmp/cascade-minimal"

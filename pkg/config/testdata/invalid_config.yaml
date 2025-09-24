@@ -1,0 +1,23 @@
+# Invalid configuration for error testing
+workspace:
+  base_path: ""  # Invalid: empty base path
+  temp_dir: "/nonexistent/path"
+
+executor:
+  timeout: "-1s"  # Invalid: negative timeout
+  concurrent_limit: -5  # Invalid: negative limit
+
+integration:
+  github:
+    token: "invalid-token-format"  # Invalid: wrong token format
+    endpoint: "not-a-url"  # Invalid: malformed URL
+  slack:
+    webhook_url: "invalid-webhook-url"  # Invalid: malformed URL
+
+logging:
+  level: "invalid-level"  # Invalid: unknown log level
+  structured: "not-a-boolean"  # Invalid: not a boolean
+
+state:
+  dir: ""  # Invalid: empty directory
+  retention_count: -1  # Invalid: negative count

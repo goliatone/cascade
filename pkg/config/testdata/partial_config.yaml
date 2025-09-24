@@ -1,0 +1,13 @@
+# Partial configuration for merging tests
+workspace:
+  base_path: "/tmp/cascade-partial"
+
+executor:
+  timeout: "3m"
+
+integration:
+  github:
+    token: "ghp_partial1234567890abcdef1234567890abcdef"
+
+logging:
+  level: "debug"

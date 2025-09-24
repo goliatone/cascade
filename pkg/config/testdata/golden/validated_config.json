@@ -1,0 +1,34 @@
+{
+  "workspace": {
+    "path": "/tmp/cascade-validated",
+    "temp_dir": ""
+  },
+  "executor": {
+    "timeout": "5m0s",
+    "concurrent_limit": 4,
+    "dry_run": false
+  },
+  "integration": {
+    "github": {
+      "token": "",
+      "endpoint": "https://api.github.com",
+      "organization": ""
+    },
+    "slack": {
+      "token": "",
+      "webhook_url": "",
+      "channel": ""
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "text",
+    "verbose": false,
+    "quiet": false
+  },
+  "state": {
+    "dir": "/home/user/.local/state/cascade",
+    "retention_count": 10,
+    "enabled": true
+  }
+}

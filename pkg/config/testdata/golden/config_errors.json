@@ -1,0 +1,58 @@
+{
+  "errors": [
+    {
+      "field": "workspace.path",
+      "value": "",
+      "message": "workspace path cannot be empty",
+      "code": "required"
+    },
+    {
+      "field": "executor.timeout",
+      "value": "-1s",
+      "message": "timeout must be positive",
+      "code": "min"
+    },
+    {
+      "field": "executor.concurrent_limit",
+      "value": -5,
+      "message": "concurrent limit must be at least 1",
+      "code": "min"
+    },
+    {
+      "field": "integration.github.token",
+      "value": "invalid-token-format",
+      "message": "GitHub token must start with 'ghp_' or 'gho_'",
+      "code": "format"
+    },
+    {
+      "field": "integration.github.endpoint",
+      "value": "not-a-url",
+      "message": "endpoint must be a valid URL",
+      "code": "url"
+    },
+    {
+      "field": "integration.slack.webhook_url",
+      "value": "invalid-webhook-url",
+      "message": "webhook URL must be a valid URL",
+      "code": "url"
+    },
+    {
+      "field": "logging.level",
+      "value": "invalid-level",
+      "message": "log level must be one of: debug, info, warn, error",
+      "code": "oneof"
+    },
+    {
+      "field": "state.dir",
+      "value": "",
+      "message": "state directory cannot be empty",
+      "code": "required"
+    },
+    {
+      "field": "state.retention_count",
+      "value": -1,
+      "message": "retention count must be at least 1",
+      "code": "min"
+    }
+  ]
+}

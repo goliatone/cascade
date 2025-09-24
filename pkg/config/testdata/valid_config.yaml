@@ -1,0 +1,23 @@
+# Complete valid configuration for testing
+workspace:
+  base_path: "/tmp/cascade-test"
+  temp_dir: "/tmp/cascade-temp"
+
+executor:
+  timeout: "5m"
+  concurrent_limit: 4
+
+integration:
+  github:
+    token: "ghp_test1234567890abcdef1234567890abcdef12"
+    endpoint: "https://api.github.com"
+  slack:
+    webhook_url: "https://hooks.slack.com/test/webhook/url"
+
+logging:
+  level: "info"
+  structured: true
+
+state:
+  dir: "/tmp/cascade-state"
+  retention_count: 10

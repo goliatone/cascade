@@ -1,0 +1,34 @@
+{
+  "workspace": {
+    "path": "/tmp/cascade-merged",
+    "temp_dir": "/tmp/cascade-temp"
+  },
+  "executor": {
+    "timeout": "5m0s",
+    "concurrent_limit": 4,
+    "dry_run": false
+  },
+  "integration": {
+    "github": {
+      "token": "ghp_merged1234567890abcdef1234567890abcdef",
+      "endpoint": "https://api.github.com",
+      "organization": ""
+    },
+    "slack": {
+      "token": "",
+      "webhook_url": "https://hooks.slack.com/merged/webhook/url",
+      "channel": ""
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "text",
+    "verbose": false,
+    "quiet": false
+  },
+  "state": {
+    "dir": "/tmp/cascade-state",
+    "retention_count": 10,
+    "enabled": true
+  }
+}
