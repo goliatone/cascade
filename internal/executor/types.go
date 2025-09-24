@@ -27,7 +27,7 @@ type WorkItemContext struct {
 // GitOperations defines the interface for git repository operations.
 type GitOperations interface {
 	EnsureClone(ctx context.Context, repo, workspace string) (string, error)
-	EnsureWorktree(ctx context.Context, repoPath, branch string) (string, error)
+	EnsureWorktree(ctx context.Context, repoPath, branch string, base string) (string, error)
 	Commit(ctx context.Context, repoPath, message string) (string, error)
 	Push(ctx context.Context, repoPath, branch string) error
 }
