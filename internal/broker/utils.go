@@ -139,10 +139,21 @@ func sanitizeForBranch(input string) string {
 }
 
 // FindExistingPR searches for an existing PR with the same head branch.
-// This is a placeholder that should use the provider's list/search methods.
-func FindExistingPR(ctx context.Context, provider any, repo, headBranch string) (*PullRequest, error) {
-	// TODO: Implement using provider list/search methods
-	// For now, return nil to indicate no existing PR found
+func FindExistingPR(ctx context.Context, provider Provider, repo, headBranch string) (*PullRequest, error) {
+	if provider == nil {
+		return nil, fmt.Errorf("provider cannot be nil")
+	}
+
+	prs, err := provider.ListPullRequests(ctx, repo, headBranch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pull requests for %s with head branch %s: %w", repo, headBranch, err)
+	}
+
+	// Return the first (most recent) PR if any exist
+	if len(prs) > 0 {
+		return prs[0], nil
+	}
+
 	return nil, nil
 }
 
@@ -221,8 +232,8 @@ func isValidLabelName(name string) bool {
 	if len(name) == 0 || len(name) > 50 {
 		return false
 	}
-	// GitHub labels cannot contain certain characters
-	invalidChars := []string{",", ";", ":", "\"", "'", "<", ">", "&"}
+	// GitHub labels cannot contain certain characters (colons, hyphens, underscores, dots are allowed)
+	invalidChars := []string{",", ";", "\"", "'", "<", ">", "&"}
 	for _, char := range invalidChars {
 		if strings.Contains(name, char) {
 			return false
@@ -250,8 +261,8 @@ func SanitizeLabels(labels []string) []string {
 			label = label[:50]
 		}
 
-		// Remove invalid characters
-		for _, char := range []string{",", ";", ":", "\"", "'", "<", ">", "&"} {
+		// Remove invalid characters (GitHub allows colons, hyphens, underscores, dots)
+		for _, char := range []string{",", ";", "\"", "'", "<", ">", "&"} {
 			label = strings.ReplaceAll(label, char, "")
 		}
 
