@@ -130,6 +130,9 @@ func TestPlanner_ValidationErrors(t *testing.T) {
 		{
 			name: "empty_repo",
 			manifestYAML: `
+defaults:
+  commit_template: "chore: bump {{module}} to {{version}}"
+
 modules:
   - module: github.com/example/test
     dependents:
@@ -144,6 +147,9 @@ modules:
 		{
 			name: "empty_module",
 			manifestYAML: `
+defaults:
+  commit_template: "chore: bump {{module}} to {{version}}"
+
 modules:
   - module: github.com/example/test
     dependents:
@@ -158,6 +164,9 @@ modules:
 		{
 			name: "empty_branch",
 			manifestYAML: `
+defaults:
+  commit_template: "chore: bump {{module}} to {{version}}"
+
 modules:
   - module: github.com/example/test
     dependents:
@@ -172,6 +181,9 @@ modules:
 		{
 			name: "negative_timeout",
 			manifestYAML: `
+defaults:
+  commit_template: "chore: bump {{module}} to {{version}}"
+
 modules:
   - module: github.com/example/test
     dependents:
@@ -189,8 +201,21 @@ modules:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a temporary manifest file
+			tmpFile, err := os.CreateTemp("", "manifest_*.yaml")
+			if err != nil {
+				t.Fatalf("create temp file: %v", err)
+			}
+			defer os.Remove(tmpFile.Name())
+
+			if _, err := tmpFile.WriteString(tt.manifestYAML); err != nil {
+				t.Fatalf("write temp file: %v", err)
+			}
+			if err := tmpFile.Close(); err != nil {
+				t.Fatalf("close temp file: %v", err)
+			}
+
 			loader := manifest.NewLoader()
-			m, err := loader.LoadFromString(tt.manifestYAML)
+			m, err := loader.Load(tmpFile.Name())
 			if err != nil {
 				t.Fatalf("load manifest: %v", err)
 			}
@@ -210,6 +235,114 @@ modules:
 				t.Fatalf("expected error containing %q, got %q", tt.expectError, err.Error())
 			}
 		})
+	}
+}
+
+func TestPlanner_EmptyPlan_ZeroDependents(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("testdata", "empty.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-repository-bun", Version: "v2.0.0"}
+
+	p := planner.New()
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	var want planner.Plan
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "empty_plan.json"), &want); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	if !reflect.DeepEqual(plan, &want) {
+		gotJSON, _ := json.MarshalIndent(plan, "", "  ")
+		wantJSON, _ := json.MarshalIndent(want, "", "  ")
+		t.Fatalf("plan mismatch\n got: %s\nwant: %s", gotJSON, wantJSON)
+	}
+}
+
+func TestPlanner_FilteredPlan_SkippedDependents(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("testdata", "filtered.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	p := planner.New()
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	var want planner.Plan
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "filtered_plan.json"), &want); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	if !reflect.DeepEqual(plan, &want) {
+		gotJSON, _ := json.MarshalIndent(plan, "", "  ")
+		wantJSON, _ := json.MarshalIndent(want, "", "  ")
+		t.Fatalf("plan mismatch\n got: %s\nwant: %s", gotJSON, wantJSON)
+	}
+}
+
+func TestPlanner_AllSkipped_EmptyPlan(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("testdata", "all_skipped.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	p := planner.New()
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	var want planner.Plan
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "all_skipped_plan.json"), &want); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	if !reflect.DeepEqual(plan, &want) {
+		gotJSON, _ := json.MarshalIndent(plan, "", "  ")
+		wantJSON, _ := json.MarshalIndent(want, "", "  ")
+		t.Fatalf("plan mismatch\n got: %s\nwant: %s", gotJSON, wantJSON)
+	}
+}
+
+func TestPlanner_InvalidTargetFromManifest(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("testdata", "invalid_target.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	// Try to plan for a module that doesn't exist in this manifest
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	p := planner.New()
+	_, err = p.Plan(context.Background(), m, target)
+
+	if err == nil {
+		t.Fatal("expected error for nonexistent module in manifest, got nil")
+	}
+
+	if !planner.IsTargetNotFound(err) {
+		t.Fatalf("expected TargetNotFoundError, got %T: %v", err, err)
+	}
+
+	expectedMsg := "planner: target module not found: github.com/goliatone/go-errors"
+	if err.Error() != expectedMsg {
+		t.Fatalf("expected error message %q, got %q", expectedMsg, err.Error())
 	}
 }
 
