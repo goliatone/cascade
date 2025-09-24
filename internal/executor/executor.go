@@ -34,7 +34,9 @@ func (e *executor) Apply(ctx context.Context, input WorkItemContext) (*Result, e
 	}
 
 	result := &Result{
-		Status: StatusFailed, // Start pessimistic, update on success
+		Status:       StatusFailed, // Start pessimistic, update on success
+		TestResults:  []CommandResult{},
+		ExtraResults: []CommandResult{},
 	}
 
 	// Clone/prepare repository using GitOperations
@@ -239,4 +241,3 @@ func (e *executor) determineGitErrorStatus(_ error) Status {
 	// and authentication/permission errors (permanent)
 	return StatusFailed
 }
-
