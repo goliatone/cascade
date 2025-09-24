@@ -66,12 +66,6 @@ func normalizeManifest(m *Manifest) {
 			if dependent.Labels == nil {
 				dependent.Labels = []string{}
 			}
-			if dependent.PR.Reviewers == nil {
-				dependent.PR.Reviewers = []string{}
-			}
-			if dependent.PR.TeamReviewers == nil {
-				dependent.PR.TeamReviewers = []string{}
-			}
 		}
 	}
 
@@ -87,11 +81,5 @@ func normalizeManifest(m *Manifest) {
 		m.Defaults.Labels = []string{}
 	}
 
-	if m.Defaults.PR.Reviewers == nil {
-		m.Defaults.PR.Reviewers = []string{}
-	}
-
-	if m.Defaults.PR.TeamReviewers == nil {
-		m.Defaults.PR.TeamReviewers = []string{}
-	}
+	// Leave PR reviewer slices as-is (nil signals defaults should apply).
 }
