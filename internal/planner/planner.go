@@ -88,7 +88,8 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 		// Normalize the work item (ensure maps/slices are empty instead of nil)
 		item = normalizeWorkItem(item)
 
-		// Special case: Ensure Reviewers and TeamReviewers are nil instead of empty slices to match expected JSON output
+		// Special case: Ensure Reviewers and TeamReviewers are nil
+		// instead of empty slices to match expected JSON output
 		// This preserves the existing behavior for the golden file tests
 		if len(item.PR.Reviewers) == 0 {
 			item.PR.Reviewers = nil
@@ -118,12 +119,15 @@ func validateWorkItem(item WorkItem, target Target) error {
 	if item.Repo == "" {
 		return fmt.Errorf("work item repo is empty")
 	}
+
 	if item.Module == "" {
 		return fmt.Errorf("work item module is empty")
 	}
+
 	if item.Branch == "" {
 		return fmt.Errorf("work item branch is empty")
 	}
+
 	if item.CommitMessage == "" {
 		return fmt.Errorf("work item commit message is empty")
 	}
@@ -152,6 +156,7 @@ func normalizeWorkItem(item WorkItem) WorkItem {
 
 	// Note: Env map is left as is to preserve existing golden file behavior
 	// In the future, when golden files are regenerated, this could be:
+	// TODO: regenerate golden files and fix below
 	// if item.Env == nil {
 	//     item.Env = map[string]string{}
 	// }
