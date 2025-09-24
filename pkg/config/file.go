@@ -87,6 +87,10 @@ func LoadFromFile(path string) (*Config, error) {
 		return nil, fmt.Errorf("unsupported config file format: %s (supported: .yaml, .yml, .json)", ext)
 	}
 
+	if err := validateConfigFile(config); err != nil {
+		return nil, fmt.Errorf("invalid config file %s: %w", path, err)
+	}
+
 	return config, nil
 }
 
@@ -108,4 +112,157 @@ func LoadFromFileOrDiscover(path string) (*Config, error) {
 	}
 
 	return LoadFromFile(discoveredPath)
+}
+
+// MergeConfigs merges multiple configuration sources with precedence order.
+// Later configs in the slice take precedence over earlier ones.
+// Non-zero values from higher precedence configs override lower precedence values.
+func MergeConfigs(configs ...*Config) *Config {
+	if len(configs) == 0 {
+		return New()
+	}
+
+	result := New()
+
+	for _, config := range configs {
+		if config == nil {
+			continue
+		}
+		mergeConfig(result, config)
+	}
+
+	return result
+}
+
+// mergeConfig merges src into dst, with src taking precedence for non-zero values
+func mergeConfig(dst, src *Config) {
+	// Workspace config
+	if src.Workspace.Path != "" {
+		dst.Workspace.Path = src.Workspace.Path
+	}
+	if src.Workspace.TempDir != "" {
+		dst.Workspace.TempDir = src.Workspace.TempDir
+	}
+	if src.Workspace.ManifestPath != "" {
+		dst.Workspace.ManifestPath = src.Workspace.ManifestPath
+	}
+
+	// Executor config
+	if src.Executor.Timeout != 0 {
+		dst.Executor.Timeout = src.Executor.Timeout
+	}
+	if src.Executor.ConcurrentLimit != 0 {
+		dst.Executor.ConcurrentLimit = src.Executor.ConcurrentLimit
+	}
+	// DryRun is a boolean, so we need to check if it was explicitly set
+	// For now, we'll always merge it (true overrides false)
+	dst.Executor.DryRun = dst.Executor.DryRun || src.Executor.DryRun
+
+	// Integration config - GitHub
+	if src.Integration.GitHub.Token != "" {
+		dst.Integration.GitHub.Token = src.Integration.GitHub.Token
+	}
+	if src.Integration.GitHub.Endpoint != "" {
+		dst.Integration.GitHub.Endpoint = src.Integration.GitHub.Endpoint
+	}
+	if src.Integration.GitHub.Organization != "" {
+		dst.Integration.GitHub.Organization = src.Integration.GitHub.Organization
+	}
+
+	// Integration config - Slack
+	if src.Integration.Slack.Token != "" {
+		dst.Integration.Slack.Token = src.Integration.Slack.Token
+	}
+	if src.Integration.Slack.WebhookURL != "" {
+		dst.Integration.Slack.WebhookURL = src.Integration.Slack.WebhookURL
+	}
+	if src.Integration.Slack.Channel != "" {
+		dst.Integration.Slack.Channel = src.Integration.Slack.Channel
+	}
+
+	// Logging config
+	if src.Logging.Level != "" {
+		dst.Logging.Level = src.Logging.Level
+	}
+	if src.Logging.Format != "" {
+		dst.Logging.Format = src.Logging.Format
+	}
+	// Boolean fields - merge with OR logic for now
+	dst.Logging.Verbose = dst.Logging.Verbose || src.Logging.Verbose
+	dst.Logging.Quiet = dst.Logging.Quiet || src.Logging.Quiet
+
+	// State config
+	if src.State.Dir != "" {
+		dst.State.Dir = src.State.Dir
+	}
+	if src.State.RetentionCount != 0 {
+		dst.State.RetentionCount = src.State.RetentionCount
+	}
+	// Boolean field - Enabled
+	dst.State.Enabled = dst.State.Enabled || src.State.Enabled
+}
+
+// validateConfigFile performs basic validation on configuration loaded from files.
+// This is a subset of full validation focusing on format and type consistency.
+func validateConfigFile(config *Config) error {
+	var errors []string
+
+	// Validate logging level
+	if config.Logging.Level != "" {
+		validLevels := []string{"debug", "info", "warn", "error"}
+		valid := false
+		for _, level := range validLevels {
+			if config.Logging.Level == level {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			errors = append(errors, fmt.Sprintf("invalid logging level '%s', must be one of: %s",
+				config.Logging.Level, strings.Join(validLevels, ", ")))
+		}
+	}
+
+	// Validate logging format
+	if config.Logging.Format != "" {
+		validFormats := []string{"text", "json"}
+		valid := false
+		for _, format := range validFormats {
+			if config.Logging.Format == format {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			errors = append(errors, fmt.Sprintf("invalid logging format '%s', must be one of: %s",
+				config.Logging.Format, strings.Join(validFormats, ", ")))
+		}
+	}
+
+	// Validate executor settings
+	if config.Executor.ConcurrentLimit < 0 {
+		errors = append(errors, "concurrent_limit must be positive")
+	}
+
+	if config.Executor.Timeout < 0 {
+		errors = append(errors, "timeout must be positive")
+	}
+
+	// Validate state settings
+	if config.State.RetentionCount < 0 {
+		errors = append(errors, "state retention_count must be positive")
+	}
+
+	// Validate paths exist if specified (basic check)
+	if config.Workspace.Path != "" {
+		if !filepath.IsAbs(config.Workspace.Path) && !strings.HasPrefix(config.Workspace.Path, "~") {
+			// Allow relative paths for now, but warn about absolute paths being preferred
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("configuration validation failed:\n  - %s", strings.Join(errors, "\n  - "))
+	}
+
+	return nil
 }

@@ -12,16 +12,16 @@ import (
 // FlagConfig represents flag parsing configuration and results
 type FlagConfig struct {
 	// Command-line flag values
-	Workspace      string
-	Manifest       string
-	Module         string
-	Version        string
-	DryRun         bool
-	Verbose        bool
-	Quiet          bool
-	Timeout        time.Duration
-	Parallel       int
-	ConfigFile     string
+	Workspace  string
+	Manifest   string
+	Module     string
+	Version    string
+	DryRun     bool
+	Verbose    bool
+	Quiet      bool
+	Timeout    time.Duration
+	Parallel   int
+	ConfigFile string
 
 	// GitHub integration flags
 	GitHubToken    string
