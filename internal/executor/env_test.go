@@ -2,6 +2,6 @@ package executor
 
 import "testing"
 
-func TestPrepareEnv(t *testing.T) {
+func TestEnvironmentUtilities(t *testing.T) {
 	t.Skip("env utilities implementation pending")
 }
