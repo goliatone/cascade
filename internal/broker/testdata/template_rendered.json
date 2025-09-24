@@ -1,0 +1,4 @@
+{
+  "title": "Update github.com/sirupsen/logrus to v1.9.3",
+  "body": "## Dependency Update\n\n**Module**: github.com/sirupsen/logrus\n**From**: v1.9.0\n**To**: v1.9.3\n**Repository**: goliatone/go-logger\n**Branch**: cascade/update-logrus-v1.9.3\n\n## Changes\n\n- Updated dependency to latest version\n- All tests pass\n- No breaking changes detected\n\n## Execution Details\n\n**Status**: success\n**Commit**: abc123def456\n**Timestamp**: 2024-01-15T10:30:00Z\n\nThis PR was generated automatically by Cascade."
+}

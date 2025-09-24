@@ -1,39 +1,33 @@
-## Summary
-Updates {{.Module}} from current version to {{.SourceVersion}}.
+## Dependency Update
 
+**Module**: {{.Module}}
+**From**: {{.FromVersion}}
+**To**: {{.Version}}
 **Repository**: {{.Repo}}
-**Branch**: {{.BranchName}}
-**Status**: {{.Status}}
-{{if .CommitHash}}**Commit**: {{.CommitHash}}{{end}}
+**Branch**: {{.Branch}}
 
-{{if .Reason}}## Details
-{{.Reason}}
-{{end}}
+## Changes
 
-{{if .TestOutputs}}## Test Results
-{{range .TestOutputs}}
-<details>
-<summary>Test Output</summary>
+- Updated dependency to latest version
+{{- if .Result.Success}}
+- All tests pass
+- No breaking changes detected
+{{- else}}
+- ⚠️ Some tests may have failed - please review
+{{- end}}
 
+## Execution Details
+
+**Status**: {{.Result.Status}}
+**Commit**: {{.Result.CommitHash}}
+**Timestamp**: {{.Timestamp}}
+
+{{- if .Result.Output}}
+
+### Command Output
 ```
-{{.}}
+{{.Result.Output | truncate 500}}
 ```
+{{- end}}
 
-</details>
-{{end}}
-{{end}}
-
-{{if .ExtraOutputs}}## Additional Command Results
-{{range .ExtraOutputs}}
-<details>
-<summary>Command Output</summary>
-
-```
-{{.}}
-```
-
-</details>
-{{end}}
-{{end}}
-
-Generated at {{.Timestamp.Format "2006-01-02 15:04:05 MST"}}
+This PR was generated automatically by Cascade.
