@@ -10,6 +10,16 @@ func FindModule(m *Manifest, name string) (*Module, error) {
 	return nil, &ModuleNotFoundError{ModuleName: name}
 }
 
+// FindModuleByPath returns the module with the provided module path.
+func FindModuleByPath(m *Manifest, modulePath string) (*Module, error) {
+	for i := range m.Modules {
+		if m.Modules[i].Module == modulePath {
+			return &m.Modules[i], nil
+		}
+	}
+	return nil, &ModuleNotFoundError{ModuleName: modulePath}
+}
+
 // ExpandDefaults applies defaults to a dependent and returns the result.
 func ExpandDefaults(d Dependent, defaults Defaults) Dependent {
 	result := d
@@ -147,4 +157,21 @@ func mergePRConfig(defaults, dependent PRConfig) PRConfig {
 		copy(result.TeamReviewers, defaults.TeamReviewers)
 	}
 	return result
+}
+
+// HasOriginalPRConfig returns true if the dependent had any PR configuration
+// set originally (before defaults were applied).
+func HasOriginalPRConfig(d Dependent) bool {
+	return d.PR.TitleTemplate != "" ||
+		d.PR.BodyTemplate != "" ||
+		len(d.PR.Reviewers) > 0 ||
+		len(d.PR.TeamReviewers) > 0
+}
+
+// ExpandDefaultsWithMetadata applies defaults to a dependent and returns the result
+// along with metadata about which fields came from defaults.
+func ExpandDefaultsWithMetadata(d Dependent, defaults Defaults) (Dependent, bool) {
+	hadOriginalPR := HasOriginalPRConfig(d)
+	expanded := ExpandDefaults(d, defaults)
+	return expanded, hadOriginalPR
 }
