@@ -182,11 +182,16 @@ func (w *WebhookNotifier) Send(ctx context.Context, item planner.WorkItem, resul
 		}
 	}
 
+	status := ""
+	if result != nil {
+		status = string(result.Status)
+	}
+
 	payload := map[string]any{
 		"text":   message,
 		"module": item.Module,
 		"repo":   item.Repo,
-		"status": string(result.Status),
+		"status": status,
 	}
 
 	return w.sendWithRetry(ctx, payload)
@@ -275,14 +280,14 @@ func (m *MultiNotifier) Send(ctx context.Context, item planner.WorkItem, result 
 	var firstResult *NotificationResult
 
 	for _, notifier := range m.notifiers {
-		result, err := notifier.Send(ctx, item, result)
+		notifyResult, err := notifier.Send(ctx, item, result)
 		if err != nil {
 			errors = append(errors, err.Error())
 			continue
 		}
 
 		if firstResult == nil {
-			firstResult = result
+			firstResult = notifyResult
 		}
 	}
 

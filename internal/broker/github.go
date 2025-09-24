@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/go-github/v66/github"
 )
@@ -58,6 +59,10 @@ func (p *GitHubProvider) CreateOrUpdatePullRequest(ctx context.Context, input PR
 			}
 		}
 
+		if err := p.ensureLabels(ctx, input.Repo, updatedPR.GetNumber(), updatedPR, input.Labels); err != nil {
+			return nil, err
+		}
+
 		return &PullRequest{
 			URL:    updatedPR.GetHTMLURL(),
 			Number: updatedPR.GetNumber(),
@@ -81,6 +86,10 @@ func (p *GitHubProvider) CreateOrUpdatePullRequest(ctx context.Context, input PR
 			Repo:      input.Repo,
 			Err:       err,
 		}
+	}
+
+	if err := p.ensureLabels(ctx, input.Repo, createdPR.GetNumber(), createdPR, input.Labels); err != nil {
+		return nil, err
 	}
 
 	return &PullRequest{
@@ -203,6 +212,51 @@ func (p *GitHubProvider) AddComment(ctx context.Context, repo string, number int
 	}
 
 	return nil
+}
+
+func (p *GitHubProvider) ensureLabels(ctx context.Context, repo string, number int, pr *github.PullRequest, desired []string) error {
+	labelsToApply := diffLabels(pr, desired)
+	if len(labelsToApply) == 0 {
+		return nil
+	}
+	if err := p.AddLabels(ctx, repo, number, labelsToApply); err != nil {
+		return fmt.Errorf("apply labels: %w", err)
+	}
+	return nil
+}
+
+func diffLabels(pr *github.PullRequest, desired []string) []string {
+	if len(desired) == 0 {
+		return nil
+	}
+	if pr == nil {
+		return desired
+	}
+
+	seen := make(map[string]struct{})
+	for _, label := range pr.Labels {
+		if label == nil {
+			continue
+		}
+		name := label.GetName()
+		if name == "" {
+			continue
+		}
+		seen[strings.ToLower(name)] = struct{}{}
+	}
+
+	var filtered []string
+	for _, label := range desired {
+		if label == "" {
+			continue
+		}
+		if _, exists := seen[strings.ToLower(label)]; exists {
+			continue
+		}
+		filtered = append(filtered, label)
+	}
+
+	return filtered
 }
 
 // findExistingPR searches for an existing PR with the given head branch.
