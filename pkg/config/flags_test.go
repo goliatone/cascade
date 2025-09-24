@@ -304,9 +304,9 @@ func TestFlagConfig_ToConfig(t *testing.T) {
 
 func TestLoadFromFlags(t *testing.T) {
 	tests := []struct {
-		name    string
-		setup   func() *cobra.Command
-		test    func(t *testing.T, config *Config, err error)
+		name  string
+		setup func() *cobra.Command
+		test  func(t *testing.T, config *Config, err error)
 	}{
 		{
 			name: "nil command returns error",
@@ -380,7 +380,7 @@ func TestLoadFromFlags(t *testing.T) {
 
 func TestExtractFlagConfig(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		setup func() *cobra.Command
 		test  func(t *testing.T, fc *FlagConfig)
 	}{
