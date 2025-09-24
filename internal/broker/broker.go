@@ -151,9 +151,20 @@ func (b *broker) Comment(ctx context.Context, pr *PullRequest, body string) erro
 		return &NotImplementedError{Operation: "broker.Comment"}
 	}
 
-	// TODO: Implement PR commenting via provider
-	// For now, return not implemented since GitHub provider doesn't expose comment method
-	return &NotImplementedError{Operation: "broker.Comment"}
+	if pr == nil {
+		return fmt.Errorf("pull request cannot be nil")
+	}
+
+	if body == "" {
+		return fmt.Errorf("comment body cannot be empty")
+	}
+
+	// Add comment via provider
+	if err := b.provider.AddComment(ctx, pr.Repo, pr.Number, body); err != nil {
+		return fmt.Errorf("failed to add comment to PR #%d in %s: %w", pr.Number, pr.Repo, err)
+	}
+
+	return nil
 }
 
 func (b *broker) Notify(ctx context.Context, item planner.WorkItem, result *executor.Result) (*NotificationResult, error) {
