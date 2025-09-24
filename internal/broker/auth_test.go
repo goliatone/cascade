@@ -178,11 +178,11 @@ func TestCreateAuthenticatedClient(t *testing.T) {
 
 func TestValidateAuthentication(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupServer    func() *httptest.Server
-		client         *github.Client
-		wantErr        bool
-		errContains    string
+		name        string
+		setupServer func() *httptest.Server
+		client      *github.Client
+		wantErr     bool
+		errContains string
 	}{
 		{
 			name: "successful authentication",

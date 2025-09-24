@@ -125,7 +125,6 @@ func TestNotificationError(t *testing.T) {
 	}
 }
 
-
 func TestErrorDetectionHelpers(t *testing.T) {
 	gitHubErr := &GitHubAPIError{Operation: "test", Repo: "test/test", Err: errors.New("test")}
 	templateErr := &TemplateRenderError{TemplateName: "test", Operation: "test", Err: errors.New("test")}

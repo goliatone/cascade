@@ -484,7 +484,7 @@ func TestNotificationConfig_Defaults(t *testing.T) {
 }
 
 // ErrorAs is a helper function that mimics errors.As for testing
-func ErrorAs(err error, target interface{}) bool {
+func ErrorAs(err error, target any) bool {
 	switch e := err.(type) {
 	case *NotificationError:
 		if ptr, ok := target.(**NotificationError); ok {

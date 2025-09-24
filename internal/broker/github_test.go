@@ -37,7 +37,7 @@ func newTestGitHubProvider(responses map[string]*http.Response) Provider {
 	return NewGitHubProvider(client)
 }
 
-func createJSONResponse(statusCode int, body interface{}) *http.Response {
+func createJSONResponse(statusCode int, body any) *http.Response {
 	data, _ := json.Marshal(body)
 	return &http.Response{
 		StatusCode: statusCode,
@@ -266,7 +266,7 @@ func TestParseRepoString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {
-			owner, name, err := parseRepoString(tt.input)
+			owner, name, err := ParseRepoString(tt.input)
 
 			if tt.wantErr && err == nil {
 				t.Errorf("expected error for input %q, got nil", tt.input)
