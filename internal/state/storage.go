@@ -1,11 +1,15 @@
 package state
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -86,9 +90,14 @@ func (fs *filesystemStorage) itemsDir(module, version string) string {
 
 // itemPath returns the file path for a specific item state.
 func (fs *filesystemStorage) itemPath(module, version, repo string) string {
-	// Replace path separators to avoid directory traversal
-	safeRepo := filepath.Base(repo)
-	return filepath.Join(fs.itemsDir(module, version), safeRepo+".json")
+	hash := sha256.Sum256([]byte(repo))
+	prefix := hex.EncodeToString(hash[:8])
+	safe := sanitizeRepoComponent(repo)
+	if safe == "" {
+		safe = "repo"
+	}
+	name := fmt.Sprintf("%s_%s.json", prefix, safe)
+	return filepath.Join(fs.itemsDir(module, version), name)
 }
 
 // LoadSummary loads a summary for the given module and version.
@@ -154,17 +163,16 @@ func (fs *filesystemStorage) SaveItemState(module, version string, item ItemStat
 	var existing ItemState
 	if data, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(data, &existing); err == nil {
-			// Merge attempt counter and command logs
 			item.Attempts = existing.Attempts + 1
-			// Preserve previous command logs, but limit to prevent unbounded growth
 			const maxCommandLogs = 50
 			item.CommandLogs = append(existing.CommandLogs, item.CommandLogs...)
 			if len(item.CommandLogs) > maxCommandLogs {
 				item.CommandLogs = item.CommandLogs[len(item.CommandLogs)-maxCommandLogs:]
 			}
+		} else {
+			item.Attempts = 1
 		}
-	} else if item.Attempts == 0 {
-		// First attempt
+	} else {
 		item.Attempts = 1
 	}
 
@@ -281,4 +289,12 @@ func (n *nopStorage) SaveItemState(module, version string, item ItemState) error
 
 func (n *nopStorage) LoadItemStates(module, version string) ([]ItemState, error) {
 	return nil, ErrNotImplemented
+}
+
+var repoSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
+func sanitizeRepoComponent(repo string) string {
+	trimmed := strings.TrimSpace(repo)
+	replaced := repoSanitizer.ReplaceAllString(trimmed, "-")
+	return strings.Trim(replaced, "-._")
 }
