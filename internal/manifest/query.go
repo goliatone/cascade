@@ -1,6 +1,5 @@
 package manifest
 
-
 // FindModule returns the module with the provided name.
 func FindModule(m *Manifest, name string) (*Module, error) {
 	for i := range m.Modules {
@@ -10,7 +9,6 @@ func FindModule(m *Manifest, name string) (*Module, error) {
 	}
 	return nil, &ModuleNotFoundError{ModuleName: name}
 }
-
 
 // ExpandDefaults applies defaults to a dependent and returns the result.
 func ExpandDefaults(d Dependent, defaults Defaults) Dependent {
@@ -54,16 +52,34 @@ func ExpandDefaults(d Dependent, defaults Defaults) Dependent {
 // mergeCommands combines default commands with dependent commands, avoiding duplicates
 func mergeCommands(defaults, dependent []Command) []Command {
 	result := make([]Command, 0, len(defaults)+len(dependent))
+
+	// Add all defaults first
 	result = append(result, defaults...)
-	result = append(result, dependent...)
+
+	// Add dependent commands that aren't already present
+	for _, dep := range dependent {
+		if !containsCommand(result, dep) {
+			result = append(result, dep)
+		}
+	}
+
 	return result
 }
 
 // mergeStrings combines default strings with dependent strings, avoiding duplicates
 func mergeStrings(defaults, dependent []string) []string {
 	result := make([]string, 0, len(defaults)+len(dependent))
+
+	// Add all defaults first
 	result = append(result, defaults...)
-	result = append(result, dependent...)
+
+	// Add dependent strings that aren't already present
+	for _, dep := range dependent {
+		if !containsString(result, dep) {
+			result = append(result, dep)
+		}
+	}
+
 	return result
 }
 
@@ -77,6 +93,40 @@ func mergeNotifications(defaults, dependent Notifications) Notifications {
 		result.Webhook = defaults.Webhook
 	}
 	return result
+}
+
+// containsCommand checks if a command is already present in the slice
+func containsCommand(commands []Command, target Command) bool {
+	for _, cmd := range commands {
+		if len(cmd.Cmd) != len(target.Cmd) {
+			continue
+		}
+		if cmd.Dir != target.Dir {
+			continue
+		}
+		// Compare command slices
+		match := true
+		for i, arg := range cmd.Cmd {
+			if arg != target.Cmd[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+// containsString checks if a string is already present in the slice
+func containsString(strings []string, target string) bool {
+	for _, s := range strings {
+		if s == target {
+			return true
+		}
+	}
+	return false
 }
 
 // mergePRConfig merges PR configuration, preferring dependent values
