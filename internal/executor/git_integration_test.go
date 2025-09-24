@@ -52,7 +52,7 @@ func TestGitOperations_IntegrationWithRealRepo(t *testing.T) {
 
 		t.Run("worktree operations", func(t *testing.T) {
 			// Test worktree creation
-			worktreePath, err := git.EnsureWorktree(ctx, repoPath, "test-branch")
+			worktreePath, err := git.EnsureWorktree(ctx, repoPath, "test-branch", "")
 			if err != nil {
 				t.Errorf("Failed to create worktree: %v", err)
 			}

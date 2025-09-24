@@ -243,7 +243,7 @@ func (m *advancedMockGitOperations) EnsureClone(ctx context.Context, repo, works
 	return m.clonePath, nil
 }
 
-func (m *advancedMockGitOperations) EnsureWorktree(ctx context.Context, repoPath, branch string) (string, error) {
+func (m *advancedMockGitOperations) EnsureWorktree(ctx context.Context, repoPath, branch string, base string) (string, error) {
 	if m.worktreeError != nil {
 		return "", m.worktreeError
 	}

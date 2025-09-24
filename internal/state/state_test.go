@@ -1,9 +1,13 @@
 package state
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,14 +16,19 @@ import (
 )
 
 func TestManagerContract(t *testing.T) {
-	t.Skip("Contract tests will be enabled after Task 3 implementation")
+	// Create manager with filesystem storage for full contract testing
+	tmpDir := t.TempDir()
+	storage, err := NewFilesystemStorage(tmpDir, nopLogger{})
+	if err != nil {
+		t.Fatalf("failed to create filesystem storage: %v", err)
+	}
 
-	manager := NewManager()
+	manager := NewManager(WithStorage(storage))
 
-	// Test LoadSummary with basic fixture
+	// Test LoadSummary with non-existent data
 	summary, err := manager.LoadSummary("example.com/test-module", "v1.2.3")
-	if err != ErrNotImplemented {
-		t.Errorf("expected ErrNotImplemented, got %v", err)
+	if err != ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 	if summary != nil {
 		t.Errorf("expected nil summary, got %v", summary)
@@ -36,8 +45,22 @@ func TestManagerContract(t *testing.T) {
 	}
 
 	err = manager.SaveSummary(testSummary)
-	if err != ErrNotImplemented {
-		t.Errorf("expected ErrNotImplemented, got %v", err)
+	if err != nil {
+		t.Errorf("failed to save summary: %v", err)
+	}
+
+	// Test that we can load it back
+	loadedSummary, err := manager.LoadSummary("example.com/test-module", "v1.2.3")
+	if err != nil {
+		t.Errorf("failed to load summary: %v", err)
+	}
+	if loadedSummary == nil {
+		t.Error("expected summary, got nil")
+	} else {
+		// Verify timestamps were normalized to UTC
+		if loadedSummary.StartTime.Location() != time.UTC {
+			t.Errorf("expected UTC timezone for start time, got %v", loadedSummary.StartTime.Location())
+		}
 	}
 
 	// Test SaveItemState with basic fixture
@@ -54,18 +77,138 @@ func TestManagerContract(t *testing.T) {
 	}
 
 	err = manager.SaveItemState("example.com/test-module", "v1.2.3", testItem)
-	if err != ErrNotImplemented {
-		t.Errorf("expected ErrNotImplemented, got %v", err)
+	if err != nil {
+		t.Errorf("failed to save item state: %v", err)
 	}
 
 	// Test LoadItemStates with basic fixture
 	items, err := manager.LoadItemStates("example.com/test-module", "v1.2.3")
-	if err != ErrNotImplemented {
-		t.Errorf("expected ErrNotImplemented, got %v", err)
+	if err != nil {
+		t.Errorf("failed to load item states: %v", err)
 	}
-	if items != nil {
-		t.Errorf("expected nil items, got %v", items)
+	if len(items) != 1 {
+		t.Errorf("expected 1 item, got %d", len(items))
+	} else {
+		// Verify timestamp was normalized to UTC
+		if items[0].LastUpdated.Location() != time.UTC {
+			t.Errorf("expected UTC timezone for last updated, got %v", items[0].LastUpdated.Location())
+		}
+		// Verify attempts were incremented
+		if items[0].Attempts != 1 {
+			t.Errorf("expected attempts to be incremented to 1, got %d", items[0].Attempts)
+		}
 	}
+}
+
+// TestManagerValidation tests input validation in the manager layer
+func TestManagerValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	storage, err := NewFilesystemStorage(tmpDir, nopLogger{})
+	if err != nil {
+		t.Fatalf("failed to create filesystem storage: %v", err)
+	}
+	manager := NewManager(WithStorage(storage))
+
+	t.Run("LoadSummary_Validation", func(t *testing.T) {
+		// Test empty module
+		_, err := manager.LoadSummary("", "v1.0.0")
+		if err == nil || err.Error() != "module cannot be empty" {
+			t.Errorf("expected module validation error, got: %v", err)
+		}
+
+		// Test empty version
+		_, err = manager.LoadSummary("example.com/test", "")
+		if err == nil || err.Error() != "version cannot be empty" {
+			t.Errorf("expected version validation error, got: %v", err)
+		}
+	})
+
+	t.Run("SaveSummary_Validation", func(t *testing.T) {
+		// Test nil summary
+		err := manager.SaveSummary(nil)
+		if err == nil || err.Error() != "summary cannot be nil" {
+			t.Errorf("expected nil summary error, got: %v", err)
+		}
+
+		// Test empty module in summary
+		summary := &Summary{
+			Module:     "",
+			Version:    "v1.0.0",
+			StartTime:  time.Now(),
+			RetryCount: 0,
+			Items:      []ItemState{},
+		}
+		err = manager.SaveSummary(summary)
+		if err == nil || err.Error() != "module cannot be empty" {
+			t.Errorf("expected module validation error, got: %v", err)
+		}
+	})
+
+	t.Run("SaveItemState_Validation", func(t *testing.T) {
+		// Test empty repo
+		item := ItemState{
+			Repo:        "",
+			Branch:      "test-branch",
+			Status:      executor.StatusCompleted,
+			LastUpdated: time.Now(),
+		}
+		err := manager.SaveItemState("example.com/test", "v1.0.0", item)
+		if err == nil || err.Error() != "item repo cannot be empty" {
+			t.Errorf("expected repo validation error, got: %v", err)
+		}
+
+		// Test invalid status
+		item = ItemState{
+			Repo:        "example.com/repo",
+			Branch:      "test-branch",
+			Status:      executor.Status("invalid"),
+			LastUpdated: time.Now(),
+		}
+		err = manager.SaveItemState("example.com/test", "v1.0.0", item)
+		if err == nil || !strings.Contains(err.Error(), "invalid item status") {
+			t.Errorf("expected status validation error, got: %v", err)
+		}
+	})
+
+	t.Run("TimestampNormalization", func(t *testing.T) {
+		// Test with non-UTC timestamp
+		location, _ := time.LoadLocation("America/New_York")
+		localTime := time.Date(2023, 12, 1, 15, 30, 0, 0, location)
+
+		summary := &Summary{
+			Module:     "example.com/test",
+			Version:    "v1.0.0",
+			StartTime:  localTime,
+			EndTime:    localTime,
+			RetryCount: 0,
+			Items: []ItemState{{
+				Repo:        "example.com/repo",
+				Branch:      "test",
+				Status:      executor.StatusCompleted,
+				LastUpdated: localTime,
+			}},
+		}
+
+		if err := manager.SaveSummary(summary); err != nil {
+			t.Fatalf("failed to save summary: %v", err)
+		}
+
+		// Load it back and verify UTC conversion
+		loaded, err := manager.LoadSummary("example.com/test", "v1.0.0")
+		if err != nil {
+			t.Fatalf("failed to load summary: %v", err)
+		}
+
+		if loaded.StartTime.Location() != time.UTC {
+			t.Errorf("expected StartTime in UTC, got %v", loaded.StartTime.Location())
+		}
+		if loaded.EndTime.Location() != time.UTC {
+			t.Errorf("expected EndTime in UTC, got %v", loaded.EndTime.Location())
+		}
+		if len(loaded.Items) > 0 && loaded.Items[0].LastUpdated.Location() != time.UTC {
+			t.Errorf("expected item LastUpdated in UTC, got %v", loaded.Items[0].LastUpdated.Location())
+		}
+	})
 }
 
 // TestFilesystemStorage tests the filesystem storage implementation
@@ -368,5 +511,253 @@ func TestAtomicWrite(t *testing.T) {
 		if entry.Name() != "test.json" {
 			t.Errorf("unexpected file in temp dir: %s", entry.Name())
 		}
+	}
+}
+
+// TestFilesystemLocker tests the filesystem locking implementation
+func TestFilesystemLocker(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := nopLogger{}
+	locker := NewFilesystemLocker(tmpDir, logger)
+
+	testModule := "example.com/test-module"
+	testVersion := "v1.0.0"
+
+	t.Run("BasicLockAcquireRelease", func(t *testing.T) {
+		// Acquire lock
+		guard, err := locker.Acquire(testModule, testVersion)
+		if err != nil {
+			t.Fatalf("failed to acquire lock: %v", err)
+		}
+
+		// Verify lock file exists
+		lockPath := filepath.Join(tmpDir, testModule, testVersion, ".cascade.lock")
+		if _, err := os.Stat(lockPath); err != nil {
+			t.Errorf("lock file should exist: %v", err)
+		}
+
+		// Release lock
+		if err := guard.Release(); err != nil {
+			t.Errorf("failed to release lock: %v", err)
+		}
+
+		// Verify lock file is removed
+		if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+			t.Errorf("lock file should be removed after release")
+		}
+	})
+
+	t.Run("TryAcquire_NonBlocking", func(t *testing.T) {
+		// First acquisition should succeed
+		guard1, err := locker.TryAcquire(testModule, testVersion)
+		if err != nil {
+			t.Fatalf("first TryAcquire should succeed: %v", err)
+		}
+		defer guard1.Release()
+
+		// Second acquisition should fail immediately
+		guard2, err := locker.TryAcquire(testModule, testVersion)
+		if err == nil {
+			guard2.Release()
+			t.Fatal("second TryAcquire should fail with ErrLocked")
+		}
+		if err != ErrLocked && !strings.Contains(err.Error(), "already locked by this process") {
+			t.Errorf("expected ErrLocked or process lock error, got: %v", err)
+		}
+	})
+
+	t.Run("ConcurrentAccess", func(t *testing.T) {
+		const numWorkers = 5
+		const numAttempts = 10
+
+		var successCount int32
+		var wg sync.WaitGroup
+
+		for i := 0; i < numWorkers; i++ {
+			wg.Add(1)
+			go func(workerID int) {
+				defer wg.Done()
+
+				for attempt := 0; attempt < numAttempts; attempt++ {
+					testMod := fmt.Sprintf("example.com/worker-%d", workerID)
+					testVer := fmt.Sprintf("v1.0.%d", attempt)
+
+					guard, err := locker.TryAcquire(testMod, testVer)
+					if err != nil {
+						continue // Expected for concurrent access
+					}
+
+					atomic.AddInt32(&successCount, 1)
+
+					// Hold the lock briefly
+					time.Sleep(1 * time.Millisecond)
+
+					if err := guard.Release(); err != nil {
+						t.Errorf("worker %d failed to release lock: %v", workerID, err)
+					}
+				}
+			}(i)
+		}
+
+		wg.Wait()
+
+		// All workers should have succeeded since they're using different module/version pairs
+		expected := int32(numWorkers * numAttempts)
+		if successCount != expected {
+			t.Errorf("expected %d successful acquisitions, got %d", expected, successCount)
+		}
+	})
+}
+
+// TestContextCancellation tests lock behavior with context cancellation
+func TestContextCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := nopLogger{}
+	locker := NewFilesystemLocker(tmpDir, logger)
+
+	testModule := "example.com/context-test"
+	testVersion := "v1.0.0"
+
+	t.Run("ContextCancelDuringLock", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		// This should complete before timeout
+		guard, err := locker.AcquireWithContext(ctx, testModule, testVersion)
+		if err != nil {
+			t.Fatalf("failed to acquire lock: %v", err)
+		}
+		defer guard.Release()
+
+		// Verify context is accessible
+		if guard.Context() == nil {
+			t.Error("lock guard should have associated context")
+		}
+	})
+
+	t.Run("ContextCancelAfterAcquisition", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		guard, err := locker.AcquireWithContext(ctx, testModule, testVersion)
+		if err != nil {
+			t.Fatalf("failed to acquire lock: %v", err)
+		}
+
+		// Cancel context - should trigger automatic release
+		cancel()
+		_ = guard // Silence unused variable warning
+
+		// Give the cleanup goroutine time to run
+		time.Sleep(10 * time.Millisecond)
+
+		// Lock should be released, so we should be able to acquire it again
+		guard2, err := locker.TryAcquire(testModule, testVersion)
+		if err != nil {
+			t.Errorf("expected to acquire lock after context cancel, got: %v", err)
+		} else {
+			guard2.Release()
+		}
+	})
+
+	t.Run("AlreadyCancelledContext", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		_, err := locker.AcquireWithContext(ctx, testModule, testVersion)
+		if err != context.Canceled {
+			t.Errorf("expected context.Canceled, got: %v", err)
+		}
+	})
+}
+
+// TestLockFileContent tests that lock files contain expected information
+func TestLockFileContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := nopLogger{}
+	locker := NewFilesystemLocker(tmpDir, logger)
+
+	testModule := "example.com/content-test"
+	testVersion := "v1.0.0"
+
+	guard, err := locker.Acquire(testModule, testVersion)
+	if err != nil {
+		t.Fatalf("failed to acquire lock: %v", err)
+	}
+	defer guard.Release()
+
+	lockPath := filepath.Join(tmpDir, testModule, testVersion, ".cascade.lock")
+	content, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("failed to read lock file: %v", err)
+	}
+
+	contentStr := string(content)
+	expectedContents := []string{
+		fmt.Sprintf("pid:%d", os.Getpid()),
+		"time:",
+		fmt.Sprintf("module:%s", testModule),
+		fmt.Sprintf("version:%s", testVersion),
+	}
+
+	for _, expected := range expectedContents {
+		if !strings.Contains(contentStr, expected) {
+			t.Errorf("lock file should contain %q, got: %s", expected, contentStr)
+		}
+	}
+}
+
+// TestLockValidation tests input validation for lock operations
+func TestLockValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := nopLogger{}
+	locker := NewFilesystemLocker(tmpDir, logger)
+
+	t.Run("EmptyModule", func(t *testing.T) {
+		_, err := locker.Acquire("", "v1.0.0")
+		if err == nil || !strings.Contains(err.Error(), "module and version cannot be empty") {
+			t.Errorf("expected validation error for empty module, got: %v", err)
+		}
+	})
+
+	t.Run("EmptyVersion", func(t *testing.T) {
+		_, err := locker.Acquire("example.com/test", "")
+		if err == nil || !strings.Contains(err.Error(), "module and version cannot be empty") {
+			t.Errorf("expected validation error for empty version, got: %v", err)
+		}
+	})
+}
+
+// TestLockRaceCondition tests concurrent lock attempts on the same module/version
+func TestLockRaceCondition(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := nopLogger{}
+	locker := NewFilesystemLocker(tmpDir, logger)
+
+	testModule := "example.com/race-test"
+	testVersion := "v1.0.0"
+
+	const numGoroutines = 10
+	var successCount int32
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			guard, err := locker.TryAcquire(testModule, testVersion)
+			if err == nil {
+				atomic.AddInt32(&successCount, 1)
+				time.Sleep(1 * time.Millisecond) // Hold lock briefly
+				guard.Release()
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Only one goroutine should successfully acquire the lock
+	if successCount != 1 {
+		t.Errorf("expected exactly 1 successful lock acquisition, got %d", successCount)
 	}
 }

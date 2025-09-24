@@ -282,7 +282,7 @@ func (m *mockGitOperations) EnsureClone(ctx context.Context, repo, workspace str
 	return m.clonePath, nil
 }
 
-func (m *mockGitOperations) EnsureWorktree(ctx context.Context, repoPath, branch string) (string, error) {
+func (m *mockGitOperations) EnsureWorktree(ctx context.Context, repoPath, branch string, base string) (string, error) {
 	if m.shouldFail {
 		return "", fmt.Errorf("mock worktree error")
 	}
