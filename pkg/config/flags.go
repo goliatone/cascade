@@ -40,6 +40,15 @@ type FlagConfig struct {
 	// Logging flags
 	LogLevel  string
 	LogFormat string
+
+	timeoutSet   bool
+	parallelSet  bool
+	dryRunSet    bool
+	verboseSet   bool
+	quietSet     bool
+	logLevelSet  bool
+	logFormatSet bool
+	stateSet     bool
 }
 
 // AddFlags adds all configuration flags to the provided cobra command.
@@ -114,17 +123,17 @@ func (fc *FlagConfig) ValidateFlags() error {
 	var errors []string
 
 	// Validate timeout
-	if fc.Timeout <= 0 {
+	if fc.timeoutSet && fc.Timeout <= 0 {
 		errors = append(errors, "timeout must be positive")
 	}
 
 	// Validate parallel count
-	if fc.Parallel < 0 {
+	if fc.parallelSet && fc.Parallel < 0 {
 		errors = append(errors, "parallel count must be non-negative")
 	}
 
 	// Validate log level if specified
-	if fc.LogLevel != "" {
+	if fc.logLevelSet {
 		validLevels := []string{"debug", "info", "warn", "error"}
 		isValid := false
 		for _, level := range validLevels {
@@ -139,7 +148,7 @@ func (fc *FlagConfig) ValidateFlags() error {
 	}
 
 	// Validate log format if specified
-	if fc.LogFormat != "" {
+	if fc.logFormatSet {
 		validFormats := []string{"text", "json"}
 		isValid := false
 		for _, format := range validFormats {
@@ -161,23 +170,11 @@ func (fc *FlagConfig) ValidateFlags() error {
 }
 
 // ToConfig converts flag configuration to a Config struct.
-// This applies flag values with proper precedence over environment variables.
-// Deprecated: Use ToConfigWithCommand for proper flag change detection.
+// It emits only the values explicitly set via flags; callers should merge
+// this result with other configuration sources to honour precedence rules.
 func (fc *FlagConfig) ToConfig() (*Config, error) {
-	return fc.ToConfigWithCommand(nil)
-}
+	config := New()
 
-// ToConfigWithCommand converts flag configuration to a Config struct with command context.
-// This applies flag values with proper precedence over environment variables.
-// The command parameter is used for detecting which flags were explicitly changed.
-func (fc *FlagConfig) ToConfigWithCommand(cmd *cobra.Command) (*Config, error) {
-	// Start with environment-based configuration
-	config, err := LoadFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load environment configuration: %w", err)
-	}
-
-	// Override with flag values (flags have higher precedence)
 	if fc.Workspace != "" {
 		config.Workspace.Path = fc.Workspace
 	}
@@ -186,31 +183,36 @@ func (fc *FlagConfig) ToConfigWithCommand(cmd *cobra.Command) (*Config, error) {
 		config.Workspace.ManifestPath = fc.Manifest
 	}
 
-	if fc.Timeout > 0 {
+	if fc.timeoutSet {
 		config.Executor.Timeout = fc.Timeout
 	}
 
-	if fc.Parallel > 0 {
+	if fc.parallelSet {
 		config.Executor.ConcurrentLimit = fc.Parallel
 	}
 
 	// Dry run flag
-	if fc.DryRun {
+	if fc.dryRunSet {
 		config.Executor.DryRun = fc.DryRun
 	}
 
-	// Logging configuration with mutual exclusivity
-	if fc.Verbose {
-		config.Logging.Verbose = true
-		config.Logging.Level = "debug"
-	} else if fc.Quiet {
-		config.Logging.Quiet = true
-		config.Logging.Level = "warn"
-	} else if fc.LogLevel != "" {
+	if fc.verboseSet {
+		config.Logging.Verbose = fc.Verbose
+		if fc.Verbose {
+			config.Logging.Level = "debug"
+		}
+	}
+	if fc.quietSet {
+		config.Logging.Quiet = fc.Quiet
+		if fc.Quiet {
+			config.Logging.Level = "warn"
+		}
+	}
+	if fc.logLevelSet && fc.LogLevel != "" {
 		config.Logging.Level = fc.LogLevel
 	}
 
-	if fc.LogFormat != "" {
+	if fc.logFormatSet && fc.LogFormat != "" {
 		config.Logging.Format = fc.LogFormat
 	}
 
@@ -245,32 +247,8 @@ func (fc *FlagConfig) ToConfigWithCommand(cmd *cobra.Command) (*Config, error) {
 		config.State.Dir = fc.StateDir
 	}
 
-	// State enabled is handled specially - only override if explicitly set
-	if cmd != nil && cmd.Flags().Changed("state") {
+	if fc.stateSet {
 		config.State.Enabled = fc.StateEnabled
-	}
-
-	// Target module and version for cascade operations
-	if fc.Module != "" {
-		config.Module = fc.Module
-	}
-
-	if fc.Version != "" {
-		config.Version = fc.Version
-	}
-
-	// Also check if flags were changed on the command directly (for persistent flags)
-	if cmd != nil {
-		if cmd.Flags().Changed("module") {
-			if val, err := cmd.Flags().GetString("module"); err == nil && val != "" {
-				config.Module = val
-			}
-		}
-		if cmd.Flags().Changed("version") {
-			if val, err := cmd.Flags().GetString("version"); err == nil && val != "" {
-				config.Version = val
-			}
-		}
 	}
 
 	return config, nil
@@ -291,13 +269,7 @@ func LoadFromFlags(cmd *cobra.Command) (*Config, error) {
 		return nil, err
 	}
 
-	// Convert to config with proper precedence, passing the command for flag change detection
-	config, err := fc.ToConfigWithCommand(cmd)
-	if err != nil {
-		return nil, err
-	}
-
-	return config, nil
+	return fc.ToConfig()
 }
 
 // extractFlagConfig extracts flag values from a flag set into FlagConfig
@@ -322,24 +294,32 @@ func extractFlagConfig(flags *pflag.FlagSet) *FlagConfig {
 	}
 	if flags.Changed("dry-run") {
 		fc.DryRun, _ = flags.GetBool("dry-run")
+		fc.dryRunSet = true
 	}
-	// Always get timeout value since it has a default and validation expects it
-	fc.Timeout, _ = flags.GetDuration("timeout")
+	if flags.Changed("timeout") {
+		fc.Timeout, _ = flags.GetDuration("timeout")
+		fc.timeoutSet = true
+	}
 
 	if flags.Changed("parallel") {
 		fc.Parallel, _ = flags.GetInt("parallel")
+		fc.parallelSet = true
 	}
 	if flags.Changed("verbose") {
 		fc.Verbose, _ = flags.GetBool("verbose")
+		fc.verboseSet = true
 	}
 	if flags.Changed("quiet") {
 		fc.Quiet, _ = flags.GetBool("quiet")
+		fc.quietSet = true
 	}
 	if flags.Changed("log-level") {
 		fc.LogLevel, _ = flags.GetString("log-level")
+		fc.logLevelSet = true
 	}
 	if flags.Changed("log-format") {
 		fc.LogFormat, _ = flags.GetString("log-format")
+		fc.logFormatSet = true
 	}
 	if flags.Changed("github-token") {
 		fc.GitHubToken, _ = flags.GetString("github-token")
@@ -364,6 +344,11 @@ func extractFlagConfig(flags *pflag.FlagSet) *FlagConfig {
 	}
 	if flags.Changed("state") {
 		fc.StateEnabled, _ = flags.GetBool("state")
+		fc.stateSet = true
+	}
+
+	if !fc.timeoutSet {
+		fc.Timeout = 0
 	}
 
 	return fc

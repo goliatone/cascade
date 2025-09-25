@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +47,8 @@ func TestAddFlags(t *testing.T) {
 			test: func(t *testing.T) {
 				cmd := &cobra.Command{Use: "test"}
 				AddFlags(cmd)
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(io.Discard)
 
 				// Add a run function to trigger validation
 				cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -95,17 +98,22 @@ func TestFlagConfig_ValidateFlags(t *testing.T) {
 		{
 			name: "valid configuration",
 			config: FlagConfig{
-				Timeout:   5 * time.Minute,
-				Parallel:  4,
-				LogLevel:  "info",
-				LogFormat: "json",
+				Timeout:      5 * time.Minute,
+				Parallel:     4,
+				LogLevel:     "info",
+				LogFormat:    "json",
+				timeoutSet:   true,
+				parallelSet:  true,
+				logLevelSet:  true,
+				logFormatSet: true,
 			},
 			wantError: false,
 		},
 		{
 			name: "negative timeout",
 			config: FlagConfig{
-				Timeout: -1 * time.Minute,
+				Timeout:    -1 * time.Minute,
+				timeoutSet: true,
 			},
 			wantError: true,
 			errorMsg:  "timeout must be positive",
@@ -113,7 +121,8 @@ func TestFlagConfig_ValidateFlags(t *testing.T) {
 		{
 			name: "negative parallel count",
 			config: FlagConfig{
-				Parallel: -1,
+				Parallel:    -1,
+				parallelSet: true,
 			},
 			wantError: true,
 			errorMsg:  "parallel count must be non-negative",
@@ -121,7 +130,8 @@ func TestFlagConfig_ValidateFlags(t *testing.T) {
 		{
 			name: "invalid log level",
 			config: FlagConfig{
-				LogLevel: "invalid",
+				LogLevel:    "invalid",
+				logLevelSet: true,
 			},
 			wantError: true,
 			errorMsg:  "log-level must be one of: debug, info, warn, error",
@@ -129,7 +139,8 @@ func TestFlagConfig_ValidateFlags(t *testing.T) {
 		{
 			name: "invalid log format",
 			config: FlagConfig{
-				LogFormat: "invalid",
+				LogFormat:    "invalid",
+				logFormatSet: true,
 			},
 			wantError: true,
 			errorMsg:  "log-format must be one of: text, json",
@@ -137,10 +148,14 @@ func TestFlagConfig_ValidateFlags(t *testing.T) {
 		{
 			name: "multiple validation errors",
 			config: FlagConfig{
-				Timeout:   -1 * time.Minute,
-				Parallel:  -1,
-				LogLevel:  "invalid",
-				LogFormat: "invalid",
+				Timeout:      -1 * time.Minute,
+				Parallel:     -1,
+				LogLevel:     "invalid",
+				LogFormat:    "invalid",
+				timeoutSet:   true,
+				parallelSet:  true,
+				logLevelSet:  true,
+				logFormatSet: true,
 			},
 			wantError: true,
 			errorMsg:  "timeout must be positive",
@@ -177,11 +192,14 @@ func TestFlagConfig_ToConfig(t *testing.T) {
 		{
 			name: "converts basic flags to config",
 			flagConfig: FlagConfig{
-				Workspace: "/custom/workspace",
-				Manifest:  "/path/to/deps.yaml",
-				DryRun:    true,
-				Timeout:   10 * time.Minute,
-				Parallel:  8,
+				Workspace:   "/custom/workspace",
+				Manifest:    "/path/to/deps.yaml",
+				DryRun:      true,
+				Timeout:     10 * time.Minute,
+				Parallel:    8,
+				dryRunSet:   true,
+				timeoutSet:  true,
+				parallelSet: true,
 			},
 			test: func(t *testing.T, config *Config, err error) {
 				if err != nil {
@@ -212,8 +230,10 @@ func TestFlagConfig_ToConfig(t *testing.T) {
 		{
 			name: "converts logging flags to config",
 			flagConfig: FlagConfig{
-				Verbose:   true,
-				LogFormat: "json",
+				Verbose:      true,
+				LogFormat:    "json",
+				verboseSet:   true,
+				logFormatSet: true,
 			},
 			test: func(t *testing.T, config *Config, err error) {
 				if err != nil {
@@ -276,7 +296,8 @@ func TestFlagConfig_ToConfig(t *testing.T) {
 		{
 			name: "handles quiet flag precedence",
 			flagConfig: FlagConfig{
-				Quiet: true,
+				Quiet:    true,
+				quietSet: true,
 			},
 			test: func(t *testing.T, config *Config, err error) {
 				if err != nil {
@@ -327,6 +348,8 @@ func TestLoadFromFlags(t *testing.T) {
 			setup: func() *cobra.Command {
 				cmd := &cobra.Command{Use: "test"}
 				AddFlags(cmd)
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(io.Discard)
 				cmd.SetArgs([]string{"--workspace", "/test/workspace", "--timeout", "10m", "--verbose"})
 				cmd.Execute() // This processes the flags
 				return cmd
@@ -354,6 +377,8 @@ func TestLoadFromFlags(t *testing.T) {
 			setup: func() *cobra.Command {
 				cmd := &cobra.Command{Use: "test"}
 				AddFlags(cmd)
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(io.Discard)
 				cmd.SetArgs([]string{"--timeout", "-5m"})
 				cmd.Execute()
 				return cmd
@@ -389,6 +414,8 @@ func TestExtractFlagConfig(t *testing.T) {
 			setup: func() *cobra.Command {
 				cmd := &cobra.Command{Use: "test"}
 				AddFlags(cmd)
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(io.Discard)
 				cmd.SetArgs([]string{"--workspace", "/test/ws", "--manifest", "/test/deps.yaml"})
 				cmd.Execute()
 				return cmd
@@ -407,6 +434,8 @@ func TestExtractFlagConfig(t *testing.T) {
 			setup: func() *cobra.Command {
 				cmd := &cobra.Command{Use: "test"}
 				AddFlags(cmd)
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(io.Discard)
 				cmd.SetArgs([]string{"--dry-run", "--timeout", "15m", "--parallel", "6"})
 				cmd.Execute()
 				return cmd
@@ -415,11 +444,20 @@ func TestExtractFlagConfig(t *testing.T) {
 				if !fc.DryRun {
 					t.Error("Expected DryRun to be true")
 				}
+				if !fc.dryRunSet {
+					t.Error("Expected dryRunSet to be true")
+				}
 				if fc.Timeout != 15*time.Minute {
 					t.Errorf("Expected timeout %v, got %v", 15*time.Minute, fc.Timeout)
 				}
+				if !fc.timeoutSet {
+					t.Error("Expected timeoutSet to be true")
+				}
 				if fc.Parallel != 6 {
 					t.Errorf("Expected parallel %d, got %d", 6, fc.Parallel)
+				}
+				if !fc.parallelSet {
+					t.Error("Expected parallelSet to be true")
 				}
 			},
 		},
@@ -428,6 +466,8 @@ func TestExtractFlagConfig(t *testing.T) {
 			setup: func() *cobra.Command {
 				cmd := &cobra.Command{Use: "test"}
 				AddFlags(cmd)
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(io.Discard)
 				cmd.SetArgs([]string{"--log-level", "debug", "--log-format", "json"})
 				cmd.Execute()
 				return cmd
@@ -436,8 +476,14 @@ func TestExtractFlagConfig(t *testing.T) {
 				if fc.LogLevel != "debug" {
 					t.Errorf("Expected log level %q, got %q", "debug", fc.LogLevel)
 				}
+				if !fc.logLevelSet {
+					t.Error("Expected logLevelSet to be true")
+				}
 				if fc.LogFormat != "json" {
 					t.Errorf("Expected log format %q, got %q", "json", fc.LogFormat)
+				}
+				if !fc.logFormatSet {
+					t.Error("Expected logFormatSet to be true")
 				}
 			},
 		},
@@ -446,6 +492,8 @@ func TestExtractFlagConfig(t *testing.T) {
 			setup: func() *cobra.Command {
 				cmd := &cobra.Command{Use: "test"}
 				AddFlags(cmd)
+				cmd.SetOut(io.Discard)
+				cmd.SetErr(io.Discard)
 				cmd.SetArgs([]string{"--workspace", "/test"})
 				cmd.Execute()
 				return cmd
@@ -460,6 +508,9 @@ func TestExtractFlagConfig(t *testing.T) {
 				}
 				if fc.Timeout != 0 {
 					t.Errorf("Expected zero timeout, got %v", fc.Timeout)
+				}
+				if fc.timeoutSet {
+					t.Error("Expected timeoutSet to be false")
 				}
 			},
 		},
@@ -483,6 +534,8 @@ func TestFlagPrecedence(t *testing.T) {
 	// Create command with flags that override environment
 	cmd := &cobra.Command{Use: "test"}
 	AddFlags(cmd)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
 	cmd.SetArgs([]string{"--workspace", "/flag/workspace", "--timeout", "10m"})
 	cmd.Execute()
 
