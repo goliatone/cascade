@@ -1,0 +1,22 @@
+manifest_version: 1
+
+defaults:
+  branch: main
+  labels:
+    - cascade-update
+  commit_template: "Update {{.Module}} to {{.Version}}"
+
+modules:
+  - name: example-lib
+    module: github.com/example/lib
+    repo: github.com/example/lib
+    release_artifact: "tag"
+    dependents:
+      - repo: github.com/example/app
+        module: github.com/example/app
+        module_path: github.com/example/lib
+        branch: main
+        tests:
+          - cmd: ["go", "test", "./..."]
+        labels:
+          - dependency-update

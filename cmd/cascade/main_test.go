@@ -83,62 +83,95 @@ func TestCLIHelp(t *testing.T) {
 	}
 }
 
-func TestCLIStubCommands(t *testing.T) {
+func TestCLISmokeTests(t *testing.T) {
 	tests := []struct {
-		name        string
-		args        []string
-		expectError bool
-		contains    []string
+		name         string
+		args         []string
+		expectError  bool
+		expectedExit int
+		contains     []string
+		notContains  []string
 	}{
 		{
-			name:        "plan command stub",
-			args:        []string{"plan"},
-			expectError: false,
-			contains:    []string{"Plan command not yet implemented"},
+			name:         "plan command missing arguments",
+			args:         []string{"plan"},
+			expectError:  true,
+			expectedExit: 3, // ExitValidationError
+			contains:     []string{"target module must be specified"},
 		},
 		{
-			name:        "release command stub",
-			args:        []string{"release"},
-			expectError: false,
-			contains:    []string{"Release command not yet implemented"},
+			name:         "plan command with dry-run and manifest",
+			args:         []string{"plan", "testdata/minimal_manifest.yaml", "--module", "github.com/example/lib", "--version", "v1.2.3", "--dry-run"},
+			expectError:  false,
+			expectedExit: 0,
+			contains:     []string{"DRY RUN", "Planning updates", "github.com/example/lib@v1.2.3"},
 		},
 		{
-			name:        "resume command stub",
-			args:        []string{"resume"},
-			expectError: false,
-			contains:    []string{"Resume command not yet implemented"},
+			name:         "release command missing arguments",
+			args:         []string{"release"},
+			expectError:  true,
+			expectedExit: 3, // ExitValidationError
+			contains:     []string{"target module must be specified"},
 		},
 		{
-			name:        "revert command stub",
-			args:        []string{"revert"},
-			expectError: false,
-			contains:    []string{"Revert command not yet implemented"},
+			name:         "resume command invalid state format",
+			args:         []string{"resume", "invalid-state"},
+			expectError:  true,
+			expectedExit: 3, // ExitValidationError
+			contains:     []string{"invalid state ID format"},
+		},
+		{
+			name:         "resume command missing state",
+			args:         []string{"resume", "github.com/example/lib@v1.2.3"},
+			expectError:  true,
+			expectedExit: 6, // ExitStateError
+			contains:     []string{"no saved state found"},
+		},
+		{
+			name:         "revert command invalid state format",
+			args:         []string{"revert", "invalid-state"},
+			expectError:  true,
+			expectedExit: 3, // ExitValidationError
+			contains:     []string{"invalid state ID format"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Skip these tests until we have better test environment setup
-			// as they require the full DI container initialization
-			t.Skip("Command execution tests skipped - require better test setup")
-
 			cmd := exec.Command("go", append([]string{"run", "."}, tt.args...)...)
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 
 			err := cmd.Run()
-			if tt.expectError && err == nil {
-				t.Fatalf("Expected command to fail, but it succeeded")
-			}
-			if !tt.expectError && err != nil {
+
+			// Check exit code
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("Expected command to fail, but it succeeded. Output: %s", stdout.String())
+				}
+				if exitError, ok := err.(*exec.ExitError); ok {
+					if exitError.ExitCode() != tt.expectedExit {
+						t.Errorf("Expected exit code %d, got %d. Stderr: %s", tt.expectedExit, exitError.ExitCode(), stderr.String())
+					}
+				}
+			} else if err != nil {
 				t.Fatalf("Command failed unexpectedly: %v, stderr: %s", err, stderr.String())
 			}
 
-			output := stdout.String()
+			output := stdout.String() + stderr.String()
+
+			// Check expected content
 			for _, expected := range tt.contains {
 				if !strings.Contains(output, expected) {
 					t.Errorf("Expected output to contain %q, got:\n%s", expected, output)
+				}
+			}
+
+			// Check content that should not be present
+			for _, notExpected := range tt.notContains {
+				if strings.Contains(output, notExpected) {
+					t.Errorf("Expected output to NOT contain %q, got:\n%s", notExpected, output)
 				}
 			}
 		})
@@ -146,6 +179,54 @@ func TestCLIStubCommands(t *testing.T) {
 }
 
 func TestCLIExitCodes(t *testing.T) {
-	t.Skip("Exit code tests skipped - require better test setup")
-	// TODO: Add tests for exit codes when error conditions are triggered
+	tests := []struct {
+		name         string
+		args         []string
+		expectedExit int
+		description  string
+	}{
+		{
+			name:         "success help",
+			args:         []string{"--help"},
+			expectedExit: 0,
+			description:  "Help should exit with code 0",
+		},
+		{
+			name:         "validation error missing module",
+			args:         []string{"plan", "testdata/minimal_manifest.yaml"},
+			expectedExit: 3,
+			description:  "Missing required arguments should exit with validation error code",
+		},
+		{
+			name:         "file error missing manifest",
+			args:         []string{"plan", "nonexistent.yaml", "--module", "test", "--version", "v1.0.0"},
+			expectedExit: 5,
+			description:  "Missing manifest file should exit with file error code",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := exec.Command("go", append([]string{"run", "."}, tt.args...)...)
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+
+			actualExit := 0
+			if err != nil {
+				if exitError, ok := err.(*exec.ExitError); ok {
+					actualExit = exitError.ExitCode()
+				} else {
+					t.Fatalf("Unexpected error type: %v", err)
+				}
+			}
+
+			if actualExit != tt.expectedExit {
+				t.Errorf("%s: expected exit code %d, got %d. Output: %s",
+					tt.description, tt.expectedExit, actualExit, stdout.String()+stderr.String())
+			}
+		})
+	}
 }
