@@ -98,7 +98,7 @@ func ApplyDefaults(cfg *Config) error {
 	applyLoggingDefaults(&cfg.Logging)
 
 	// Apply state defaults
-	applyStateDefaults(&cfg.State)
+	applyStateDefaults(cfg)
 
 	return nil
 }
@@ -413,7 +413,12 @@ func applyLoggingDefaults(log *LoggingConfig) {
 }
 
 // applyStateDefaults applies default values to state configuration.
-func applyStateDefaults(state *StateConfig) {
+func applyStateDefaults(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	state := &cfg.State
+
 	if state.Dir == "" {
 		state.Dir = getDefaultStatePath()
 	}
@@ -422,8 +427,8 @@ func applyStateDefaults(state *StateConfig) {
 		state.RetentionCount = 10 // Default: retain 10 state snapshots
 	}
 
-	// Default: state persistence is enabled
-	if !state.Enabled {
+	// Default: state persistence is enabled unless explicitly disabled.
+	if !cfg.stateEnabledSet() {
 		state.Enabled = true
 	}
 }

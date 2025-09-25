@@ -25,6 +25,15 @@ type Config struct {
 	// These are typically specified via command-line flags
 	Module  string `json:"module,omitempty" yaml:"module,omitempty"`
 	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+
+	setFlags boolFlags `json:"-" yaml:"-"`
+}
+
+type boolFlags struct {
+	executorDryRun bool
+	loggingVerbose bool
+	loggingQuiet   bool
+	stateEnabled   bool
 }
 
 // WorkspaceConfig manages workspace and temporary directory settings.

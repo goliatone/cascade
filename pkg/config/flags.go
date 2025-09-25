@@ -193,17 +193,17 @@ func (fc *FlagConfig) ToConfig() (*Config, error) {
 
 	// Dry run flag
 	if fc.dryRunSet {
-		config.Executor.DryRun = fc.DryRun
+		config.setExecutorDryRun(fc.DryRun)
 	}
 
 	if fc.verboseSet {
-		config.Logging.Verbose = fc.Verbose
+		config.setLoggingVerbose(fc.Verbose)
 		if fc.Verbose {
 			config.Logging.Level = "debug"
 		}
 	}
 	if fc.quietSet {
-		config.Logging.Quiet = fc.Quiet
+		config.setLoggingQuiet(fc.Quiet)
 		if fc.Quiet {
 			config.Logging.Level = "warn"
 		}
@@ -248,7 +248,7 @@ func (fc *FlagConfig) ToConfig() (*Config, error) {
 	}
 
 	if fc.stateSet {
-		config.State.Enabled = fc.StateEnabled
+		config.setStateEnabled(fc.StateEnabled)
 	}
 
 	return config, nil

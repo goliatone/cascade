@@ -10,6 +10,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type rawFileConfig struct {
+	Executor struct {
+		DryRun *bool `json:"dry_run" yaml:"dry_run"`
+	} `json:"executor" yaml:"executor"`
+	Logging struct {
+		Verbose *bool `json:"verbose" yaml:"verbose"`
+		Quiet   *bool `json:"quiet" yaml:"quiet"`
+	} `json:"logging" yaml:"logging"`
+	State struct {
+		Enabled *bool `json:"enabled" yaml:"enabled"`
+	} `json:"state" yaml:"state"`
+}
+
+func applyRawBoolFlags(cfg *Config, raw *rawFileConfig) {
+	if cfg == nil || raw == nil {
+		return
+	}
+
+	if raw.Executor.DryRun != nil {
+		cfg.setExecutorDryRun(*raw.Executor.DryRun)
+	}
+
+	if raw.Logging.Verbose != nil {
+		cfg.setLoggingVerbose(*raw.Logging.Verbose)
+	}
+
+	if raw.Logging.Quiet != nil {
+		cfg.setLoggingQuiet(*raw.Logging.Quiet)
+	}
+
+	if raw.State.Enabled != nil {
+		cfg.setStateEnabled(*raw.State.Enabled)
+	}
+}
+
 // ConfigFileLocations returns standard locations where configuration files are searched.
 // Search order follows XDG Base Directory Specification with fallbacks.
 func ConfigFileLocations() []string {
@@ -76,13 +111,23 @@ func LoadFromFile(path string) (*Config, error) {
 
 	switch ext {
 	case ".yaml", ".yml":
+		var raw rawFileConfig
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("failed to parse YAML config file %s: %w", path, err)
+		}
 		if err := yaml.Unmarshal(data, config); err != nil {
 			return nil, fmt.Errorf("failed to parse YAML config file %s: %w", path, err)
 		}
+		applyRawBoolFlags(config, &raw)
 	case ".json":
+		var raw rawFileConfig
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON config file %s: %w", path, err)
+		}
 		if err := json.Unmarshal(data, config); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON config file %s: %w", path, err)
 		}
+		applyRawBoolFlags(config, &raw)
 	default:
 		return nil, fmt.Errorf("unsupported config file format: %s (supported: .yaml, .yml, .json)", ext)
 	}
@@ -154,9 +199,9 @@ func mergeConfig(dst, src *Config) {
 	if src.Executor.ConcurrentLimit != 0 {
 		dst.Executor.ConcurrentLimit = src.Executor.ConcurrentLimit
 	}
-	// DryRun is a boolean, so we need to check if it was explicitly set
-	// For now, we'll always merge it (true overrides false)
-	dst.Executor.DryRun = dst.Executor.DryRun || src.Executor.DryRun
+	if src.executorDryRunSet() {
+		dst.setExecutorDryRun(src.Executor.DryRun)
+	}
 
 	// Integration config - GitHub
 	if src.Integration.GitHub.Token != "" {
@@ -187,9 +232,12 @@ func mergeConfig(dst, src *Config) {
 	if src.Logging.Format != "" {
 		dst.Logging.Format = src.Logging.Format
 	}
-	// Boolean fields - merge with OR logic for now
-	dst.Logging.Verbose = dst.Logging.Verbose || src.Logging.Verbose
-	dst.Logging.Quiet = dst.Logging.Quiet || src.Logging.Quiet
+	if src.loggingVerboseSet() {
+		dst.setLoggingVerbose(src.Logging.Verbose)
+	}
+	if src.loggingQuietSet() {
+		dst.setLoggingQuiet(src.Logging.Quiet)
+	}
 
 	// State config
 	if src.State.Dir != "" {
@@ -198,8 +246,9 @@ func mergeConfig(dst, src *Config) {
 	if src.State.RetentionCount != 0 {
 		dst.State.RetentionCount = src.State.RetentionCount
 	}
-	// Boolean field - Enabled
-	dst.State.Enabled = dst.State.Enabled || src.State.Enabled
+	if src.stateEnabledSet() {
+		dst.setStateEnabled(src.State.Enabled)
+	}
 }
 
 // validateConfigFile performs basic validation on configuration loaded from files.
