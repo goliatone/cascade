@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -845,7 +846,7 @@ func TestFixtureRegression(t *testing.T) {
 					Output: logItem.Output,
 				}
 				if logItem.Err != nil {
-					result.Err = fmt.Errorf(*logItem.Err)
+					result.Err = errors.New(*logItem.Err)
 				}
 				commandLogs = append(commandLogs, result)
 			}

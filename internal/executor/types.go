@@ -2,6 +2,8 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -61,9 +63,44 @@ type Result struct {
 
 // CommandResult represents the outcome of executing a single command.
 type CommandResult struct {
-	Command manifest.Command
-	Output  string
-	Err     error
+	Command manifest.Command `json:"command"`
+	Output  string           `json:"output"`
+	Err     error            `json:"-"`
+}
+
+// MarshalJSON implements custom JSON marshaling for CommandResult
+func (cr CommandResult) MarshalJSON() ([]byte, error) {
+	type Alias CommandResult
+	var errStr *string
+	if cr.Err != nil {
+		s := cr.Err.Error()
+		errStr = &s
+	}
+	return json.Marshal(&struct {
+		Alias
+		Err *string `json:"err,omitempty"`
+	}{
+		Alias: Alias(cr),
+		Err:   errStr,
+	})
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for CommandResult
+func (cr *CommandResult) UnmarshalJSON(data []byte) error {
+	type Alias CommandResult
+	aux := &struct {
+		*Alias
+		Err *string `json:"err,omitempty"`
+	}{
+		Alias: (*Alias)(cr),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.Err != nil {
+		cr.Err = errors.New(*aux.Err)
+	}
+	return nil
 }
 
 // Status represents the execution status of a work item.

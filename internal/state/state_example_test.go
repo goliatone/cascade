@@ -3,6 +3,7 @@ package state_test
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/goliatone/cascade/internal/executor"
@@ -16,10 +17,13 @@ func (SimpleLogger) Debug(string, ...any) {}
 func (SimpleLogger) Info(string, ...any)  {}
 func (SimpleLogger) Error(string, ...any) {}
 
-// ExampleManager_Basic demonstrates basic usage of the state manager
-func ExampleManager_Basic() {
+// Example_basicUsage demonstrates basic usage of the state manager
+func Example_basicUsage() {
 	// Create a temporary directory for this example
 	tempDir := "/tmp/cascade-state-example"
+
+	// Clean up any existing state to ensure consistent results
+	os.RemoveAll(tempDir)
 
 	// Create filesystem storage
 	storage, err := state.NewFilesystemStorage(tempDir, SimpleLogger{})
@@ -48,10 +52,14 @@ func ExampleManager_Basic() {
 	// Output: Created cascade checkpoint for example.com/my-module v1.2.3
 }
 
-// ExampleManager_ItemStates demonstrates saving and loading item states
-func ExampleManager_ItemStates() {
+// Example_itemStates demonstrates saving and loading item states
+func Example_itemStates() {
 	// Setup (same as basic example)
 	tempDir := "/tmp/cascade-item-example"
+
+	// Clean up any existing state to ensure consistent results
+	os.RemoveAll(tempDir)
+
 	storage, _ := state.NewFilesystemStorage(tempDir, SimpleLogger{})
 	manager := state.NewManager(state.WithStorage(storage))
 
@@ -89,10 +97,14 @@ func ExampleManager_ItemStates() {
 	// - github.com/example/repo1: completed (attempts: 1)
 }
 
-// ExampleManager_Resume demonstrates how to resume a cascade from checkpoint
-func ExampleManager_Resume() {
+// Example_resume demonstrates how to resume a cascade from checkpoint
+func Example_resume() {
 	// Setup
 	tempDir := "/tmp/cascade-resume-example"
+
+	// Clean up any existing state to ensure consistent results
+	os.RemoveAll(tempDir)
+
 	storage, _ := state.NewFilesystemStorage(tempDir, SimpleLogger{})
 	manager := state.NewManager(state.WithStorage(storage))
 
@@ -174,9 +186,13 @@ func ExampleManager_Resume() {
 	// Checkpoint contains: 1 completed, 1 failed, 1 manual-review
 }
 
-// ExampleManager_ErrorHandling demonstrates error handling patterns
-func ExampleManager_ErrorHandling() {
+// Example_errorHandling demonstrates error handling patterns
+func Example_errorHandling() {
 	tempDir := "/tmp/cascade-error-example"
+
+	// Clean up any existing state to ensure consistent results
+	os.RemoveAll(tempDir)
+
 	storage, _ := state.NewFilesystemStorage(tempDir, SimpleLogger{})
 	manager := state.NewManager(state.WithStorage(storage))
 
