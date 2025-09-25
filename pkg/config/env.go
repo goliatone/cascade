@@ -118,7 +118,7 @@ func (p *EnvParser) parseExecutor(config *Config) error {
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvDryRun, err))
 		} else {
-			config.Executor.DryRun = dryRun
+			config.setExecutorDryRun(dryRun)
 		}
 	}
 
@@ -188,7 +188,7 @@ func (p *EnvParser) parseLogging(config *Config) error {
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvVerbose, err))
 		} else {
-			config.Logging.Verbose = verbose
+			config.setLoggingVerbose(verbose)
 		}
 	}
 
@@ -198,7 +198,7 @@ func (p *EnvParser) parseLogging(config *Config) error {
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvQuiet, err))
 		} else {
-			config.Logging.Quiet = quiet
+			config.setLoggingQuiet(quiet)
 		}
 	}
 
@@ -236,7 +236,7 @@ func (p *EnvParser) parseState(config *Config) error {
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvStateEnabled, err))
 		} else {
-			config.State.Enabled = enabled
+			config.setStateEnabled(enabled)
 		}
 	}
 
