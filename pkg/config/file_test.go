@@ -468,6 +468,63 @@ func TestMergeConfigs(t *testing.T) {
 	}
 }
 
+func TestMergeConfigs_BooleanOverride(t *testing.T) {
+	t.Setenv(config.EnvDryRun, "true")
+	cTrue, err := config.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv true failed: %v", err)
+	}
+
+	t.Setenv(config.EnvDryRun, "false")
+	cFalse, err := config.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv false failed: %v", err)
+	}
+
+	result := config.MergeConfigs(cTrue, cFalse)
+	if result.Executor.DryRun {
+		t.Errorf("expected dry run to be false after override")
+	}
+}
+
+func TestMergeConfigs_BooleanOverrideLogging(t *testing.T) {
+	t.Setenv(config.EnvVerbose, "true")
+	cVerbose, err := config.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv verbose failed: %v", err)
+	}
+
+	t.Setenv(config.EnvVerbose, "false")
+	cNotVerbose, err := config.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv not verbose failed: %v", err)
+	}
+
+	result := config.MergeConfigs(cVerbose, cNotVerbose)
+	if result.Logging.Verbose {
+		t.Errorf("expected verbose to be false after override")
+	}
+}
+
+func TestMergeConfigs_BooleanOverrideState(t *testing.T) {
+	t.Setenv(config.EnvStateEnabled, "true")
+	cEnabled, err := config.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv state enabled failed: %v", err)
+	}
+
+	t.Setenv(config.EnvStateEnabled, "false")
+	cDisabled, err := config.FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv state disabled failed: %v", err)
+	}
+
+	result := config.MergeConfigs(cEnabled, cDisabled)
+	if result.State.Enabled {
+		t.Errorf("expected state enabled to be false after override")
+	}
+}
+
 func TestMergeConfigs_NilConfigs(t *testing.T) {
 	result := config.MergeConfigs()
 	if result == nil {

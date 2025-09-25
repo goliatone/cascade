@@ -241,6 +241,84 @@ func TestGitOperations_Commit(t *testing.T) {
 	}
 }
 
+func TestGitOperations_EnsureClone_AllowsTrailingNewline(t *testing.T) {
+	mockRunner := newMockGitCommandRunner()
+	mockRunner.setResponse("config --get remote.origin.url", "https://github.com/test/repo.git\n", nil)
+
+	git := NewGitOperationsWithRunner(mockRunner)
+	ctx := context.Background()
+
+	workspace, err := os.MkdirTemp("", "git-clone-*")
+	if err != nil {
+		t.Fatalf("failed to create temp workspace: %v", err)
+	}
+	defer os.RemoveAll(workspace)
+
+	repoPath := filepath.Join(workspace, "repo")
+	if err := os.MkdirAll(filepath.Join(repoPath, ".git"), 0o755); err != nil {
+		t.Fatalf("failed to set up repo directory: %v", err)
+	}
+
+	path, err := git.EnsureClone(ctx, "https://github.com/test/repo.git", workspace)
+	if err != nil {
+		t.Fatalf("EnsureClone returned error: %v", err)
+	}
+
+	if path != repoPath {
+		t.Fatalf("expected repo path %s, got %s", repoPath, path)
+	}
+}
+
+func TestGitOperations_EnsureWorktree_AllowsTrailingBranchNewline(t *testing.T) {
+	const branch = "feature"
+
+	mockRunner := newMockGitCommandRunner()
+	mockRunner.setResponse("branch --show-current", branch+"\n", nil)
+
+	git := NewGitOperationsWithRunner(mockRunner)
+	ctx := context.Background()
+
+	repoPath, err := os.MkdirTemp("", "git-worktree-*")
+	if err != nil {
+		t.Fatalf("failed to create repo path: %v", err)
+	}
+	defer os.RemoveAll(repoPath)
+
+	worktreePath := filepath.Join(repoPath, ".worktrees", branch)
+	if err := os.MkdirAll(filepath.Join(worktreePath, ".git"), 0o755); err != nil {
+		t.Fatalf("failed to set up worktree directory: %v", err)
+	}
+
+	path, err := git.EnsureWorktree(ctx, repoPath, branch, "main")
+	if err != nil {
+		t.Fatalf("EnsureWorktree returned error: %v", err)
+	}
+
+	if path != worktreePath {
+		t.Fatalf("expected worktree path %s, got %s", worktreePath, path)
+	}
+}
+
+func TestGitOperations_getDefaultBranch_TrimsOutput(t *testing.T) {
+	mockRunner := newMockGitCommandRunner()
+	mockRunner.setResponse("symbolic-ref refs/remotes/origin/HEAD", "refs/remotes/origin/main\n", nil)
+
+	gitIface := NewGitOperationsWithRunner(mockRunner)
+	gitImpl, ok := gitIface.(*gitOperations)
+	if !ok {
+		t.Fatalf("expected *gitOperations implementation")
+	}
+
+	branch, err := gitImpl.getDefaultBranch(context.Background(), "/tmp/repo")
+	if err != nil {
+		t.Fatalf("getDefaultBranch returned error: %v", err)
+	}
+
+	if branch != "main" {
+		t.Fatalf("expected branch 'main', got %q", branch)
+	}
+}
+
 func TestGitOperations_Push(t *testing.T) {
 	tests := []struct {
 		name        string

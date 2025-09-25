@@ -1,6 +1,8 @@
 package di
 
 import (
+	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/goliatone/cascade/internal/broker"
@@ -10,6 +12,13 @@ import (
 	"github.com/goliatone/cascade/internal/state"
 	"github.com/goliatone/cascade/pkg/config"
 )
+
+type testLogger struct{}
+
+func (testLogger) Debug(string, ...any) {}
+func (testLogger) Info(string, ...any)  {}
+func (testLogger) Warn(string, ...any)  {}
+func (testLogger) Error(string, ...any) {}
 
 func TestProviderFunctions(t *testing.T) {
 	tests := []struct {
@@ -101,6 +110,44 @@ func TestProviderFunctions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProvideBrokerWithConfig_NoTokenFallsBackToStub(t *testing.T) {
+	logger := testLogger{}
+	cfg := &config.Config{}
+	b := provideBrokerWithConfig(cfg, &http.Client{}, logger)
+
+	if !isStubBroker(b) {
+		t.Fatalf("expected stub broker when no GitHub token is configured")
+	}
+}
+
+func TestProvideBrokerWithConfig_WithTokenCreatesProvider(t *testing.T) {
+	logger := testLogger{}
+	cfg := &config.Config{}
+	cfg.Integration.GitHub.Token = "test-token"
+
+	b := provideBrokerWithConfig(cfg, &http.Client{}, logger)
+
+	if isStubBroker(b) {
+		t.Fatalf("expected real broker when GitHub token present")
+	}
+}
+
+func isStubBroker(b broker.Broker) bool {
+	if b == nil {
+		return true
+	}
+	value := reflect.ValueOf(b)
+	if value.Kind() == reflect.Interface {
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		return true
+	}
+	value = value.Elem()
+	providerField := value.FieldByName("provider")
+	return providerField.IsValid() && providerField.IsNil()
 }
 
 func TestSlogAdapter(t *testing.T) {
