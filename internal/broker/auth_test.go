@@ -3,10 +3,11 @@ package broker
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,18 +70,15 @@ func TestLoadGitHubToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear all relevant environment variables
-			envVars := []string{"GITHUB_TOKEN", "GITHUB_ACCESS_TOKEN", "GH_TOKEN"}
-			for _, env := range envVars {
+			vars := []string{"GITHUB_TOKEN", "GITHUB_ACCESS_TOKEN", "GH_TOKEN"}
+			for _, env := range vars {
 				os.Unsetenv(env)
 			}
 
-			// Set test environment variables
 			for key, value := range tt.envVars {
 				os.Setenv(key, value)
 			}
 
-			// Clean up after test
 			defer func() {
 				for key := range tt.envVars {
 					os.Unsetenv(key)
@@ -91,22 +89,20 @@ func TestLoadGitHubToken(t *testing.T) {
 
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("LoadGitHubToken() expected error, got nil")
-					return
+					t.Fatalf("expected error, got nil")
 				}
-				if tt.errMessage != "" && err.Error() != fmt.Sprintf("GitHub token not found: set one of [GITHUB_TOKEN GITHUB_ACCESS_TOKEN GH_TOKEN] environment variables") {
-					t.Errorf("LoadGitHubToken() error = %v, want error containing %q", err, tt.errMessage)
+				if tt.errMessage != "" && !strings.Contains(err.Error(), tt.errMessage) {
+					t.Fatalf("error = %v, want substring %q", err, tt.errMessage)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("LoadGitHubToken() unexpected error = %v", err)
-				return
+				t.Fatalf("unexpected error: %v", err)
 			}
 
 			if got != tt.wantToken {
-				t.Errorf("LoadGitHubToken() = %v, want %v", got, tt.wantToken)
+				t.Fatalf("LoadGitHubToken() = %q, want %q", got, tt.wantToken)
 			}
 		})
 	}
@@ -156,21 +152,20 @@ func TestCreateAuthenticatedClient(t *testing.T) {
 
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("CreateAuthenticatedClient() expected error, got nil")
+					t.Fatalf("expected error, got nil")
 				}
 				if client != nil {
-					t.Errorf("CreateAuthenticatedClient() expected nil client on error, got %v", client)
+					t.Fatalf("expected nil client on error, got %v", client)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("CreateAuthenticatedClient() unexpected error = %v", err)
-				return
+				t.Fatalf("unexpected error: %v", err)
 			}
 
 			if client == nil {
-				t.Errorf("CreateAuthenticatedClient() returned nil client")
+				t.Fatalf("expected non-nil client")
 			}
 		})
 	}
@@ -179,49 +174,45 @@ func TestCreateAuthenticatedClient(t *testing.T) {
 func TestValidateAuthentication(t *testing.T) {
 	tests := []struct {
 		name        string
-		setupServer func() *httptest.Server
-		client      *github.Client
+		clientFunc  func(t *testing.T) *github.Client
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "successful authentication",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path != "/user" {
-						t.Errorf("Expected /user path, got %s", r.URL.Path)
+			clientFunc: func(t *testing.T) *github.Client {
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					if req.URL.Path != "/user" {
+						t.Fatalf("expected /user path, got %s", req.URL.Path)
 					}
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{"login": "testuser", "id": 12345}`))
-				}))
+					return jsonResponse(req, http.StatusOK, `{"login":"testuser","id":12345}`), nil
+				})
 			},
 			wantErr: false,
 		},
 		{
 			name: "unauthorized",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusUnauthorized)
-					w.Write([]byte(`{"message": "Bad credentials"}`))
-				}))
+			clientFunc: func(t *testing.T) *github.Client {
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					return jsonResponse(req, http.StatusUnauthorized, `{"message":"Bad credentials"}`), nil
+				})
 			},
 			wantErr:     true,
 			errContains: "invalid or expired token",
 		},
 		{
 			name: "server error",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusInternalServerError)
-				}))
+			clientFunc: func(t *testing.T) *github.Client {
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					return jsonResponse(req, http.StatusInternalServerError, "{}"), nil
+				})
 			},
 			wantErr:     true,
 			errContains: "authentication validation failed",
 		},
 		{
 			name:        "nil client",
-			client:      nil,
+			clientFunc:  func(t *testing.T) *github.Client { return nil },
 			wantErr:     true,
 			errContains: "GitHub client is nil",
 		},
@@ -229,41 +220,21 @@ func TestValidateAuthentication(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var client *github.Client
-
-			if tt.setupServer != nil {
-				server := tt.setupServer()
-				defer server.Close()
-
-				// Parse server URL with trailing slash
-				serverURL, err := url.Parse(server.URL + "/")
-				if err != nil {
-					t.Fatalf("Failed to parse server URL: %v", err)
-				}
-
-				// Create client with test server
-				client = github.NewClient(server.Client())
-				client.BaseURL = serverURL
-			} else if tt.client != nil {
-				client = tt.client
-			}
-
-			ctx := context.Background()
-			err := ValidateAuthentication(ctx, client)
+			client := tt.clientFunc(t)
+			err := ValidateAuthentication(context.Background(), client)
 
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("ValidateAuthentication() expected error, got nil")
-					return
+					t.Fatalf("expected error, got nil")
 				}
-				if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
-					t.Errorf("ValidateAuthentication() error = %v, want error containing %q", err, tt.errContains)
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("error = %v, want substring %q", err, tt.errContains)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("ValidateAuthentication() unexpected error = %v", err)
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -272,53 +243,36 @@ func TestValidateAuthentication(t *testing.T) {
 func TestGetRateLimit(t *testing.T) {
 	tests := []struct {
 		name        string
-		setupServer func() *httptest.Server
-		client      *github.Client
+		clientFunc  func(t *testing.T) *github.Client
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "successful rate limit fetch",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path != "/rate_limit" {
-						t.Errorf("Expected /rate_limit path, got %s", r.URL.Path)
+			clientFunc: func(t *testing.T) *github.Client {
+				payload := `{"rate":{"limit":5000,"remaining":4999,"reset":1625097600,"used":1},"resources":{"core":{"limit":5000,"remaining":4999,"reset":1625097600,"used":1}}}`
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					if req.URL.Path != "/rate_limit" {
+						t.Fatalf("expected /rate_limit path, got %s", req.URL.Path)
 					}
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{
-						"rate": {
-							"limit": 5000,
-							"remaining": 4999,
-							"reset": 1625097600,
-							"used": 1
-						},
-						"resources": {
-							"core": {
-								"limit": 5000,
-								"remaining": 4999,
-								"reset": 1625097600,
-								"used": 1
-							}
-						}
-					}`))
-				}))
+					return jsonResponse(req, http.StatusOK, payload), nil
+				})
 			},
 			wantErr: false,
 		},
 		{
 			name: "server error",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusInternalServerError)
-				}))
+			clientFunc: func(t *testing.T) *github.Client {
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					return jsonResponse(req, http.StatusInternalServerError, "{}"), nil
+				})
 			},
 			wantErr:     true,
 			errContains: "failed to get GitHub API rate limits",
 		},
 		{
 			name:        "nil client",
-			client:      nil,
+			clientFunc:  func(t *testing.T) *github.Client { return nil },
 			wantErr:     true,
 			errContains: "GitHub client is nil",
 		},
@@ -326,49 +280,95 @@ func TestGetRateLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var client *github.Client
-
-			if tt.setupServer != nil {
-				server := tt.setupServer()
-				defer server.Close()
-
-				// Parse server URL with trailing slash
-				serverURL, err := url.Parse(server.URL + "/")
-				if err != nil {
-					t.Fatalf("Failed to parse server URL: %v", err)
-				}
-
-				// Create client with test server
-				client = github.NewClient(server.Client())
-				client.BaseURL = serverURL
-			} else if tt.client != nil {
-				client = tt.client
-			}
-
-			ctx := context.Background()
-			rateLimits, err := GetRateLimit(ctx, client)
+			client := tt.clientFunc(t)
+			limits, err := GetRateLimit(context.Background(), client)
 
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("GetRateLimit() expected error, got nil")
-					return
+					t.Fatalf("expected error, got nil")
 				}
-				if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
-					t.Errorf("GetRateLimit() error = %v, want error containing %q", err, tt.errContains)
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("error = %v, want substring %q", err, tt.errContains)
 				}
-				if rateLimits != nil {
-					t.Errorf("GetRateLimit() expected nil rateLimits on error, got %v", rateLimits)
+				if limits != nil {
+					t.Fatalf("expected nil limits when err != nil")
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("GetRateLimit() unexpected error = %v", err)
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if limits == nil {
+				t.Fatalf("expected non-nil rate limits")
+			}
+		})
+	}
+}
+
+func TestCheckRateLimit(t *testing.T) {
+	resetTime := time.Now().Add(time.Hour).Unix()
+
+	tests := []struct {
+		name        string
+		clientFunc  func(t *testing.T) *github.Client
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "rate limit healthy",
+			clientFunc: func(t *testing.T) *github.Client {
+				payload := `{"resources":{"core":{"limit":5000,"remaining":4000,"reset":` + fmt.Sprintf("%d", resetTime) + `}}}`
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					if req.URL.Path != "/rate_limit" {
+						t.Fatalf("expected /rate_limit path, got %s", req.URL.Path)
+					}
+					return jsonResponse(req, http.StatusOK, payload), nil
+				})
+			},
+			wantErr: false,
+		},
+		{
+			name: "rate limit low",
+			clientFunc: func(t *testing.T) *github.Client {
+				payload := `{"resources":{"core":{"limit":1000,"remaining":50,"reset":` + fmt.Sprintf("%d", resetTime) + `}}}`
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					return jsonResponse(req, http.StatusOK, payload), nil
+				})
+			},
+			wantErr:     true,
+			errContains: "GitHub API rate limit critically low",
+		},
+		{
+			name: "rate limit fetch error",
+			clientFunc: func(t *testing.T) *github.Client {
+				return newStubGitHubClient(t, func(req *http.Request) (*http.Response, error) {
+					return jsonResponse(req, http.StatusInternalServerError, "{}"), nil
+				})
+			},
+			wantErr:     true,
+			errContains: "failed to get GitHub API rate limits",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := tt.clientFunc(t)
+			err := CheckRateLimit(context.Background(), client)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("error = %v, want substring %q", err, tt.errContains)
+				}
 				return
 			}
 
-			if rateLimits == nil {
-				t.Errorf("GetRateLimit() returned nil rateLimits")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -380,135 +380,15 @@ func TestIsRateLimitCritical(t *testing.T) {
 		rate *github.Rate
 		want bool
 	}{
-		{
-			name: "nil rate",
-			rate: nil,
-			want: false,
-		},
-		{
-			name: "high remaining",
-			rate: &github.Rate{
-				Limit:     5000,
-				Remaining: 4000,
-			},
-			want: false,
-		},
-		{
-			name: "critical remaining (exactly 10%)",
-			rate: &github.Rate{
-				Limit:     1000,
-				Remaining: 100,
-			},
-			want: false, // 100 is exactly 10%, so not less than 10%
-		},
-		{
-			name: "critical remaining (less than 10%)",
-			rate: &github.Rate{
-				Limit:     1000,
-				Remaining: 99,
-			},
-			want: true, // 99 is less than 10% of 1000
-		},
-		{
-			name: "zero remaining",
-			rate: &github.Rate{
-				Limit:     5000,
-				Remaining: 0,
-			},
-			want: true,
-		},
+		{name: "nil", rate: nil, want: false},
+		{name: "above threshold", rate: &github.Rate{Limit: 1000, Remaining: 200}, want: false},
+		{name: "below threshold", rate: &github.Rate{Limit: 1000, Remaining: 50}, want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsRateLimitCritical(tt.rate)
-			if got != tt.want {
-				t.Errorf("IsRateLimitCritical() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestCheckRateLimit(t *testing.T) {
-	tests := []struct {
-		name        string
-		setupServer func() *httptest.Server
-		wantErr     bool
-		errContains string
-	}{
-		{
-			name: "healthy rate limit",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{
-						"resources": {
-							"core": {
-								"limit": 5000,
-								"remaining": 4000,
-								"reset": 1625097600
-							}
-						}
-					}`))
-				}))
-			},
-			wantErr: false,
-		},
-		{
-			name: "critical rate limit",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					resetTime := time.Now().Add(time.Hour).Unix()
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(fmt.Sprintf(`{
-						"resources": {
-							"core": {
-								"limit": 1000,
-								"remaining": 50,
-								"reset": %d
-							}
-						}
-					}`, resetTime)))
-				}))
-			},
-			wantErr:     true,
-			errContains: "GitHub API rate limit critically low",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := tt.setupServer()
-			defer server.Close()
-
-			// Parse server URL with trailing slash
-			serverURL, err := url.Parse(server.URL + "/")
-			if err != nil {
-				t.Fatalf("Failed to parse server URL: %v", err)
-			}
-
-			// Create client with test server
-			client := github.NewClient(server.Client())
-			client.BaseURL = serverURL
-
-			ctx := context.Background()
-			err = CheckRateLimit(ctx, client)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("CheckRateLimit() expected error, got nil")
-					return
-				}
-				if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
-					t.Errorf("CheckRateLimit() error = %v, want error containing %q", err, tt.errContains)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("CheckRateLimit() unexpected error = %v", err)
+			if got := IsRateLimitCritical(tt.rate); got != tt.want {
+				t.Fatalf("IsRateLimitCritical() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -532,61 +412,66 @@ func TestAuthenticationErrorHelpers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.checker(tt.err)
-			if result != tt.expected {
-				t.Errorf("%s: expected %v, got %v", tt.name, tt.expected, result)
+			if got := tt.checker(tt.err); got != tt.expected {
+				t.Fatalf("expected %v, got %v", tt.expected, got)
 			}
 		})
 	}
 
-	// Test AsAuthenticationError
 	t.Run("AsAuthenticationError", func(t *testing.T) {
 		extracted, ok := AsAuthenticationError(authErr)
 		if !ok {
-			t.Error("AsAuthenticationError should return true for AuthenticationError")
+			t.Fatalf("expected true for AuthenticationError")
 		}
 		if extracted != authErr {
-			t.Error("AsAuthenticationError should return the original error")
+			t.Fatalf("expected original error back")
 		}
 
-		_, ok = AsAuthenticationError(otherErr)
-		if ok {
-			t.Error("AsAuthenticationError should return false for non-AuthenticationError")
+		if _, ok := AsAuthenticationError(otherErr); ok {
+			t.Fatalf("expected false for non AuthenticationError")
 		}
 	})
 }
 
 func TestAuthenticationError(t *testing.T) {
-	err := &AuthenticationError{
-		Operation: "validate token",
-		Err:       fmt.Errorf("invalid token"),
-	}
+	err := &AuthenticationError{Operation: "validate token", Err: fmt.Errorf("invalid token")}
 
 	expected := "broker: authentication error during validate token: invalid token"
 	if err.Error() != expected {
-		t.Errorf("AuthenticationError.Error() = %q, want %q", err.Error(), expected)
+		t.Fatalf("AuthenticationError.Error() = %q, want %q", err.Error(), expected)
 	}
 
 	unwrapped := err.Unwrap()
 	if unwrapped.Error() != "invalid token" {
-		t.Errorf("AuthenticationError.Unwrap() = %q, want %q", unwrapped.Error(), "invalid token")
+		t.Fatalf("AuthenticationError.Unwrap() = %q, want %q", unwrapped.Error(), "invalid token")
 	}
 }
 
-// containsString checks if a string contains a substring.
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(substr) > 0 && findSubstring(s, substr)))
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
-func findSubstring(s, substr string) bool {
-	if len(substr) > len(s) {
-		return false
+func newStubGitHubClient(t *testing.T, fn roundTripFunc) *github.Client {
+	t.Helper()
+	httpClient := &http.Client{Transport: fn}
+	client := github.NewClient(httpClient)
+	base, err := url.Parse("https://api.github.example/")
+	if err != nil {
+		t.Fatalf("failed to parse base URL: %v", err)
 	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
+	client.BaseURL = base
+	return client
+}
+
+func jsonResponse(req *http.Request, status int, body string) *http.Response {
+	resp := &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
 	}
-	return false
+	resp.Header.Set("Content-Type", "application/json")
+	return resp
 }

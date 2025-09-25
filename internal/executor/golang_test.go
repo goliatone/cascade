@@ -10,7 +10,57 @@ import (
 	"time"
 )
 
+func setupFakeGoBinary(t *testing.T) func() {
+	t.Helper()
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "go")
+	script := `#!/bin/sh
+set -eu
+cmd="$1"
+shift || true
+case "$cmd" in
+    get)
+        module="${1:-}"
+        if echo "$module" | grep -q "invalid/nonexistent/module"; then
+            echo "go: module $module: not found" >&2
+            exit 1
+        fi
+        exit 0
+        ;;
+    mod)
+        sub="$1"
+        shift || true
+        case "$sub" in
+            tidy)
+                if [ ! -f go.mod ]; then
+                    echo "go: go.mod file not found in current directory" >&2
+                    exit 1
+                fi
+                exit 0
+                ;;
+        esac
+        ;;
+esac
+exit 0
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake go binary: %v", err)
+	}
+
+	origPath := os.Getenv("PATH")
+	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+origPath); err != nil {
+		t.Fatalf("failed to update PATH: %v", err)
+	}
+
+	return func() {
+		os.Setenv("PATH", origPath)
+	}
+}
+
 func TestGoOperations_Get(t *testing.T) {
+	cleanup := setupFakeGoBinary(t)
+	defer cleanup()
+
 	tests := []struct {
 		name        string
 		module      string
@@ -78,6 +128,9 @@ func TestGoOperations_Get(t *testing.T) {
 }
 
 func TestGoOperations_Tidy(t *testing.T) {
+	cleanup := setupFakeGoBinary(t)
+	defer cleanup()
+
 	tests := []struct {
 		name        string
 		setupModule bool
@@ -132,6 +185,9 @@ func TestGoOperations_Tidy(t *testing.T) {
 }
 
 func TestGoOperations_GetWithContext(t *testing.T) {
+	cleanup := setupFakeGoBinary(t)
+	defer cleanup()
+
 	tempDir := t.TempDir()
 	createTestModule(t, tempDir, "test-module", "v1.0.0")
 
@@ -152,6 +208,9 @@ func TestGoOperations_GetWithContext(t *testing.T) {
 }
 
 func TestGoOperations_TidyWithContext(t *testing.T) {
+	cleanup := setupFakeGoBinary(t)
+	defer cleanup()
+
 	tempDir := t.TempDir()
 	createTestModule(t, tempDir, "test-module", "v1.0.0")
 

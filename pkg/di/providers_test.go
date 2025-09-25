@@ -2,6 +2,7 @@ package di
 
 import (
 	"net/http"
+	"os"
 	"reflect"
 	"testing"
 
@@ -113,25 +114,48 @@ func TestProviderFunctions(t *testing.T) {
 }
 
 func TestProvideBrokerWithConfig_NoTokenFallsBackToStub(t *testing.T) {
-	logger := testLogger{}
-	cfg := &config.Config{}
-	b := provideBrokerWithConfig(cfg, &http.Client{}, logger)
+	withClearedGitHubEnv(t, func() {
+		logger := testLogger{}
+		cfg := &config.Config{}
+		b := provideBrokerWithConfig(cfg, &http.Client{}, logger)
 
-	if !isStubBroker(b) {
-		t.Fatalf("expected stub broker when no GitHub token is configured")
-	}
+		if !isStubBroker(b) {
+			t.Fatalf("expected stub broker when no GitHub token is configured")
+		}
+	})
 }
 
 func TestProvideBrokerWithConfig_WithTokenCreatesProvider(t *testing.T) {
-	logger := testLogger{}
-	cfg := &config.Config{}
-	cfg.Integration.GitHub.Token = "test-token"
+	withClearedGitHubEnv(t, func() {
+		logger := testLogger{}
+		cfg := &config.Config{}
+		cfg.Integration.GitHub.Token = "test-token"
 
-	b := provideBrokerWithConfig(cfg, &http.Client{}, logger)
+		b := provideBrokerWithConfig(cfg, &http.Client{}, logger)
 
-	if isStubBroker(b) {
-		t.Fatalf("expected real broker when GitHub token present")
+		if isStubBroker(b) {
+			t.Fatalf("expected real broker when GitHub token present")
+		}
+	})
+}
+
+func withClearedGitHubEnv(t *testing.T, fn func()) {
+	t.Helper()
+	vars := []string{"GITHUB_TOKEN", "GITHUB_ACCESS_TOKEN", "GH_TOKEN", "CASCADE_GITHUB_TOKEN"}
+	original := make(map[string]string, len(vars))
+	for _, v := range vars {
+		original[v] = os.Getenv(v)
+		os.Unsetenv(v)
 	}
+	defer func() {
+		for _, v := range vars {
+			if val, ok := original[v]; ok {
+				os.Setenv(v, val)
+			}
+		}
+	}()
+
+	fn()
 }
 
 func isStubBroker(b broker.Broker) bool {
