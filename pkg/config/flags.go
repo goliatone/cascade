@@ -162,7 +162,15 @@ func (fc *FlagConfig) ValidateFlags() error {
 
 // ToConfig converts flag configuration to a Config struct.
 // This applies flag values with proper precedence over environment variables.
+// Deprecated: Use ToConfigWithCommand for proper flag change detection.
 func (fc *FlagConfig) ToConfig() (*Config, error) {
+	return fc.ToConfigWithCommand(nil)
+}
+
+// ToConfigWithCommand converts flag configuration to a Config struct with command context.
+// This applies flag values with proper precedence over environment variables.
+// The command parameter is used for detecting which flags were explicitly changed.
+func (fc *FlagConfig) ToConfigWithCommand(cmd *cobra.Command) (*Config, error) {
 	// Start with environment-based configuration
 	config, err := LoadFromEnv()
 	if err != nil {
@@ -237,9 +245,18 @@ func (fc *FlagConfig) ToConfig() (*Config, error) {
 		config.State.Dir = fc.StateDir
 	}
 
-	// State enabled is handled specially - only override if explicitly set to false
-	if cmd := getCurrentCommand(); cmd != nil && cmd.Flags().Changed("state") {
+	// State enabled is handled specially - only override if explicitly set
+	if cmd != nil && cmd.Flags().Changed("state") {
 		config.State.Enabled = fc.StateEnabled
+	}
+
+	// Target module and version for cascade operations
+	if fc.Module != "" {
+		config.Module = fc.Module
+	}
+
+	if fc.Version != "" {
+		config.Version = fc.Version
 	}
 
 	return config, nil
@@ -260,8 +277,8 @@ func LoadFromFlags(cmd *cobra.Command) (*Config, error) {
 		return nil, err
 	}
 
-	// Convert to config with proper precedence
-	config, err := fc.ToConfig()
+	// Convert to config with proper precedence, passing the command for flag change detection
+	config, err := fc.ToConfigWithCommand(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -335,10 +352,4 @@ func extractFlagConfig(flags *pflag.FlagSet) *FlagConfig {
 	}
 
 	return fc
-}
-
-// getCurrentCommand returns the current cobra command - helper for checking flag changes
-var getCurrentCommand = func() *cobra.Command {
-	// This will be set by the CLI layer when needed
-	return nil
 }

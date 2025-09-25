@@ -20,6 +20,11 @@ type Config struct {
 
 	// State contains state persistence settings
 	State StateConfig `json:"state" yaml:"state"`
+
+	// Target module and version for cascade operations
+	// These are typically specified via command-line flags
+	Module  string `json:"module,omitempty" yaml:"module,omitempty"`
+	Version string `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // WorkspaceConfig manages workspace and temporary directory settings.
