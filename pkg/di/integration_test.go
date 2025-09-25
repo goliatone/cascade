@@ -139,8 +139,8 @@ func TestIntegrationContainerMessageFlow(t *testing.T) {
 	// Save golden output for future comparison
 	goldenPath := filepath.Join(tempDir, "integration_flow.json")
 	if err := testsupport.WriteGolden(goldenPath, map[string]interface{}{
-		"messages": allMessages,
-		"config_used": cfg != nil,
+		"messages":       allMessages,
+		"config_used":    cfg != nil,
 		"services_count": 5,
 	}); err != nil {
 		t.Fatalf("failed to write golden file: %v", err)

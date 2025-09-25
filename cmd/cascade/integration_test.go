@@ -108,14 +108,14 @@ func TestCLIIntegrationPlanDryRun(t *testing.T) {
 
 	// Create golden output structure
 	goldenData := map[string]interface{}{
-		"command":         "cascade plan " + manifestPath,
-		"output":          strings.TrimSpace(outputStr),
-		"exit_code":       1, // Expected failure due to config validation
-		"manifest_used":   manifestPath,
-		"log_level":       "info",
-		"error":           fmt.Sprintf("%v", err),
-		"test_state":      "configuration_validation_phase",
-		"implementation":  "stubbed",
+		"command":        "cascade plan " + manifestPath,
+		"output":         strings.TrimSpace(outputStr),
+		"exit_code":      1, // Expected failure due to config validation
+		"manifest_used":  manifestPath,
+		"log_level":      "info",
+		"error":          fmt.Sprintf("%v", err),
+		"test_state":     "configuration_validation_phase",
+		"implementation": "stubbed",
 	}
 
 	// Write golden file
@@ -185,12 +185,12 @@ func TestCLIHelpOutput(t *testing.T) {
 
 	// Expected help output patterns
 	expectedPatterns := []string{
-		"cascade",                                     // Command name
-		"Cascade is a CLI tool that orchestrates",    // Description (partial match)
-		"plan",                                        // Subcommand
-		"release",                                     // Subcommand
-		"resume",                                      // Subcommand
-		"revert",                                      // Subcommand
+		"cascade", // Command name
+		"Cascade is a CLI tool that orchestrates", // Description (partial match)
+		"plan",    // Subcommand
+		"release", // Subcommand
+		"resume",  // Subcommand
+		"revert",  // Subcommand
 	}
 
 	// Verify expected patterns are present
@@ -202,10 +202,10 @@ func TestCLIHelpOutput(t *testing.T) {
 
 	// Create golden output structure for help
 	goldenData := map[string]interface{}{
-		"command":      "cascade --help",
-		"output":       strings.TrimSpace(outputStr),
-		"exit_code":    0,
-		"subcommands":  []string{"plan", "release", "resume", "revert"},
+		"command":     "cascade --help",
+		"output":      strings.TrimSpace(outputStr),
+		"exit_code":   0,
+		"subcommands": []string{"plan", "release", "resume", "revert"},
 	}
 
 	// Write golden file

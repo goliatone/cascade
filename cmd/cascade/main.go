@@ -62,9 +62,9 @@ executes changes, and manages pull requests through GitHub integration.`,
 func initializeContainer(cmd *cobra.Command) error {
 	// Build configuration from flags, environment, and files
 	builder := config.NewBuilder().
-		FromFile("").     // Auto-discover config file
-		FromEnv().        // Load from environment
-		FromFlags(cmd)    // Load from command flags (highest precedence)
+		FromFile("").  // Auto-discover config file
+		FromEnv().     // Load from environment
+		FromFlags(cmd) // Load from command flags (highest precedence)
 
 	var err error
 	cfg, err = builder.Build()
