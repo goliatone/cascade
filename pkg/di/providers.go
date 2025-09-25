@@ -1,10 +1,16 @@
 package di
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/google/go-github/v66/github"
+	"golang.org/x/oauth2"
 
 	"github.com/goliatone/cascade/internal/broker"
 	"github.com/goliatone/cascade/internal/executor"
@@ -73,10 +79,142 @@ func provideBrokerWithConfig(cfg *config.Config, httpClient *http.Client, logger
 		return broker.NewStub()
 	}
 
-	// TODO: Create real GitHub provider and Slack notifier implementations
-	// For now, return stub until we implement the provider interfaces
-	logger.Warn("Real broker implementation not yet available, using stub")
-	return broker.NewStub()
+	provider, err := newGitHubProviderFromConfig(cfg, httpClient, logger)
+	if err != nil {
+		logger.Error("Failed to initialize GitHub provider", "error", err)
+		return broker.NewStub()
+	}
+
+	notifier := newNotifierFromConfig(cfg, httpClient, logger)
+
+	brokerCfg := broker.DefaultConfig()
+	brokerCfg.DryRun = cfg.Executor.DryRun
+
+	return broker.New(provider, notifier, brokerCfg)
+}
+
+func newGitHubProviderFromConfig(cfg *config.Config, baseHTTP *http.Client, logger Logger) (broker.Provider, error) {
+	token := strings.TrimSpace(cfg.Integration.GitHub.Token)
+	if token == "" {
+		if envToken, err := broker.LoadGitHubToken(); err == nil && strings.TrimSpace(envToken) != "" {
+			token = strings.TrimSpace(envToken)
+			logger.Debug("Using GitHub token from environment variables")
+		}
+	}
+
+	if token == "" {
+		return nil, fmt.Errorf("github token not configured; set integration.github.token or CASCADE_GITHUB_TOKEN")
+	}
+
+	oauthClient, err := newGitHubHTTPClient(token, baseHTTP)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := strings.TrimSpace(cfg.Integration.GitHub.Endpoint)
+	var ghClient *github.Client
+	if endpoint == "" {
+		ghClient = github.NewClient(oauthClient)
+	} else {
+		baseURL, uploadURL := normalizeEnterpriseEndpoints(endpoint)
+		ghClient, err = github.NewEnterpriseClient(baseURL, uploadURL, oauthClient)
+		if err != nil {
+			return nil, fmt.Errorf("create github enterprise client: %w", err)
+		}
+		logger.Info("Configured GitHub Enterprise endpoint", "base", baseURL, "upload", uploadURL)
+	}
+
+	return broker.NewGitHubProvider(ghClient), nil
+}
+
+func newGitHubHTTPClient(token string, base *http.Client) (*http.Client, error) {
+	if strings.TrimSpace(token) == "" {
+		return nil, fmt.Errorf("github token is required")
+	}
+
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	oauthClient := oauth2.NewClient(context.Background(), ts)
+
+	if base != nil {
+		if transport, ok := oauthClient.Transport.(*oauth2.Transport); ok {
+			if base.Transport != nil {
+				transport.Base = base.Transport
+			}
+		}
+		if base.Timeout > 0 {
+			oauthClient.Timeout = base.Timeout
+		}
+		oauthClient.CheckRedirect = base.CheckRedirect
+		oauthClient.Jar = base.Jar
+	}
+
+	return oauthClient, nil
+}
+
+func normalizeEnterpriseEndpoints(endpoint string) (string, string) {
+	base := strings.TrimSpace(endpoint)
+	if base == "" {
+		return "", ""
+	}
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+
+	trimmed := strings.TrimSuffix(base, "/")
+	if strings.HasSuffix(trimmed, "/api/v3") {
+		prefix := strings.TrimSuffix(trimmed, "/api/v3")
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		return prefix + "api/v3/", prefix + "api/uploads/"
+	}
+
+	return base, base
+}
+
+func newNotifierFromConfig(cfg *config.Config, baseClient *http.Client, logger Logger) broker.Notifier {
+	notifyCfg := broker.DefaultNotificationConfig()
+	var notifiers []broker.Notifier
+
+	slackToken := strings.TrimSpace(cfg.Integration.Slack.Token)
+	slackChannel := strings.TrimSpace(cfg.Integration.Slack.Channel)
+	if slackToken != "" && slackChannel != "" {
+		client := cloneHTTPClient(baseClient, notifyCfg.Timeout)
+		notifiers = append(notifiers, broker.NewSlackNotifier(slackToken, slackChannel, client, notifyCfg))
+	} else if slackToken != "" || slackChannel != "" {
+		logger.Warn("Slack integration requires both token and channel; skipping Slack notifier")
+	}
+
+	if webhook := strings.TrimSpace(cfg.Integration.Slack.WebhookURL); webhook != "" {
+		client := cloneHTTPClient(baseClient, notifyCfg.Timeout)
+		notifiers = append(notifiers, broker.NewWebhookNotifier(webhook, client, notifyCfg))
+	}
+
+	switch len(notifiers) {
+	case 0:
+		return noopNotifier{}
+	case 1:
+		return notifiers[0]
+	default:
+		return broker.NewMultiNotifier(notifiers...)
+	}
+}
+
+func cloneHTTPClient(base *http.Client, timeout time.Duration) *http.Client {
+	if base == nil {
+		return &http.Client{Timeout: timeout}
+	}
+	clone := *base
+	if clone.Timeout == 0 && timeout > 0 {
+		clone.Timeout = timeout
+	}
+	return &clone
+}
+
+type noopNotifier struct{}
+
+func (noopNotifier) Send(ctx context.Context, item planner.WorkItem, result *executor.Result) (*broker.NotificationResult, error) {
+	return nil, nil
 }
 
 // provideState creates a default state manager implementation.
