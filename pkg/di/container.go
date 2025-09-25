@@ -103,16 +103,23 @@ func (c *container) HTTPClient() *http.Client { return c.httpClient }
 // for any that are missing but can be auto-constructed.
 func (b *builder) build() (Container, error) {
 	// Provide defaults for missing dependencies
+	// Configuration must be resolved first as other services depend on it
 	if b.cfg == nil {
-		b.cfg = provideConfig()
+		var err error
+		b.cfg, err = provideConfigWithDefaults()
+		if err != nil {
+			return nil, fmt.Errorf("di: failed to provide default config: %w", err)
+		}
 	}
 
+	// Logger depends on config for level/format settings
 	if b.logger == nil {
-		b.logger = provideLogger()
+		b.logger = provideLoggerWithConfig(b.cfg)
 	}
 
+	// HTTP client depends on config for timeout settings
 	if b.httpClient == nil {
-		b.httpClient = provideHTTPClient()
+		b.httpClient = provideHTTPClientWithConfig(b.cfg)
 	}
 
 	if b.manifestLoader == nil {
@@ -123,16 +130,19 @@ func (b *builder) build() (Container, error) {
 		b.planner = providePlanner()
 	}
 
+	// Executor can use config for timeout settings
 	if b.executor == nil {
-		b.executor = provideExecutor()
+		b.executor = provideExecutorWithConfig(b.cfg, b.logger)
 	}
 
+	// Broker depends on config for GitHub/Slack credentials and dry-run mode
 	if b.broker == nil {
-		b.broker = provideBroker()
+		b.broker = provideBrokerWithConfig(b.cfg, b.httpClient, b.logger)
 	}
 
+	// State manager depends on config for storage directory and settings
 	if b.stateManager == nil {
-		b.stateManager = provideState()
+		b.stateManager = provideStateWithConfig(b.cfg, b.logger)
 	}
 
 	// Validate that all required dependencies are present
