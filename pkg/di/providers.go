@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -202,11 +203,16 @@ func newNotifierFromConfig(cfg *config.Config, baseClient *http.Client, logger L
 
 func cloneHTTPClient(base *http.Client, timeout time.Duration) *http.Client {
 	if base == nil {
-		return &http.Client{Timeout: timeout}
+		client := &http.Client{Timeout: timeout}
+		client.Transport = newHeaderRoundTripper(nil, defaultHTTPHeaders(nil))
+		return client
 	}
 	clone := *base
 	if clone.Timeout == 0 && timeout > 0 {
 		clone.Timeout = timeout
+	}
+	if clone.Transport == nil {
+		clone.Transport = newHeaderRoundTripper(nil, defaultHTTPHeaders(nil))
 	}
 	return &clone
 }
@@ -324,7 +330,9 @@ func provideLoggerWithConfig(cfg *config.Config) Logger {
 // provideHTTPClient creates a default HTTP client implementation.
 // Configured with reasonable defaults for API calls and timeouts.
 func provideHTTPClient() *http.Client {
-	return &http.Client{}
+	return &http.Client{
+		Transport: newHeaderRoundTripper(nil, defaultHTTPHeaders(nil)),
+	}
 }
 
 // provideHTTPClientWithConfig creates an HTTP client with configuration-driven timeouts.
@@ -345,9 +353,66 @@ func provideHTTPClientWithConfig(cfg *config.Config) *http.Client {
 	}
 
 	return &http.Client{
-		Timeout: timeout,
-		// TODO: Add user agent and other common headers
+		Timeout:   timeout,
+		Transport: newHeaderRoundTripper(nil, defaultHTTPHeaders(cfg)),
 	}
+}
+
+const (
+	defaultUserAgent = "cascade-cli (+https://github.com/goliatone/cascade)"
+	defaultAccept    = "application/json"
+)
+
+func defaultHTTPHeaders(cfg *config.Config) http.Header {
+	headers := make(http.Header)
+	userAgent := buildUserAgent(cfg)
+	headers.Set("User-Agent", userAgent)
+	headers.Set("Accept", defaultAccept)
+	return headers
+}
+
+func buildUserAgent(cfg *config.Config) string {
+	userAgent := defaultUserAgent
+	if cfg != nil {
+		if org := strings.TrimSpace(cfg.Integration.GitHub.Organization); org != "" {
+			userAgent = fmt.Sprintf("%s org/%s", defaultUserAgent, org)
+		}
+	}
+	return fmt.Sprintf("%s go/%s %s/%s", userAgent, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+}
+
+type headerRoundTripper struct {
+	base    http.RoundTripper
+	headers http.Header
+}
+
+func newHeaderRoundTripper(base http.RoundTripper, headers http.Header) http.RoundTripper {
+	if headers == nil {
+		headers = make(http.Header)
+	}
+	var underlying http.RoundTripper = http.DefaultTransport
+	if base != nil {
+		underlying = base
+	} else if transport, ok := http.DefaultTransport.(*http.Transport); ok {
+		underlying = transport.Clone()
+	}
+	return &headerRoundTripper{base: underlying, headers: headers}
+}
+
+func (h *headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if h == nil {
+		return http.DefaultTransport.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	for key, values := range h.headers {
+		if clone.Header.Get(key) != "" {
+			continue
+		}
+		for _, value := range values {
+			clone.Header.Add(key, value)
+		}
+	}
+	return h.base.RoundTrip(clone)
 }
 
 // slogAdapter adapts slog.Logger to implement our Logger interface.
