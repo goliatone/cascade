@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -64,6 +65,13 @@ func TestCLIHelp(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := exec.Command("go", append([]string{"run", "."}, tt.args...)...)
+			workspace := t.TempDir()
+			env := append(os.Environ(),
+				"CASCADE_WORKSPACE="+workspace,
+				"CASCADE_STATE_DIR="+workspace,
+				"CASCADE_DRY_RUN=true",
+			)
+			cmd.Env = env
 			var stdout bytes.Buffer
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stdout
@@ -126,7 +134,7 @@ func TestCLISmokeTests(t *testing.T) {
 			args:         []string{"resume", "invalid-state"},
 			expectError:  true,
 			expectedExit: 1, // Current implementation shows exit code 1
-			contains:     []string{"invalid state ID format"},
+			contains:     []string{"state identifier must be in module@version format"},
 		},
 		{
 			name:         "resume command missing state",
@@ -140,13 +148,20 @@ func TestCLISmokeTests(t *testing.T) {
 			args:         []string{"revert", "invalid-state"},
 			expectError:  true,
 			expectedExit: 1, // Current implementation shows exit code 1
-			contains:     []string{"invalid state ID format"},
+			contains:     []string{"state identifier must be in module@version format"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := exec.Command("go", append([]string{"run", "."}, tt.args...)...)
+			workspace := t.TempDir()
+			env := append(os.Environ(),
+				"CASCADE_WORKSPACE="+workspace,
+				"CASCADE_STATE_DIR="+workspace,
+				"CASCADE_DRY_RUN=true",
+			)
+			cmd.Env = env
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr

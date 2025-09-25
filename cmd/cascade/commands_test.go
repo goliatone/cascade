@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goliatone/cascade/internal/broker"
+	execpkg "github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/internal/planner"
 	"github.com/goliatone/cascade/internal/state"
@@ -67,6 +69,44 @@ func (m *mockStateManager) SaveItemState(module, version string, item state.Item
 
 func (m *mockStateManager) LoadItemStates(module, version string) ([]state.ItemState, error) {
 	return []state.ItemState{}, nil
+}
+
+type mockExecutor struct {
+	applyFunc func(ctx context.Context, input execpkg.WorkItemContext) (*execpkg.Result, error)
+}
+
+func (m *mockExecutor) Apply(ctx context.Context, input execpkg.WorkItemContext) (*execpkg.Result, error) {
+	if m != nil && m.applyFunc != nil {
+		return m.applyFunc(ctx, input)
+	}
+	return &execpkg.Result{Status: execpkg.StatusCompleted, Reason: "mock executor"}, nil
+}
+
+type mockBroker struct {
+	ensurePRFunc func(ctx context.Context, item planner.WorkItem, result *execpkg.Result) (*broker.PullRequest, error)
+	commentFunc  func(ctx context.Context, pr *broker.PullRequest, body string) error
+	notifyFunc   func(ctx context.Context, item planner.WorkItem, result *execpkg.Result) (*broker.NotificationResult, error)
+}
+
+func (m *mockBroker) EnsurePR(ctx context.Context, item planner.WorkItem, result *execpkg.Result) (*broker.PullRequest, error) {
+	if m != nil && m.ensurePRFunc != nil {
+		return m.ensurePRFunc(ctx, item, result)
+	}
+	return &broker.PullRequest{Repo: item.Repo, URL: "https://example.com/pr/1"}, nil
+}
+
+func (m *mockBroker) Comment(ctx context.Context, pr *broker.PullRequest, body string) error {
+	if m != nil && m.commentFunc != nil {
+		return m.commentFunc(ctx, pr, body)
+	}
+	return nil
+}
+
+func (m *mockBroker) Notify(ctx context.Context, item planner.WorkItem, result *execpkg.Result) (*broker.NotificationResult, error) {
+	if m != nil && m.notifyFunc != nil {
+		return m.notifyFunc(ctx, item, result)
+	}
+	return nil, nil
 }
 
 type mockLogger struct {
@@ -220,17 +260,23 @@ func TestRunPlanWithMockDependencies(t *testing.T) {
 // TestRunResumeWithMockDependencies tests the resume command logic with injected mocks
 func TestRunResumeWithMockDependencies(t *testing.T) {
 	tests := []struct {
-		name         string
-		stateID      string
-		config       *config.Config
-		stateManager *mockStateManager
-		expectError  bool
-		errorType    string
+		name           string
+		stateID        string
+		config         *config.Config
+		stateManager   *mockStateManager
+		manifestLoader *mockManifestLoader
+		planner        *mockPlanner
+		executor       execpkg.Executor
+		broker         broker.Broker
+		expectError    bool
+		errorType      string
 	}{
 		{
 			name:    "successful resume",
 			stateID: "github.com/example/lib@v1.2.3",
-			config:  &config.Config{},
+			config: &config.Config{
+				Executor: config.ExecutorConfig{DryRun: true},
+			},
 			stateManager: &mockStateManager{
 				loadSummaryFunc: func(module, version string) (*state.Summary, error) {
 					return &state.Summary{
@@ -239,14 +285,25 @@ func TestRunResumeWithMockDependencies(t *testing.T) {
 					}, nil
 				},
 			},
+			manifestLoader: &mockManifestLoader{
+				loadFunc: func(path string) (*manifest.Manifest, error) {
+					return &manifest.Manifest{}, nil
+				},
+			},
+			planner: &mockPlanner{
+				planFunc: func(ctx context.Context, m *manifest.Manifest, target planner.Target) (*planner.Plan, error) {
+					return &planner.Plan{Target: target, Items: []planner.WorkItem{}}, nil
+				},
+			},
 			expectError: false,
 		},
 		{
-			name:        "invalid state ID format",
-			stateID:     "invalid-format",
-			config:      &config.Config{},
-			expectError: true,
-			errorType:   "validation",
+			name:         "invalid state ID format",
+			stateID:      "invalid-format",
+			config:       &config.Config{},
+			stateManager: &mockStateManager{},
+			expectError:  true,
+			errorType:    "validation",
 		},
 		{
 			name:    "state not found",
@@ -266,11 +323,30 @@ func TestRunResumeWithMockDependencies(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create mock container
 			logger := &mockLogger{}
-			mockContainer, err := di.New(
-				di.WithConfig(tt.config),
+			cfg := tt.config
+			if cfg == nil {
+				cfg = &config.Config{}
+			}
+			opts := []di.Option{
+				di.WithConfig(cfg),
 				di.WithLogger(logger),
-				di.WithStateManager(tt.stateManager),
-			)
+			}
+			if tt.stateManager != nil {
+				opts = append(opts, di.WithStateManager(tt.stateManager))
+			}
+			if tt.manifestLoader != nil {
+				opts = append(opts, di.WithManifestLoader(tt.manifestLoader))
+			}
+			if tt.planner != nil {
+				opts = append(opts, di.WithPlanner(tt.planner))
+			}
+			if tt.executor != nil {
+				opts = append(opts, di.WithExecutor(tt.executor))
+			}
+			if tt.broker != nil {
+				opts = append(opts, di.WithBroker(tt.broker))
+			}
+			mockContainer, err := di.New(opts...)
 			if err != nil {
 				t.Fatalf("failed to create mock container: %v", err)
 			}
@@ -295,7 +371,7 @@ func TestRunResumeWithMockDependencies(t *testing.T) {
 				errorMsg := err.Error()
 				switch tt.errorType {
 				case "validation":
-					if !contains(errorMsg, "invalid state ID format") {
+					if !contains(errorMsg, "module@version format") {
 						t.Errorf("expected validation error message, got: %s", errorMsg)
 					}
 				case "state":
