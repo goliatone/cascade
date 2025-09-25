@@ -2,13 +2,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/goliatone/cascade/internal/broker"
+	execpkg "github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/planner"
 	"github.com/goliatone/cascade/internal/state"
 	"github.com/goliatone/cascade/pkg/config"
@@ -280,25 +286,20 @@ func runPlan(manifestPath string) error {
 func runRelease(manifestPath string) error {
 	ctx := context.Background()
 	logger := container.Logger()
-	config := container.Config()
+	cfg := container.Config()
 
-	// Use default manifest path if none provided
+	manifestPath = resolveManifestPath(manifestPath, cfg)
 	if manifestPath == "" {
-		manifestPath = config.Workspace.ManifestPath
+		return newValidationError("manifest path not provided and no default configured", nil)
 	}
-	if manifestPath == "" {
-		manifestPath = "deps.yaml" // Default fallback
+
+	if err := ensureWorkspace(cfg.Workspace.Path); err != nil {
+		return newExecutionError("failed to prepare workspace", err)
 	}
 
 	logger.Info("Executing dependency updates", "manifest", manifestPath)
 
-	// Create target from config
-	target := planner.Target{
-		Module:  config.Module,
-		Version: config.Version,
-	}
-
-	// Validate target is specified
+	target := planner.Target{Module: cfg.Module, Version: cfg.Version}
 	if target.Module == "" {
 		return newValidationError("target module must be specified via --module flag or config", nil)
 	}
@@ -306,19 +307,22 @@ func runRelease(manifestPath string) error {
 		return newValidationError("target version must be specified via --version flag or config", nil)
 	}
 
-	// Load the manifest
-	manifest, err := container.Manifest().Load(manifestPath)
+	manifestData, err := container.Manifest().Load(manifestPath)
 	if err != nil {
 		return newFileError("failed to load manifest", err)
 	}
 
-	// Generate the plan
-	plan, err := container.Planner().Plan(ctx, manifest, target)
+	plan, err := container.Planner().Plan(ctx, manifestData, target)
 	if err != nil {
 		return newPlanningError("failed to generate plan", err)
 	}
 
-	if config.Executor.DryRun {
+	if len(plan.Items) == 0 {
+		fmt.Printf("No work items produced for %s@%s\n", target.Module, target.Version)
+		return nil
+	}
+
+	if cfg.Executor.DryRun {
 		fmt.Printf("DRY RUN: Would execute updates for %s@%s\n", target.Module, target.Version)
 		fmt.Printf("Would process %d work items:\n", len(plan.Items))
 		for i, item := range plan.Items {
@@ -327,157 +331,217 @@ func runRelease(manifestPath string) error {
 		return nil
 	}
 
-	// Save initial state
+	deps := newExecutionDeps()
 	stateManager := container.State()
-	summary := &state.Summary{
-		Module:     target.Module,
-		Version:    target.Version,
-		StartTime:  time.Now(),
-		RetryCount: 0,
-	}
+	summary := &state.Summary{Module: target.Module, Version: target.Version, StartTime: time.Now()}
+	tracker := newStateTracker(target.Module, target.Version, summary, stateManager, logger, nil)
 
-	if err := stateManager.SaveSummary(summary); err != nil {
-		logger.Warn("Failed to save initial state", "error", err)
-	}
+	executor := container.Executor()
+	brokerSvc := container.Broker()
 
 	fmt.Printf("Executing updates for %s@%s\n", target.Module, target.Version)
-	fmt.Printf("Processing %d work items:\n", len(plan.Items))
-
-	// For now, just show what would be executed
-	// TODO: Implement actual execution using container.Executor()
 	for i, item := range plan.Items {
-		fmt.Printf("  %d. Processing %s (%s) -> %s\n", i+1, item.Repo, item.Module, item.BranchName)
-		// TODO: Execute work item using container.Executor().Apply()
+		fmt.Printf("  %d. %s (%s) -> %s\n", i+1, item.Repo, item.Module, item.BranchName)
+		itemState, err := processWorkItem(ctx, deps, cfg.Workspace.Path, item, executor, brokerSvc, logger, cfg.Executor.Timeout)
+		if err != nil {
+			logger.Warn("Work item completed with errors", "repo", item.Repo, "error", err)
+		}
+		tracker.record(itemState)
+
+		switch itemState.Status {
+		case execpkg.StatusCompleted:
+			if itemState.PRURL != "" {
+				fmt.Printf("    ✓ PR: %s\n", itemState.PRURL)
+			} else {
+				fmt.Printf("    ✓ Completed with commit %s\n", itemState.CommitHash)
+			}
+		case execpkg.StatusManualReview:
+			fmt.Printf("    ! Manual review required: %s\n", itemState.Reason)
+		case execpkg.StatusSkipped:
+			fmt.Printf("    ⏭ Skipped: %s\n", itemState.Reason)
+		default:
+			fmt.Printf("    ✗ Failed: %s\n", itemState.Reason)
+		}
 	}
 
-	fmt.Println("Release execution not fully implemented - showing plan only")
+	tracker.finalize()
+	fmt.Printf("Release execution completed for %s@%s\n", target.Module, target.Version)
 	return nil
 }
 
 func runResume(stateID string) error {
 	logger := container.Logger()
-	config := container.Config()
+	cfg := container.Config()
+	ctx := context.Background()
 
-	// Parse stateID as module@version if provided, otherwise use config
-	var module, version string
-	if stateID != "" {
-		// Try to parse as module@version
-		if parts := splitModuleVersion(stateID); len(parts) == 2 {
-			module, version = parts[0], parts[1]
-		} else {
-			return fmt.Errorf("invalid state ID format: expected module@version, got %s", stateID)
-		}
-	} else {
-		// Use from config
-		module, version = config.Module, config.Version
-		if module == "" || version == "" {
-			return fmt.Errorf("state ID or module/version must be specified")
-		}
+	module, version, err := resolveModuleVersion(stateID, cfg)
+	if err != nil {
+		return newValidationError(err.Error(), nil)
 	}
 
-	logger.Info("Resuming operation", "module", module, "version", version)
-
-	// Load existing state
-	stateManager := container.State()
-	summary, err := stateManager.LoadSummary(module, version)
+	summary, err := container.State().LoadSummary(module, version)
 	if err != nil {
 		if err == state.ErrNotFound {
 			return fmt.Errorf("no saved state found for %s@%s", module, version)
 		}
-		return fmt.Errorf("failed to load state: %w", err)
+		return newStateError("failed to load summary", err)
 	}
 
-	itemStates, err := stateManager.LoadItemStates(module, version)
+	itemStates, err := container.State().LoadItemStates(module, version)
 	if err != nil {
-		return fmt.Errorf("failed to load item states: %w", err)
+		return newStateError("failed to load item states", err)
 	}
 
-	fmt.Printf("Resuming cascade for %s@%s\n", module, version)
-	fmt.Printf("Started: %s\n", summary.StartTime.Format(time.RFC3339))
-	fmt.Printf("Retry count: %d\n", summary.RetryCount)
-	fmt.Printf("Items: %d\n", len(itemStates))
-
-	// Show status of each item
-	for _, item := range itemStates {
-		fmt.Printf("  - %s: %s", item.Repo, item.Status)
-		if item.Reason != "" {
-			fmt.Printf(" (%s)", item.Reason)
-		}
-		if item.PRURL != "" {
-			fmt.Printf(" - PR: %s", item.PRURL)
-		}
-		fmt.Println()
+	manifestPath := resolveManifestPath("", cfg)
+	manifestData, err := container.Manifest().Load(manifestPath)
+	if err != nil {
+		return newFileError("failed to load manifest", err)
 	}
 
-	fmt.Println("Resume execution not fully implemented - showing state only")
+	plan, err := container.Planner().Plan(ctx, manifestData, planner.Target{Module: module, Version: version})
+	if err != nil {
+		return newPlanningError("failed to regenerate plan", err)
+	}
+
+	if cfg.Executor.DryRun {
+		printResumeSummary(module, version, itemStates, plan)
+		return nil
+	}
+
+	if err := ensureWorkspace(cfg.Workspace.Path); err != nil {
+		return newExecutionError("failed to prepare workspace", err)
+	}
+
+	deps := newExecutionDeps()
+	stateManager := container.State()
+	tracker := newStateTracker(module, version, summary, stateManager, logger, itemStates)
+	tracker.summary.RetryCount++
+	tracker.saveSummary()
+
+	statesByRepo := make(map[string]state.ItemState, len(itemStates))
+	for _, st := range itemStates {
+		statesByRepo[st.Repo] = st
+	}
+
+	executor := container.Executor()
+	brokerSvc := container.Broker()
+
+	retryCount := 0
+	for i, item := range plan.Items {
+		currentState, hasState := statesByRepo[item.Repo]
+		if hasState && (currentState.Status == execpkg.StatusCompleted || currentState.Status == execpkg.StatusSkipped) {
+			fmt.Printf("  %d. %s already %s\n", i+1, item.Repo, currentState.Status)
+			continue
+		}
+
+		retryCount++
+		fmt.Printf("  %d. Resuming %s (%s) -> %s\n", i+1, item.Repo, item.Module, item.BranchName)
+
+		stateItem, err := processWorkItem(ctx, deps, cfg.Workspace.Path, item, executor, brokerSvc, logger, cfg.Executor.Timeout)
+		if err != nil {
+			logger.Warn("Resume attempt finished with errors", "repo", item.Repo, "error", err)
+		}
+		tracker.record(stateItem)
+	}
+
+	tracker.finalize()
+	if retryCount == 0 {
+		fmt.Printf("All work items for %s@%s are already complete\n", module, version)
+	} else {
+		fmt.Printf("Resume completed for %s@%s (reprocessed %d items)\n", module, version, retryCount)
+	}
 	return nil
 }
 
 func runRevert(stateID string) error {
 	logger := container.Logger()
-	config := container.Config()
+	cfg := container.Config()
+	ctx := context.Background()
 
-	// Parse stateID as module@version if provided, otherwise use config
-	var module, version string
-	if stateID != "" {
-		// Try to parse as module@version
-		if parts := splitModuleVersion(stateID); len(parts) == 2 {
-			module, version = parts[0], parts[1]
-		} else {
-			return fmt.Errorf("invalid state ID format: expected module@version, got %s", stateID)
-		}
-	} else {
-		// Use from config
-		module, version = config.Module, config.Version
-		if module == "" || version == "" {
-			return fmt.Errorf("state ID or module/version must be specified")
-		}
+	module, version, err := resolveModuleVersion(stateID, cfg)
+	if err != nil {
+		return newValidationError(err.Error(), nil)
 	}
 
-	logger.Info("Reverting operation", "module", module, "version", version)
-
-	// Load existing state
-	stateManager := container.State()
-	summary, err := stateManager.LoadSummary(module, version)
+	summary, err := container.State().LoadSummary(module, version)
 	if err != nil {
 		if err == state.ErrNotFound {
 			return fmt.Errorf("no saved state found for %s@%s", module, version)
 		}
-		return fmt.Errorf("failed to load state: %w", err)
+		return newStateError("failed to load summary", err)
 	}
 
-	itemStates, err := stateManager.LoadItemStates(module, version)
+	itemStates, err := container.State().LoadItemStates(module, version)
 	if err != nil {
-		return fmt.Errorf("failed to load item states: %w", err)
+		return newStateError("failed to load item states", err)
 	}
 
-	if config.Executor.DryRun {
+	if len(itemStates) == 0 {
+		fmt.Printf("No state recorded for %s@%s\n", module, version)
+		return nil
+	}
+
+	if cfg.Executor.DryRun {
 		fmt.Printf("DRY RUN: Would revert cascade for %s@%s\n", module, version)
-		fmt.Printf("Would revert %d items:\n", len(itemStates))
 		for _, item := range itemStates {
+			fmt.Printf("  - %s (branch: %s", item.Repo, item.Branch)
 			if item.PRURL != "" {
-				fmt.Printf("  - Close PR: %s (%s)\n", item.PRURL, item.Repo)
+				fmt.Printf(", PR: %s", item.PRURL)
 			}
-			if item.CommitHash != "" {
-				fmt.Printf("  - Cleanup branch: %s (%s)\n", item.Branch, item.Repo)
-			}
+			fmt.Println(")")
 		}
 		return nil
 	}
 
-	fmt.Printf("Reverting cascade for %s@%s\n", module, version)
-	fmt.Printf("Started: %s\n", summary.StartTime.Format(time.RFC3339))
-
-	// TODO: Implement actual revert logic using broker to close PRs and cleanup branches
-	for _, item := range itemStates {
-		fmt.Printf("  - Reverting %s", item.Repo)
-		if item.PRURL != "" {
-			fmt.Printf(" (close PR: %s)", item.PRURL)
-		}
-		fmt.Println()
+	if err := ensureWorkspace(cfg.Workspace.Path); err != nil {
+		return newExecutionError("failed to prepare workspace", err)
 	}
 
-	fmt.Println("Revert execution not fully implemented - showing plan only")
+	deps := newExecutionDeps()
+	stateManager := container.State()
+	tracker := newStateTracker(module, version, summary, stateManager, logger, itemStates)
+	brokerSvc := container.Broker()
+
+	fmt.Printf("Reverting cascade for %s@%s\n", module, version)
+	for _, item := range itemStates {
+		fmt.Printf("  - Reverting %s\n", item.Repo)
+		repoPath, err := deps.git.EnsureClone(ctx, item.Repo, cfg.Workspace.Path)
+		if err != nil {
+			logger.Warn("Failed to clone repository for revert", "repo", item.Repo, "error", err)
+			continue
+		}
+
+		if item.Branch != "" {
+			if err := runGitCommand(ctx, deps.gitRunner, repoPath, "push", "origin", "--delete", item.Branch); err != nil {
+				logger.Warn("Failed to delete remote branch", "repo", item.Repo, "branch", item.Branch, "error", err)
+			} else {
+				fmt.Printf("    ✓ Deleted remote branch %s\n", item.Branch)
+			}
+			if err := runGitCommand(ctx, deps.gitRunner, repoPath, "branch", "-D", item.Branch); err != nil {
+				logger.Warn("Failed to delete local branch", "repo", item.Repo, "branch", item.Branch, "error", err)
+			}
+		}
+
+		if item.PRURL != "" {
+			if number, err := extractPRNumber(item.PRURL); err == nil {
+				pr := &broker.PullRequest{Repo: item.Repo, Number: number, URL: item.PRURL}
+				message := "Cascade has reverted this update. Please close this pull request if appropriate."
+				if commentErr := brokerSvc.Comment(ctx, pr, message); commentErr != nil {
+					logger.Warn("Failed to leave revert comment", "repo", item.Repo, "pr", item.PRURL, "error", commentErr)
+				}
+			} else {
+				logger.Warn("Unable to parse PR number from URL", "repo", item.Repo, "pr", item.PRURL, "error", err)
+			}
+		}
+
+		item.Status = execpkg.StatusFailed
+		item.Reason = appendReason(item.Reason, "reverted via cascade CLI")
+		item.LastUpdated = time.Now()
+		tracker.record(item)
+	}
+
+	tracker.finalize()
+	fmt.Printf("Revert completed for %s@%s\n", module, version)
 	return nil
 }
 
@@ -514,4 +578,345 @@ func newPlanningError(message string, cause error) *CLIError {
 
 func newExecutionError(message string, cause error) *CLIError {
 	return &CLIError{Code: ExitExecutionError, Message: message, Cause: cause}
+}
+
+// resolveManifestPath determines the manifest path respecting CLI input, config defaults, and workspace.
+func resolveManifestPath(manifestPath string, cfg *config.Config) string {
+	path := strings.TrimSpace(manifestPath)
+	if path != "" {
+		if !filepath.IsAbs(path) {
+			if abs, err := filepath.Abs(path); err == nil {
+				return abs
+			}
+		}
+		return path
+	}
+
+	if cfg != nil {
+		if candidate := strings.TrimSpace(cfg.Workspace.ManifestPath); candidate != "" {
+			return candidate
+		}
+		if base := strings.TrimSpace(cfg.Workspace.Path); base != "" {
+			return filepath.Join(base, "deps.yaml")
+		}
+	}
+
+	if abs, err := filepath.Abs("deps.yaml"); err == nil {
+		return abs
+	}
+
+	return ""
+}
+
+// ensureWorkspace guarantees the workspace directory exists before execution.
+func ensureWorkspace(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("workspace path is empty")
+	}
+
+	if !filepath.IsAbs(path) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve workspace path: %w", err)
+		}
+		path = abs
+	}
+
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return fmt.Errorf("create workspace directory: %w", err)
+	}
+
+	return nil
+}
+
+// resolveModuleVersion extracts the module/version pair either from CLI state identifier or config.
+func resolveModuleVersion(stateID string, cfg *config.Config) (string, string, error) {
+	if trimmed := strings.TrimSpace(stateID); trimmed != "" {
+		parts := splitModuleVersion(trimmed)
+		if parts == nil {
+			return "", "", fmt.Errorf("state identifier must be in module@version format: %s", stateID)
+		}
+		return parts[0], parts[1], nil
+	}
+
+	if cfg == nil {
+		return "", "", fmt.Errorf("module and version must be provided via flags or state identifier")
+	}
+
+	module := strings.TrimSpace(cfg.Module)
+	version := strings.TrimSpace(cfg.Version)
+	if module == "" || version == "" {
+		return "", "", fmt.Errorf("module and version must be provided via --module and --version flags or state identifier")
+	}
+
+	return module, version, nil
+}
+
+// printResumeSummary reports the work items that would be processed during a dry-run resume.
+func printResumeSummary(module, version string, itemStates []state.ItemState, plan *planner.Plan) {
+	fmt.Printf("DRY RUN: Would resume cascade for %s@%s\n", module, version)
+	if plan == nil || len(plan.Items) == 0 {
+		fmt.Println("No work items available in regenerated plan")
+		return
+	}
+
+	stateByRepo := make(map[string]state.ItemState, len(itemStates))
+	for _, st := range itemStates {
+		stateByRepo[st.Repo] = st
+	}
+
+	fmt.Printf("Plan contains %d work items:\n", len(plan.Items))
+	for i, item := range plan.Items {
+		status := "pending"
+		reason := ""
+		if st, ok := stateByRepo[item.Repo]; ok {
+			if st.Status != "" {
+				status = string(st.Status)
+			}
+			reason = st.Reason
+		}
+		fmt.Printf("  %d. %s (%s) -> %s [%s]", i+1, item.Repo, item.Module, item.BranchName, status)
+		if strings.TrimSpace(reason) != "" {
+			fmt.Printf(" - %s", reason)
+		}
+		fmt.Println()
+	}
+}
+
+// executionDeps bundles executor dependencies shared across work items.
+type executionDeps struct {
+	git       execpkg.GitOperations
+	gitRunner execpkg.GitCommandRunner
+	goTool    execpkg.GoOperations
+	command   execpkg.CommandRunner
+}
+
+func newExecutionDeps() executionDeps {
+	gitRunner := execpkg.NewDefaultGitCommandRunner()
+	return executionDeps{
+		git:       execpkg.NewGitOperationsWithRunner(gitRunner),
+		gitRunner: gitRunner,
+		goTool:    execpkg.NewGoOperations(),
+		command:   execpkg.NewCommandRunner(),
+	}
+}
+
+// processWorkItem executes a single work item and coordinates broker/state integration.
+func processWorkItem(ctx context.Context, deps executionDeps, workspace string, item planner.WorkItem, executor execpkg.Executor, broker broker.Broker, logger di.Logger, defaultTimeout time.Duration) (state.ItemState, error) {
+	itemCopy := item
+	if itemCopy.Timeout <= 0 {
+		itemCopy.Timeout = defaultTimeout
+	}
+
+	workCtx := ctx
+	var cancel context.CancelFunc
+	if itemCopy.Timeout > 0 {
+		workCtx, cancel = context.WithTimeout(ctx, itemCopy.Timeout)
+		defer cancel()
+	}
+
+	result, execErr := executor.Apply(workCtx, execpkg.WorkItemContext{
+		Item:      itemCopy,
+		Workspace: workspace,
+		Git:       deps.git,
+		Go:        deps.goTool,
+		Runner:    deps.command,
+		Logger:    logger,
+	})
+
+	itemState := state.ItemState{
+		Repo:        item.Repo,
+		Branch:      item.BranchName,
+		LastUpdated: time.Now(),
+		Attempts:    1,
+	}
+
+	if result != nil {
+		itemState.Status = result.Status
+		itemState.Reason = result.Reason
+		itemState.CommitHash = result.CommitHash
+		logs := append([]execpkg.CommandResult{}, result.TestResults...)
+		logs = append(logs, result.ExtraResults...)
+		itemState.CommandLogs = logs
+	} else {
+		itemState.Status = execpkg.StatusFailed
+		itemState.Reason = appendReason(itemState.Reason, "executor returned no result")
+	}
+
+	var errs []error
+	if execErr != nil {
+		errs = append(errs, execErr)
+	}
+
+	if execErr == nil && result != nil {
+		switch result.Status {
+		case execpkg.StatusCompleted, execpkg.StatusManualReview:
+			pr, prErr := broker.EnsurePR(ctx, item, result)
+			if prErr != nil {
+				errs = append(errs, fmt.Errorf("broker ensure PR: %w", prErr))
+				itemState.Reason = appendReason(itemState.Reason, fmt.Sprintf("PR creation failed: %v", prErr))
+			} else if pr != nil {
+				itemState.PRURL = pr.URL
+			}
+
+			if _, notifyErr := broker.Notify(ctx, item, result); notifyErr != nil {
+				errs = append(errs, fmt.Errorf("broker notify: %w", notifyErr))
+				itemState.Reason = appendReason(itemState.Reason, fmt.Sprintf("notification failed: %v", notifyErr))
+			}
+		}
+	}
+
+	return itemState, errors.Join(errs...)
+}
+
+// stateTracker persists per-item state and run summary updates during orchestration.
+type stateTracker struct {
+	module   string
+	version  string
+	summary  *state.Summary
+	manager  state.Manager
+	logger   di.Logger
+	existing map[string]state.ItemState
+}
+
+func newStateTracker(module, version string, summary *state.Summary, manager state.Manager, logger di.Logger, existing []state.ItemState) *stateTracker {
+	if summary == nil {
+		summary = &state.Summary{
+			Module:    module,
+			Version:   version,
+			StartTime: time.Now(),
+		}
+	} else {
+		if summary.Module == "" {
+			summary.Module = module
+		}
+		if summary.Version == "" {
+			summary.Version = version
+		}
+		if summary.StartTime.IsZero() {
+			summary.StartTime = time.Now()
+		}
+	}
+
+	tracker := &stateTracker{
+		module:   module,
+		version:  version,
+		summary:  summary,
+		manager:  manager,
+		logger:   logger,
+		existing: make(map[string]state.ItemState, len(existing)),
+	}
+
+	for _, st := range existing {
+		tracker.existing[st.Repo] = st
+	}
+
+	tracker.saveSummary()
+	return tracker
+}
+
+func (t *stateTracker) record(item state.ItemState) {
+	if t == nil || item.Repo == "" {
+		return
+	}
+
+	prev, hasPrev := t.existing[item.Repo]
+	if hasPrev {
+		if item.Attempts <= prev.Attempts {
+			item.Attempts = prev.Attempts + 1
+		}
+		if item.PRURL == "" {
+			item.PRURL = prev.PRURL
+		}
+	}
+
+	if item.Attempts == 0 {
+		item.Attempts = 1
+	}
+	if item.LastUpdated.IsZero() {
+		item.LastUpdated = time.Now()
+	}
+
+	t.existing[item.Repo] = item
+	replaced := false
+	for i := range t.summary.Items {
+		if t.summary.Items[i].Repo == item.Repo {
+			t.summary.Items[i] = item
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		t.summary.Items = append(t.summary.Items, item)
+	}
+
+	t.summary.EndTime = item.LastUpdated
+	if t.manager != nil {
+		if err := t.manager.SaveItemState(t.module, t.version, item); err != nil && t.logger != nil {
+			t.logger.Warn("failed to persist item state", "repo", item.Repo, "error", err)
+		}
+	}
+
+	t.saveSummary()
+}
+
+func (t *stateTracker) saveSummary() {
+	if t == nil || t.manager == nil || t.summary == nil {
+		return
+	}
+
+	if err := t.manager.SaveSummary(t.summary); err != nil && t.logger != nil {
+		t.logger.Warn("failed to persist run summary", "module", t.module, "version", t.version, "error", err)
+	}
+}
+
+func (t *stateTracker) finalize() {
+	if t == nil {
+		return
+	}
+
+	t.summary.EndTime = time.Now()
+	t.saveSummary()
+}
+
+// runGitCommand executes a git subcommand using the provided runner.
+func runGitCommand(ctx context.Context, runner execpkg.GitCommandRunner, repoPath string, args ...string) error {
+	if runner == nil {
+		return fmt.Errorf("git command runner not configured")
+	}
+	if len(args) == 0 {
+		return fmt.Errorf("git command requires arguments")
+	}
+	_, err := runner.Run(ctx, repoPath, args...)
+	return err
+}
+
+// extractPRNumber parses a pull request URL and extracts the numeric identifier.
+func extractPRNumber(prURL string) (int, error) {
+	parsed, err := url.Parse(prURL)
+	if err != nil {
+		return 0, fmt.Errorf("invalid PR URL: %w", err)
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) == 0 {
+		return 0, fmt.Errorf("no path segments in PR URL: %s", prURL)
+	}
+	num, err := strconv.Atoi(segments[len(segments)-1])
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse PR number from URL %s: %w", prURL, err)
+	}
+	return num, nil
+}
+
+// appendReason concatenates reason strings with a delimiter while avoiding duplicates.
+func appendReason(existing, addition string) string {
+	addition = strings.TrimSpace(addition)
+	if addition == "" {
+		return strings.TrimSpace(existing)
+	}
+	existing = strings.TrimSpace(existing)
+	if existing == "" {
+		return addition
+	}
+	return existing + "; " + addition
 }
