@@ -333,8 +333,92 @@ func TestOptions_IndividualValidation(t *testing.T) {
 	}
 }
 
-// Note: These tests will be expanded in Task 5 for integration testing
-// once the container build() method is implemented in Task 3.
+// Test configuration-driven providers
+func TestContainer_ConfigurationIntegration(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *config.Config
+	}{
+		{
+			name:   "default config",
+			config: nil, // Will use defaults
+		},
+		{
+			name: "custom logging config",
+			config: &config.Config{
+				Logging: config.LoggingConfig{
+					Level:   "debug",
+					Format:  "json",
+					Verbose: true,
+				},
+			},
+		},
+		{
+			name: "state disabled",
+			config: &config.Config{
+				State: config.StateConfig{
+					Enabled: false,
+				},
+			},
+		},
+		{
+			name: "dry-run mode",
+			config: &config.Config{
+				Executor: config.ExecutorConfig{
+					DryRun: true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var opts []di.Option
+			if tt.config != nil {
+				opts = append(opts, di.WithConfig(tt.config))
+			}
+
+			container, err := di.New(opts...)
+			if err != nil {
+				t.Fatalf("Failed to create container with config: %v", err)
+			}
+
+			// Verify all services are properly wired
+			if container.Config() == nil {
+				t.Error("Config() returned nil")
+			}
+			if container.Logger() == nil {
+				t.Error("Logger() returned nil")
+			}
+			if container.HTTPClient() == nil {
+				t.Error("HTTPClient() returned nil")
+			}
+			if container.State() == nil {
+				t.Error("State() returned nil")
+			}
+			if container.Broker() == nil {
+				t.Error("Broker() returned nil")
+			}
+			if container.Executor() == nil {
+				t.Error("Executor() returned nil")
+			}
+
+			// Test that config values are accessible
+			cfg := container.Config()
+			if tt.config != nil {
+				if tt.config.Logging.Level != "" && cfg.Logging.Level != tt.config.Logging.Level {
+					t.Errorf("Expected logging level %s, got %s", tt.config.Logging.Level, cfg.Logging.Level)
+				}
+				if cfg.State.Enabled != tt.config.State.Enabled {
+					t.Errorf("Expected state enabled %v, got %v", tt.config.State.Enabled, cfg.State.Enabled)
+				}
+				if cfg.Executor.DryRun != tt.config.Executor.DryRun {
+					t.Errorf("Expected dry-run %v, got %v", tt.config.Executor.DryRun, cfg.Executor.DryRun)
+				}
+			}
+		})
+	}
+}
 
 func TestContainer_InterfaceCompliance(t *testing.T) {
 	// Test that container returns proper interfaces for all services

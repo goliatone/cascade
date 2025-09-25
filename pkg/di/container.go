@@ -34,6 +34,9 @@ type Container interface {
 	Config() *config.Config
 	Logger() Logger
 	HTTPClient() *http.Client
+
+	// Resource management
+	Close() error
 }
 
 // Option customises container construction using the functional options pattern.
@@ -97,6 +100,54 @@ func (c *container) State() state.Manager        { return c.stateManager }
 func (c *container) Config() *config.Config   { return c.cfg }
 func (c *container) Logger() Logger           { return c.logger }
 func (c *container) HTTPClient() *http.Client { return c.httpClient }
+
+// Close performs cleanup of container resources.
+// It attempts to close any services that implement io.Closer,
+// logging any errors that occur during cleanup.
+func (c *container) Close() error {
+	var errs []error
+
+	// Check each service for io.Closer interface and close if implemented
+	if closer, ok := c.stateManager.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("state manager close: %w", err))
+		}
+	}
+
+	if closer, ok := c.broker.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("broker close: %w", err))
+		}
+	}
+
+	if closer, ok := c.executor.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("executor close: %w", err))
+		}
+	}
+
+	if closer, ok := c.manifestLoader.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("manifest loader close: %w", err))
+		}
+	}
+
+	// Close HTTP client transport if it implements closer
+	if c.httpClient.Transport != nil {
+		if closer, ok := c.httpClient.Transport.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("http client transport close: %w", err))
+			}
+		}
+	}
+
+	// Return combined errors if any occurred
+	if len(errs) > 0 {
+		return fmt.Errorf("container close errors: %v", errs)
+	}
+
+	return nil
+}
 
 // build assembles the container with all dependencies resolved.
 // It validates that required dependencies are present and creates default implementations
