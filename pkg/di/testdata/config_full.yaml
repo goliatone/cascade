@@ -1,0 +1,25 @@
+# Full configuration using all integrations
+log_level: debug
+github:
+  token: fake-github-token
+  base_url: https://api.github.com
+  timeout: 30s
+git:
+  author_name: Cascade Bot
+  author_email: cascade@example.com
+  commit_message: "deps: update dependencies via cascade"
+state:
+  storage: filesystem
+  path: /tmp/cascade-state
+notifications:
+  slack:
+    webhook_url: https://hooks.slack.com/services/test
+    channel: "#releases"
+  email:
+    smtp_host: smtp.example.com
+    smtp_port: 587
+    from: cascade@example.com
+    to: ["team@example.com"]
+executors:
+  timeout: 5m
+  parallel_limit: 3

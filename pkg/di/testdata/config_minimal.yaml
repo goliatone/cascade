@@ -1,0 +1,5 @@
+# Minimal configuration for container wiring tests
+log_level: info
+github:
+  token: fake-token-for-testing
+  base_url: https://api.github.com

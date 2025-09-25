@@ -1,0 +1,18 @@
+# Basic manifest for CLI integration tests
+modules:
+  - name: github.com/example/service-a
+    version: v1.2.3
+    dependents:
+      - repo: github.com/example/app-one
+        branch: main
+        go_mod_path: go.mod
+      - repo: github.com/example/app-two
+        branch: development
+        go_mod_path: services/backend/go.mod
+
+  - name: github.com/example/service-b
+    version: v2.1.0
+    dependents:
+      - repo: github.com/example/app-one
+        branch: main
+        go_mod_path: go.mod
