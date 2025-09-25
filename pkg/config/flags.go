@@ -48,34 +48,34 @@ type FlagConfig struct {
 func AddFlags(cmd *cobra.Command) *FlagConfig {
 	fc := &FlagConfig{}
 
-	// Workspace and basic operation flags
-	cmd.Flags().StringVarP(&fc.Workspace, "workspace", "w", "",
+	// Workspace and basic operation flags (persistent flags are inherited by subcommands)
+	cmd.PersistentFlags().StringVarP(&fc.Workspace, "workspace", "w", "",
 		"Workspace directory for operations (default: $XDG_CACHE_HOME/cascade)")
-	cmd.Flags().StringVarP(&fc.Manifest, "manifest", "m", "",
+	cmd.PersistentFlags().StringVarP(&fc.Manifest, "manifest", "m", "",
 		"Path to deps.yaml manifest file")
-	cmd.Flags().StringVar(&fc.Module, "module", "",
+	cmd.PersistentFlags().StringVar(&fc.Module, "module", "",
 		"Target module for operations")
-	cmd.Flags().StringVar(&fc.Version, "version", "",
+	cmd.PersistentFlags().StringVar(&fc.Version, "version", "",
 		"Target version for operations")
-	cmd.Flags().StringVarP(&fc.ConfigFile, "config", "c", "",
+	cmd.PersistentFlags().StringVarP(&fc.ConfigFile, "config", "c", "",
 		"Configuration file path")
 
 	// Execution control flags
-	cmd.Flags().BoolVarP(&fc.DryRun, "dry-run", "n", false,
+	cmd.PersistentFlags().BoolVarP(&fc.DryRun, "dry-run", "n", false,
 		"Preview mode without making changes")
-	cmd.Flags().DurationVar(&fc.Timeout, "timeout", 5*time.Minute,
+	cmd.PersistentFlags().DurationVar(&fc.Timeout, "timeout", 5*time.Minute,
 		"Operation timeout duration")
-	cmd.Flags().IntVarP(&fc.Parallel, "parallel", "p", 0,
+	cmd.PersistentFlags().IntVarP(&fc.Parallel, "parallel", "p", 0,
 		"Number of parallel executions (0 = auto)")
 
 	// Logging control flags
-	cmd.Flags().BoolVarP(&fc.Verbose, "verbose", "v", false,
+	cmd.PersistentFlags().BoolVarP(&fc.Verbose, "verbose", "v", false,
 		"Verbose logging output (equivalent to --log-level=debug)")
-	cmd.Flags().BoolVarP(&fc.Quiet, "quiet", "q", false,
+	cmd.PersistentFlags().BoolVarP(&fc.Quiet, "quiet", "q", false,
 		"Suppress non-essential output (equivalent to --log-level=warn)")
-	cmd.Flags().StringVar(&fc.LogLevel, "log-level", "",
+	cmd.PersistentFlags().StringVar(&fc.LogLevel, "log-level", "",
 		"Logging level (debug, info, warn, error)")
-	cmd.Flags().StringVar(&fc.LogFormat, "log-format", "",
+	cmd.PersistentFlags().StringVar(&fc.LogFormat, "log-format", "",
 		"Log output format (text, json)")
 
 	// GitHub integration flags
@@ -259,6 +259,20 @@ func (fc *FlagConfig) ToConfigWithCommand(cmd *cobra.Command) (*Config, error) {
 		config.Version = fc.Version
 	}
 
+	// Also check if flags were changed on the command directly (for persistent flags)
+	if cmd != nil {
+		if cmd.Flags().Changed("module") {
+			if val, err := cmd.Flags().GetString("module"); err == nil && val != "" {
+				config.Module = val
+			}
+		}
+		if cmd.Flags().Changed("version") {
+			if val, err := cmd.Flags().GetString("version"); err == nil && val != "" {
+				config.Version = val
+			}
+		}
+	}
+
 	return config, nil
 }
 
@@ -269,7 +283,7 @@ func LoadFromFlags(cmd *cobra.Command) (*Config, error) {
 		return nil, fmt.Errorf("command cannot be nil")
 	}
 
-	// Extract flag configuration
+	// cmd.Flags() returns both local and inherited flags
 	fc := extractFlagConfig(cmd.Flags())
 
 	// Validate flags
@@ -290,6 +304,7 @@ func LoadFromFlags(cmd *cobra.Command) (*Config, error) {
 func extractFlagConfig(flags *pflag.FlagSet) *FlagConfig {
 	fc := &FlagConfig{}
 
+	// Try to extract from both regular and persistent flags
 	if flags.Changed("workspace") {
 		fc.Workspace, _ = flags.GetString("workspace")
 	}
@@ -308,9 +323,9 @@ func extractFlagConfig(flags *pflag.FlagSet) *FlagConfig {
 	if flags.Changed("dry-run") {
 		fc.DryRun, _ = flags.GetBool("dry-run")
 	}
-	if flags.Changed("timeout") {
-		fc.Timeout, _ = flags.GetDuration("timeout")
-	}
+	// Always get timeout value since it has a default and validation expects it
+	fc.Timeout, _ = flags.GetDuration("timeout")
+
 	if flags.Changed("parallel") {
 		fc.Parallel, _ = flags.GetInt("parallel")
 	}
