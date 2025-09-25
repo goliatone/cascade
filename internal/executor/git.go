@@ -42,6 +42,8 @@ func (g *gitOperations) EnsureClone(ctx context.Context, repo, workspace string)
 			return "", fmt.Errorf("failed to get remote origin URL for %s: %w", repoPath, err)
 		}
 
+		output = cleanGitOutput(output)
+
 		if normalizeGitURL(output) != normalizeGitURL(repo) {
 			return "", &ErrInvalidRepo{
 				Path:     repoPath,
@@ -90,6 +92,7 @@ func (g *gitOperations) EnsureWorktree(ctx context.Context, repoPath, branch str
 		if err != nil {
 			return "", fmt.Errorf("failed to check current branch in worktree %s: %w", worktreePath, err)
 		}
+		currentBranch = cleanGitOutput(currentBranch)
 
 		if currentBranch != branch {
 			return "", fmt.Errorf("worktree %s is on branch %s, expected %s", worktreePath, currentBranch, branch)
@@ -157,6 +160,7 @@ func (g *gitOperations) Commit(ctx context.Context, repoPath, message string) (s
 	if err != nil {
 		return "", fmt.Errorf("failed to get commit hash in %s: %w", repoPath, err)
 	}
+	hash = cleanGitOutput(hash)
 
 	return hash, nil
 }
@@ -189,6 +193,7 @@ func (g *gitOperations) getDefaultBranch(ctx context.Context, repoPath string) (
 		}
 		return "", fmt.Errorf("failed to determine default branch and common names (main, master) not found: %w", err)
 	}
+	output = cleanGitOutput(output)
 
 	// Extract branch name from "refs/remotes/origin/main"
 	parts := strings.Split(output, "/")
@@ -196,7 +201,7 @@ func (g *gitOperations) getDefaultBranch(ctx context.Context, repoPath string) (
 		return "", fmt.Errorf("unexpected ref format: %s", output)
 	}
 
-	return parts[len(parts)-1], nil
+	return cleanGitOutput(parts[len(parts)-1]), nil
 }
 
 // extractRepoName extracts the repository name from a git URL.
@@ -214,6 +219,7 @@ func extractRepoName(repo string) string {
 
 // normalizeGitURL normalizes git URLs for comparison.
 func normalizeGitURL(url string) string {
+	url = cleanGitOutput(url)
 	// Remove .git suffix
 	url = strings.TrimSuffix(url, ".git")
 
@@ -223,4 +229,9 @@ func normalizeGitURL(url string) string {
 	}
 
 	return strings.ToLower(url)
+}
+
+// cleanGitOutput trims whitespace from git command output to make comparisons robust.
+func cleanGitOutput(output string) string {
+	return strings.TrimSpace(output)
 }
