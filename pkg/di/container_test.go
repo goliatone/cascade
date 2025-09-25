@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/goliatone/cascade/internal/broker"
@@ -31,50 +32,88 @@ func (m *mockManifestLoader) Load(path string) (*manifest.Manifest, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockManifestLoader) Validate(manifest *manifest.Manifest) error {
-	return errors.New("not implemented")
+func (m *mockManifestLoader) Generate(workdir string) (*manifest.Manifest, error) {
+	return nil, errors.New("not implemented")
 }
 
 type mockPlanner struct{}
 
-func (m *mockPlanner) Plan(manifest *manifest.Manifest) (*planner.Plan, error) {
+func (m *mockPlanner) Plan(ctx context.Context, manifest *manifest.Manifest, target planner.Target) (*planner.Plan, error) {
 	return nil, errors.New("not implemented")
 }
 
 type mockExecutor struct{}
 
-func (m *mockExecutor) Execute(plan *planner.Plan) (*executor.Result, error) {
+func (m *mockExecutor) Apply(ctx context.Context, input executor.WorkItemContext) (*executor.Result, error) {
 	return nil, errors.New("not implemented")
 }
 
 type mockBroker struct{}
 
-func (m *mockBroker) CreatePR(result *executor.Result) (*broker.PR, error) {
+func (m *mockBroker) EnsurePR(ctx context.Context, item planner.WorkItem, result *executor.Result) (*broker.PullRequest, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockBroker) UpdatePR(pr *broker.PR) error {
+func (m *mockBroker) Comment(ctx context.Context, pr *broker.PullRequest, body string) error {
 	return errors.New("not implemented")
+}
+
+func (m *mockBroker) Notify(ctx context.Context, item planner.WorkItem, result *executor.Result) (*broker.NotificationResult, error) {
+	return nil, errors.New("not implemented")
 }
 
 type mockStateManager struct{}
 
-func (m *mockStateManager) Save(state *state.State) error {
+func (m *mockStateManager) LoadSummary(module, version string) (*state.Summary, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockStateManager) SaveSummary(summary *state.Summary) error {
 	return errors.New("not implemented")
 }
 
-func (m *mockStateManager) Load() (*state.State, error) {
+func (m *mockStateManager) SaveItemState(module, version string, item state.ItemState) error {
+	return errors.New("not implemented")
+}
+
+func (m *mockStateManager) LoadItemStates(module, version string) ([]state.ItemState, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockStateManager) List() ([]*state.State, error) {
-	return nil, errors.New("not implemented")
-}
+func TestNew_WithDefaults(t *testing.T) {
+	container, err := di.New()
+	if err != nil {
+		t.Fatalf("expected successful container creation with defaults, got error: %v", err)
+	}
 
-func TestNew_ReturnsErrorUntilImplemented(t *testing.T) {
-	_, err := di.New(di.WithConfig(&config.Config{}))
-	if err == nil {
-		t.Fatal("expected not implemented error")
+	if container == nil {
+		t.Fatal("expected non-nil container")
+	}
+
+	// Verify all services are available
+	if container.Config() == nil {
+		t.Error("expected non-nil Config")
+	}
+	if container.Logger() == nil {
+		t.Error("expected non-nil Logger")
+	}
+	if container.HTTPClient() == nil {
+		t.Error("expected non-nil HTTPClient")
+	}
+	if container.Manifest() == nil {
+		t.Error("expected non-nil Manifest")
+	}
+	if container.Planner() == nil {
+		t.Error("expected non-nil Planner")
+	}
+	if container.Executor() == nil {
+		t.Error("expected non-nil Executor")
+	}
+	if container.Broker() == nil {
+		t.Error("expected non-nil Broker")
+	}
+	if container.State() == nil {
+		t.Error("expected non-nil State")
 	}
 }
 
@@ -88,7 +127,7 @@ func TestNew_OptionValidation(t *testing.T) {
 		{
 			name:    "no options should work",
 			opts:    nil,
-			wantErr: true, // Currently returns not implemented error
+			wantErr: false, // Now works with default providers
 		},
 		{
 			name:        "nil config should error",
@@ -150,7 +189,7 @@ func TestNew_OptionValidation(t *testing.T) {
 				di.WithBroker(&mockBroker{}),
 				di.WithStateManager(&mockStateManager{}),
 			},
-			wantErr: true, // Still returns not implemented until Task 3
+			wantErr: false, // Now works with implemented container build
 		},
 	}
 
@@ -164,11 +203,8 @@ func TestNew_OptionValidation(t *testing.T) {
 					return
 				}
 				if tt.errContains != "" && err.Error() != "" {
-					if err.Error() != tt.errContains && tt.errContains != "not implemented" {
-						// For specific error messages, check containment
-						if len(tt.errContains) > 10 { // Assume it's a contains check if longer
-							t.Errorf("New() error = %v, want error containing %v", err, tt.errContains)
-						}
+					if !strings.Contains(err.Error(), tt.errContains) {
+						t.Errorf("New() error = %v, want error containing %v", err, tt.errContains)
 					}
 				}
 			} else {
@@ -283,7 +319,7 @@ func TestOptions_IndividualValidation(t *testing.T) {
 				if tt.wantErr != "not implemented" && err.Error() != tt.wantErr {
 					// The error should contain the expected validation message
 					// (it might be wrapped in "di: failed to apply option: <message>")
-					if !contains(err.Error(), tt.wantErr) {
+					if !strings.Contains(err.Error(), tt.wantErr) {
 						t.Errorf("New() with %s error = %v, want error containing %v", tt.name, err, tt.wantErr)
 					}
 				}
@@ -296,12 +332,6 @@ func TestOptions_IndividualValidation(t *testing.T) {
 			}
 		})
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			len(s) > len(substr)+1 && s[1:len(substr)+1] == substr))
 }
 
 // Note: These tests will be expanded in Task 5 for integration testing

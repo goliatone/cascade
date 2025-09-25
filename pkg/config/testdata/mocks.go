@@ -128,14 +128,14 @@ func (m *MockFileSystem) Clear() {
 // MockFlagParser provides a mock command-line flag parser for testing flag parsing logic.
 // It allows tests to simulate different command-line argument scenarios.
 type MockFlagParser struct {
-	flags map[string]interface{}
+	flags map[string]any
 	args  []string
 }
 
 // NewMockFlagParser creates a new mock flag parser.
 func NewMockFlagParser() *MockFlagParser {
 	return &MockFlagParser{
-		flags: make(map[string]interface{}),
+		flags: make(map[string]any),
 		args:  []string{},
 	}
 }
@@ -202,6 +202,6 @@ func (m *MockFlagParser) GetArgs() []string {
 
 // Clear removes all flags and arguments from the mock parser.
 func (m *MockFlagParser) Clear() {
-	m.flags = make(map[string]interface{})
+	m.flags = make(map[string]any)
 	m.args = []string{}
 }

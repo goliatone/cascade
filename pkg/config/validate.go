@@ -13,7 +13,7 @@ import (
 // ValidationError represents a configuration validation failure.
 type ValidationError struct {
 	Field   string
-	Value   interface{}
+	Value   any
 	Message string
 }
 

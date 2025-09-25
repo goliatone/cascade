@@ -7,7 +7,7 @@ import (
 )
 
 // DIContainerConfig represents configuration needed for dependency injection setup.
-// It provides configuration-driven service factory functions and feature toggles.
+// It provides configuration driven service factory functions and feature toggles.
 type DIContainerConfig struct {
 	// Config is the complete configuration for the container
 	Config *Config
@@ -15,10 +15,10 @@ type DIContainerConfig struct {
 	// Logger is the configured logger for the container
 	Logger *slog.Logger
 
-	// ServiceSelection allows configuration-driven service implementation selection
+	// ServiceSelection allows configuration driven service implementation selection
 	ServiceSelection ServiceSelectionConfig
 
-	// FeatureToggles enables configuration-based feature flags
+	// FeatureToggles enables configuration based feature flags
 	FeatureToggles FeatureToggleConfig
 
 	// Debug enables dependency injection debugging and inspection
@@ -41,7 +41,7 @@ type ServiceSelectionConfig struct {
 	HTTPClient string `json:"http_client" yaml:"http_client"`
 }
 
-// FeatureToggleConfig enables configuration-based feature flags for service behavior.
+// FeatureToggleConfig enables configuration based feature flags for service behavior.
 type FeatureToggleConfig struct {
 	// EnableMetrics enables metrics collection for services
 	EnableMetrics bool `json:"enable_metrics" yaml:"enable_metrics"`
@@ -57,7 +57,7 @@ type FeatureToggleConfig struct {
 }
 
 // ConfiguredContainer creates a DI container configuration from the given config.
-// It applies configuration-driven service selection and feature toggles.
+// It applies configuration driven service selection and feature toggles.
 func ConfiguredContainer(config *Config) (*DIContainerConfig, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
@@ -165,7 +165,7 @@ func applyServiceSelectionDefaults(config *Config) ServiceSelectionConfig {
 
 	// Override based on configuration hints
 	if config.Executor.DryRun {
-		// In dry-run mode, prefer memory-based backends
+		// In dry-run mode, prefer memory based backends
 		selection.StateBackend = "memory"
 	}
 
@@ -195,27 +195,27 @@ func applyFeatureToggleDefaults(config *Config) FeatureToggleConfig {
 	return toggles
 }
 
-// GetWorkspaceConfig returns workspace-specific configuration for services.
+// GetWorkspaceConfig returns workspace specific configuration for services.
 func (d *DIContainerConfig) GetWorkspaceConfig() WorkspaceConfig {
 	return d.Config.Workspace
 }
 
-// GetExecutorConfig returns executor-specific configuration for services.
+// GetExecutorConfig returns executor specific configuration for services.
 func (d *DIContainerConfig) GetExecutorConfig() ExecutorConfig {
 	return d.Config.Executor
 }
 
-// GetIntegrationConfig returns integration-specific configuration for services.
+// GetIntegrationConfig returns integration specific configuration for services.
 func (d *DIContainerConfig) GetIntegrationConfig() IntegrationConfig {
 	return d.Config.Integration
 }
 
-// GetLoggingConfig returns logging-specific configuration for services.
+// GetLoggingConfig returns logging specific configuration for services.
 func (d *DIContainerConfig) GetLoggingConfig() LoggingConfig {
 	return d.Config.Logging
 }
 
-// GetStateConfig returns state-specific configuration for services.
+// GetStateConfig returns state specific configuration for services.
 func (d *DIContainerConfig) GetStateConfig() StateConfig {
 	return d.Config.State
 }
@@ -236,14 +236,14 @@ func (d *DIContainerConfig) GetFeatureToggles() FeatureToggleConfig {
 }
 
 // DebugInfo returns debugging information about the DI configuration.
-func (d *DIContainerConfig) DebugInfo() map[string]interface{} {
+func (d *DIContainerConfig) DebugInfo() map[string]any {
 	if !d.Debug {
-		return map[string]interface{}{
+		return map[string]any{
 			"debug": "disabled",
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"workspace_path":     d.Config.Workspace.Path,
 		"manifest_path":      d.Config.Workspace.ManifestPath,
 		"executor_timeout":   d.Config.Executor.Timeout.String(),
