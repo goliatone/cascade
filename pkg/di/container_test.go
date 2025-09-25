@@ -324,10 +324,9 @@ func TestOptions_IndividualValidation(t *testing.T) {
 					}
 				}
 			} else {
-				// If no error expected from validation, but build will still fail
-				// until Task 3, so we expect a "not implemented" error
-				if err == nil {
-					t.Errorf("New() with %s error = nil, expected not implemented error", tt.name)
+				// If no error expected, container creation should succeed
+				if err != nil {
+					t.Errorf("New() with %s error = %v, expected success", tt.name, err)
 				}
 			}
 		})
@@ -338,13 +337,43 @@ func TestOptions_IndividualValidation(t *testing.T) {
 // once the container build() method is implemented in Task 3.
 
 func TestContainer_InterfaceCompliance(t *testing.T) {
-	// This test ensures the Container interface is properly defined
-	// It will be expanded when container construction is implemented
+	// Test that container returns proper interfaces for all services
+	container, err := di.New()
+	if err != nil {
+		t.Fatalf("Failed to create container: %v", err)
+	}
 
-	t.Skip("Container construction not implemented yet - will be enabled in Task 3")
+	// Test that all accessors return non-nil services
+	if container.Config() == nil {
+		t.Error("Config() returned nil")
+	}
+	if container.Logger() == nil {
+		t.Error("Logger() returned nil")
+	}
+	if container.HTTPClient() == nil {
+		t.Error("HTTPClient() returned nil")
+	}
+	if container.Manifest() == nil {
+		t.Error("Manifest() returned nil")
+	}
+	if container.Planner() == nil {
+		t.Error("Planner() returned nil")
+	}
+	if container.Executor() == nil {
+		t.Error("Executor() returned nil")
+	}
+	if container.Broker() == nil {
+		t.Error("Broker() returned nil")
+	}
+	if container.State() == nil {
+		t.Error("State() returned nil")
+	}
 
-	// This is a placeholder for future tests that will verify:
-	// - Container returns non-nil services for all accessors
-	// - Services implement expected interfaces
-	// - Container properly manages dependency lifecycle
+	// Test that services implement expected interfaces
+	var _ manifest.Loader = container.Manifest()
+	var _ planner.Planner = container.Planner()
+	var _ executor.Executor = container.Executor()
+	var _ broker.Broker = container.Broker()
+	var _ state.Manager = container.State()
+	var _ di.Logger = container.Logger()
 }
