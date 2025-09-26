@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/goliatone/cascade/internal/broker"
 	execpkg "github.com/goliatone/cascade/internal/executor"
+	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/internal/planner"
 	"github.com/goliatone/cascade/internal/state"
 	"github.com/goliatone/cascade/pkg/config"
@@ -183,6 +185,7 @@ Examples:
 
 	// Add subcommands
 	cmd.AddCommand(
+		newManifestCommand(),
 		newPlanCommand(),
 		newReleaseCommand(),
 		newResumeCommand(),
@@ -353,6 +356,70 @@ closing pull requests and cleaning up branches as needed.`,
 			return runRevert(stateID)
 		},
 	}
+}
+
+// newManifestCommand creates the manifest management subcommand with generate subcommand
+func newManifestCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "manifest",
+		Short: "Manage dependency manifests",
+		Long: `Manifest management commands for creating and manipulating dependency manifests.
+Use subcommands to perform specific manifest operations.`,
+	}
+
+	cmd.AddCommand(newManifestGenerateCommand())
+	return cmd
+}
+
+// newManifestGenerateCommand creates the manifest generate subcommand
+func newManifestGenerateCommand() *cobra.Command {
+	var (
+		moduleName   string
+		modulePath   string
+		repository   string
+		version      string
+		outputPath   string
+		dependents   []string
+		slackChannel string
+		webhook      string
+		force        bool
+	)
+
+	cmd := &cobra.Command{
+		Use:     "generate",
+		Aliases: []string{"gen"},
+		Short:   "Generate a new dependency manifest",
+		Long: `Generate creates a new dependency manifest file with the specified module
+and configuration options. The manifest follows the TDD defaults and includes
+sensible default configurations for commit templates, PR templates, and notifications.
+
+Examples:
+  cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3
+  cascade manifest gen --module-path=github.com/example/lib --module-name=mylib --version=v1.2.3 --output=deps.yaml
+  cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3 --dependents=owner/repo1,owner/repo2`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runManifestGenerate(moduleName, modulePath, repository, version, outputPath, dependents, slackChannel, webhook, force)
+		},
+	}
+
+	// Required flags
+	cmd.Flags().StringVar(&modulePath, "module-path", "", "Go module path (e.g., github.com/example/lib) [required]")
+	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3) [required]")
+
+	// Optional flags
+	cmd.Flags().StringVar(&moduleName, "module-name", "", "Human-friendly module name (defaults to basename of module path)")
+	cmd.Flags().StringVar(&repository, "repository", "", "GitHub repository (defaults to module path without domain)")
+	cmd.Flags().StringVar(&outputPath, "output", "", "Output file path (default: deps.yaml or workspace manifest path)")
+	cmd.Flags().StringSliceVar(&dependents, "dependents", []string{}, "Dependent repositories (format: owner/repo)")
+	cmd.Flags().StringVar(&slackChannel, "slack-channel", "", "Default Slack notification channel")
+	cmd.Flags().StringVar(&webhook, "webhook", "", "Default webhook URL for notifications")
+	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing manifest without prompting")
+
+	// Mark required flags
+	cmd.MarkFlagRequired("module-path")
+	cmd.MarkFlagRequired("version")
+
+	return cmd
 }
 
 // Command implementations
@@ -719,6 +786,107 @@ func runRevert(stateID string) error {
 	return nil
 }
 
+func runManifestGenerate(moduleName, modulePath, repository, version, outputPath string, dependents []string, slackChannel, webhook string, force bool) error {
+	start := time.Now()
+	ctx := context.Background()
+	logger := container.Logger()
+	cfg := container.Config()
+
+	defer func() {
+		if logger != nil {
+			logger.Debug("Manifest generate command completed",
+				"duration_ms", time.Since(start).Milliseconds(),
+				"module_path", modulePath,
+				"version", version,
+				"output", outputPath,
+				"dry_run", cfg.Executor.DryRun,
+			)
+		}
+	}()
+
+	// Derive defaults from module path
+	if moduleName == "" {
+		moduleName = deriveModuleName(modulePath)
+	}
+	if repository == "" {
+		repository = deriveRepository(modulePath)
+	}
+
+	// Resolve output path
+	finalOutputPath := resolveGenerateOutputPath(outputPath, cfg)
+
+	logger.Info("Generating dependency manifest",
+		"module", modulePath,
+		"version", version,
+		"output", finalOutputPath)
+
+	// Build generate options
+	options := manifest.GenerateOptions{
+		ModuleName:        moduleName,
+		ModulePath:        modulePath,
+		Repository:        repository,
+		Version:           version,
+		Dependents:        buildDependentOptions(dependents),
+		DefaultBranch:     "main",
+		DefaultLabels:     []string{"automation:cascade"},
+		DefaultCommitTmpl: "chore(deps): bump {{ .Module }} to {{ .Version }}",
+		DefaultTests: []manifest.Command{
+			{Cmd: []string{"go", "test", "./...", "-race", "-count=1"}},
+		},
+		DefaultNotifications: manifest.Notifications{
+			SlackChannel: slackChannel,
+			Webhook:      webhook,
+		},
+		DefaultPRConfig: manifest.PRConfig{
+			TitleTemplate: "chore(deps): bump {{ .Module }} to {{ .Version }}",
+			BodyTemplate:  "Automated dependency update for {{ .Module }} to {{ .Version }}",
+		},
+	}
+
+	// Generate manifest
+	generator := container.ManifestGenerator()
+	generatedManifest, err := generator.Generate(ctx, options)
+	if err != nil {
+		return newValidationError("failed to generate manifest", err)
+	}
+
+	// Serialize to YAML
+	yamlData, err := yaml.Marshal(generatedManifest)
+	if err != nil {
+		return newConfigError("failed to serialize manifest to YAML", err)
+	}
+
+	// Handle dry-run vs actual file writing
+	if cfg.Executor.DryRun {
+		fmt.Printf("DRY RUN: Would write manifest to %s\n", finalOutputPath)
+		fmt.Printf("--- Generated Manifest ---\n%s", string(yamlData))
+		return nil
+	}
+
+	// Check for existing file and handle overwrite logic
+	if _, err := os.Stat(finalOutputPath); err == nil {
+		if !force {
+			fmt.Printf("File %s already exists. Overwrite? [y/N]: ", finalOutputPath)
+			var response string
+			fmt.Scanln(&response)
+			if response != "y" && response != "Y" && response != "yes" && response != "YES" {
+				fmt.Println("Manifest generation cancelled.")
+				return nil
+			}
+		} else {
+			logger.Info("Overwriting existing manifest with --force flag", "path", finalOutputPath)
+		}
+	}
+
+	// Write to file
+	if err := os.WriteFile(finalOutputPath, yamlData, 0644); err != nil {
+		return newFileError("failed to write manifest file", err)
+	}
+
+	fmt.Printf("Manifest generated successfully: %s\n", finalOutputPath)
+	return nil
+}
+
 // Helper function to split module@version strings
 func splitModuleVersion(stateID string) []string {
 	parts := strings.Split(stateID, "@")
@@ -726,6 +894,88 @@ func splitModuleVersion(stateID string) []string {
 		return nil
 	}
 	return parts
+}
+
+// Helper functions for manifest generation
+
+// deriveModuleName extracts the module name from the module path
+func deriveModuleName(modulePath string) string {
+	if modulePath == "" {
+		return ""
+	}
+	// Extract the last part after the final slash
+	parts := strings.Split(modulePath, "/")
+	return parts[len(parts)-1]
+}
+
+// deriveRepository converts module path to repository format (removing domain)
+func deriveRepository(modulePath string) string {
+	if modulePath == "" {
+		return ""
+	}
+	// Remove domain prefix (e.g., "github.com/")
+	if strings.Contains(modulePath, "/") {
+		parts := strings.SplitN(modulePath, "/", 2)
+		if len(parts) > 1 {
+			return parts[1]
+		}
+	}
+	return modulePath
+}
+
+// buildDependentOptions converts string list to DependentOptions slice
+func buildDependentOptions(dependents []string) []manifest.DependentOptions {
+	if len(dependents) == 0 {
+		return []manifest.DependentOptions{}
+	}
+
+	options := make([]manifest.DependentOptions, len(dependents))
+	for i, dep := range dependents {
+		// Handle format: owner/repo or full module path
+		repo := strings.TrimSpace(dep)
+		modulePath := ""
+
+		// If it looks like a GitHub repository, convert to module path
+		if strings.Count(repo, "/") == 1 && !strings.Contains(repo, ".") {
+			modulePath = "github.com/" + repo
+		} else {
+			modulePath = repo
+			repo = deriveRepository(repo)
+		}
+
+		options[i] = manifest.DependentOptions{
+			Repository:      repo,
+			ModulePath:      modulePath,
+			LocalModulePath: ".",
+		}
+	}
+
+	return options
+}
+
+// resolveGenerateOutputPath determines where to write the generated manifest
+func resolveGenerateOutputPath(outputPath string, cfg *config.Config) string {
+	// Use explicit output path if provided
+	if outputPath != "" {
+		if !filepath.IsAbs(outputPath) {
+			if abs, err := filepath.Abs(outputPath); err == nil {
+				return abs
+			}
+		}
+		return outputPath
+	}
+
+	// Use config workspace manifest path
+	if cfg != nil && cfg.Workspace.ManifestPath != "" {
+		return cfg.Workspace.ManifestPath
+	}
+
+	// Default to current directory deps.yaml
+	if abs, err := filepath.Abs("deps.yaml"); err == nil {
+		return abs
+	}
+
+	return "deps.yaml"
 }
 
 // Error creation helpers for structured error handling
