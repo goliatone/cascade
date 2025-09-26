@@ -154,6 +154,94 @@ func TestIntegrationContainerMessageFlow(t *testing.T) {
 	t.Logf("Integration test completed successfully. Messages: %v", allMessages)
 }
 
+// TestIntegrationManifestGeneratorWithConfig tests that the DI container
+// properly wires the manifest generator with configuration defaults
+func TestIntegrationManifestGeneratorWithConfig(t *testing.T) {
+	// Create a config with manifest generator defaults
+	cfg := config.New()
+	cfg.ManifestGenerator.DefaultBranch = "cascade/update-deps"
+	cfg.ManifestGenerator.Tests.Command = "go test -race ./..."
+	cfg.ManifestGenerator.Tests.WorkingDirectory = "."
+	cfg.ManifestGenerator.DefaultWorkspace = "/workspace"
+	cfg.ManifestGenerator.Discovery.Enabled = true
+	cfg.ManifestGenerator.Discovery.MaxDepth = 3
+	cfg.ManifestGenerator.Discovery.Interactive = false
+	cfg.ManifestGenerator.Notifications.Enabled = true
+	cfg.ManifestGenerator.Notifications.OnFailure = true
+
+	fakeLogger := &fakeLogger{messages: []string{}}
+
+	// Create container with config
+	container, err := di.New(
+		di.WithConfig(cfg),
+		di.WithLogger(fakeLogger),
+	)
+	if err != nil {
+		t.Fatalf("failed to create container: %v", err)
+	}
+
+	// Get the manifest generator
+	generator := container.ManifestGenerator()
+	if generator == nil {
+		t.Fatal("manifest generator is nil")
+	}
+
+	// Test that the generator uses config defaults
+	ctx := context.Background()
+	options := manifest.GenerateOptions{
+		ModuleName: "test-module",
+		ModulePath: "github.com/example/test-module",
+		Repository: "example/test-module",
+		Version:    "v1.0.0",
+		// Don't set DefaultBranch or DefaultTests - should use config defaults
+	}
+
+	generatedManifest, err := generator.Generate(ctx, options)
+	if err != nil {
+		t.Fatalf("failed to generate manifest: %v", err)
+	}
+
+	// Verify that config defaults were applied
+	if generatedManifest.Defaults.Branch != "cascade/update-deps" {
+		t.Errorf("expected default branch 'cascade/update-deps', got %q", generatedManifest.Defaults.Branch)
+	}
+
+	// Verify that default test command is applied
+	if len(generatedManifest.Defaults.Tests) == 0 {
+		t.Error("expected default tests to be set")
+	} else {
+		testCmd := generatedManifest.Defaults.Tests[0]
+		// Should be using the config test command wrapped in sh -c
+		if len(testCmd.Cmd) < 2 || testCmd.Cmd[0] != "sh" || testCmd.Cmd[1] != "-c" {
+			t.Errorf("expected test command to use sh wrapper for custom command, got %v", testCmd.Cmd)
+		}
+	}
+
+	// Verify that the logger captured the config usage
+	found := false
+	for _, msg := range fakeLogger.messages {
+		if contains(msg, "Created manifest generator with config") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected logger to capture manifest generator config creation")
+	}
+
+	t.Logf("Manifest generator config integration test completed successfully")
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // TestIntegrationConfigurationIngestion tests configuration loading from fixtures
 func TestIntegrationConfigurationIngestion(t *testing.T) {
 	tests := []struct {
