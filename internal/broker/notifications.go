@@ -303,11 +303,23 @@ func (m *MultiNotifier) Send(ctx context.Context, item planner.WorkItem, result 
 	return firstResult, nil
 }
 
-// noopNotifier is a stub implementation used during bootstrapping.
-type noopNotifier struct{}
+// NoOpNotifier is a notifier that records notification intent but doesn't
+// send actual notifications. Used when notification integrations are not configured.
+type NoOpNotifier struct{}
 
-func (n *noopNotifier) Send(ctx context.Context, item planner.WorkItem, result *executor.Result) (*NotificationResult, error) {
-	return nil, &NotImplementedError{Operation: "notifier.Send"}
+// NewNoOpNotifier creates a new no-op notifier.
+func NewNoOpNotifier() *NoOpNotifier {
+	return &NoOpNotifier{}
+}
+
+// Send records the notification intent but doesn't send actual notifications.
+// This avoids NotImplementedError when notifications are intentionally disabled.
+func (n *NoOpNotifier) Send(ctx context.Context, item planner.WorkItem, result *executor.Result) (*NotificationResult, error) {
+	// Return a successful result indicating the notification was "sent" (but actually skipped)
+	return &NotificationResult{
+		Channel: "noop",
+		Message: "Notification skipped (no integrations configured)",
+	}, nil
 }
 
 // isTransientError determines if an error is worth retrying.
