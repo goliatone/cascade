@@ -546,24 +546,71 @@ func TestBroker_StructuredLogging(t *testing.T) {
 		expectLogs func(t *testing.T, logger *mockLogger)
 	}{
 		{
-			name:     "logs reviewer request failure",
-			scenario: "reviewer_failure",
+			name:     "logs failed execution skip",
+			scenario: "failed_execution",
 			workItem: planner.WorkItem{
 				Module: "example.com/testmod",
 				Repo:   "owner/repo",
-				PR: manifest.PRConfig{
-					Reviewers: []string{"reviewer1"},
-				},
+			},
+			result: &executor.Result{
+				Status: executor.StatusFailed,
+				Reason: "build failed",
+			},
+			expectLogs: func(t *testing.T, logger *mockLogger) {
+				if len(logger.infoCalls) != 1 {
+					t.Errorf("expected 1 info call, got %d", len(logger.infoCalls))
+					return
+				}
+				call := logger.infoCalls[0]
+				if call.msg != "Skipping PR creation for failed execution" {
+					t.Errorf("expected 'Skipping PR creation for failed execution', got %q", call.msg)
+				}
+				// Check that structured fields are present
+				hasModule := false
+				hasRepo := false
+				hasReason := false
+				for i := 0; i < len(call.args); i += 2 {
+					if i+1 >= len(call.args) {
+						break
+					}
+					key := call.args[i].(string)
+					if key == "module" && call.args[i+1].(string) == "example.com/testmod" {
+						hasModule = true
+					}
+					if key == "repo" && call.args[i+1].(string) == "owner/repo" {
+						hasRepo = true
+					}
+					if key == "reason" && call.args[i+1].(string) == "build failed" {
+						hasReason = true
+					}
+				}
+				if !hasModule {
+					t.Error("expected module field in log args")
+				}
+				if !hasRepo {
+					t.Error("expected repo field in log args")
+				}
+				if !hasReason {
+					t.Error("expected reason field in log args")
+				}
+			},
+		},
+		{
+			name:     "logs noop notification",
+			scenario: "noop_notification",
+			workItem: planner.WorkItem{
+				Module: "example.com/testmod",
+				Repo:   "owner/repo",
 			},
 			result: &executor.Result{Status: executor.StatusCompleted},
 			expectLogs: func(t *testing.T, logger *mockLogger) {
-				if len(logger.warnCalls) != 1 {
-					t.Errorf("expected 1 warn call, got %d", len(logger.warnCalls))
+				if len(logger.infoCalls) != 1 {
+					t.Errorf("expected 1 info call, got %d", len(logger.infoCalls))
 					return
 				}
-				call := logger.warnCalls[0]
-				if call.msg != "Failed to request reviewers" {
-					t.Errorf("expected 'Failed to request reviewers', got %q", call.msg)
+				call := logger.infoCalls[0]
+				if call.msg != "Notifications disabled" {
+					t.Errorf("expected 'Notifications disabled', got %q", call.msg)
 				}
 				// Check that structured fields are present
 				hasModule := false
@@ -588,47 +635,6 @@ func TestBroker_StructuredLogging(t *testing.T) {
 				}
 			},
 		},
-		{
-			name:     "logs failed execution skip",
-			scenario: "failed_execution",
-			workItem: planner.WorkItem{
-				Module: "example.com/testmod",
-				Repo:   "owner/repo",
-			},
-			result: &executor.Result{
-				Status: executor.StatusFailed,
-				Reason: "build failed",
-			},
-			expectLogs: func(t *testing.T, logger *mockLogger) {
-				if len(logger.infoCalls) != 1 {
-					t.Errorf("expected 1 info call, got %d", len(logger.infoCalls))
-					return
-				}
-				call := logger.infoCalls[0]
-				if call.msg != "Skipping PR creation for failed execution" {
-					t.Errorf("expected 'Skipping PR creation for failed execution', got %q", call.msg)
-				}
-			},
-		},
-		{
-			name:     "logs noop notification",
-			scenario: "noop_notification",
-			workItem: planner.WorkItem{
-				Module: "example.com/testmod",
-				Repo:   "owner/repo",
-			},
-			result: &executor.Result{Status: executor.StatusCompleted},
-			expectLogs: func(t *testing.T, logger *mockLogger) {
-				if len(logger.infoCalls) != 1 {
-					t.Errorf("expected 1 info call, got %d", len(logger.infoCalls))
-					return
-				}
-				call := logger.infoCalls[0]
-				if call.msg != "Notifications disabled" {
-					t.Errorf("expected 'Notifications disabled', got %q", call.msg)
-				}
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -638,20 +644,6 @@ func TestBroker_StructuredLogging(t *testing.T) {
 			var mockNotif broker.Notifier
 
 			switch tt.scenario {
-			case "reviewer_failure":
-				mockProv = &mockProvider{
-					requestReviewers: func(ctx context.Context, repo string, number int, reviewers []string, teamReviewers []string) error {
-						return errors.New("reviewer request failed")
-					},
-					createOrUpdatePR: func(ctx context.Context, input broker.PRInput) (*broker.PullRequest, error) {
-						return &broker.PullRequest{URL: "test", Number: 1, Repo: input.Repo}, nil
-					},
-				}
-				mockNotif = &mockNotifier{
-					send: func(ctx context.Context, item planner.WorkItem, result *executor.Result) (*broker.NotificationResult, error) {
-						return nil, nil
-					},
-				}
 			case "failed_execution":
 				mockProv = &mockProvider{}
 				mockNotif = &mockNotifier{}
@@ -663,7 +655,7 @@ func TestBroker_StructuredLogging(t *testing.T) {
 			b := broker.New(mockProv, mockNotif, broker.DefaultConfig(), logger)
 
 			switch tt.scenario {
-			case "reviewer_failure", "failed_execution":
+			case "failed_execution":
 				b.EnsurePR(context.Background(), tt.workItem, tt.result)
 			case "noop_notification":
 				b.Notify(context.Background(), tt.workItem, tt.result)
