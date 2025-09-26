@@ -697,6 +697,12 @@ func TestManifestGenerate_OverwriteBehavior(t *testing.T) {
 				"",
 				"",
 				tt.force,
+				true,       // yes flag - skip confirmation in tests
+				false,      // non-interactive
+				"",         // workspace
+				0,          // maxDepth
+				[]string{}, // includePatterns
+				[]string{}, // excludePatterns
 			)
 
 			// Check that no error occurred for valid cases
@@ -766,7 +772,13 @@ func TestManifestGenerate_WorkspaceHandling(t *testing.T) {
 		[]string{},
 		"",
 		"",
-		false, // force
+		false,      // force
+		true,       // yes flag - skip confirmation in tests
+		false,      // non-interactive
+		"",         // workspace
+		0,          // maxDepth
+		[]string{}, // includePatterns
+		[]string{}, // excludePatterns
 	)
 
 	// Check that no error occurred

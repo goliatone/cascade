@@ -237,6 +237,318 @@ func TestCLISmokeTests(t *testing.T) {
 	}
 }
 
+func TestCLIManifestGenerateDiscovery(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		setupFiles   func(workspace string) error
+		expectError  bool
+		expectedExit int
+		contains     []string
+		notContains  []string
+		description  string
+	}{
+		{
+			name: "explicit dependents vs discovery - explicit wins",
+			args: []string{
+				"manifest", "generate",
+				"--module-path=github.com/target/module",
+				"--version=v1.2.3",
+				"--dependents=owner/explicit-repo",
+				"--dry-run",
+				"--yes",
+			},
+			setupFiles: func(workspace string) error {
+				// Create a workspace with discoverable modules that should be ignored
+				return setupDiscoveryWorkspace(workspace)
+			},
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"Generating manifest for github.com/target/module@v1.2.3",
+				"Using 1 configured dependent repositories:",
+				"owner/explicit-repo",
+				"DRY RUN: Would write manifest to",
+			},
+			notContains: []string{
+				"Discovery workspace:",
+				"Discovered",
+				"example/module-a",
+				"example/module-b",
+			},
+			description: "When explicit dependents are provided, discovery should be skipped",
+		},
+		{
+			name: "workspace discovery with findings",
+			args: []string{
+				"manifest", "generate",
+				"--module-path=github.com/target/module",
+				"--version=v1.2.3",
+				"--dry-run",
+				"--yes",
+			},
+			setupFiles: func(workspace string) error {
+				return setupDiscoveryWorkspace(workspace)
+			},
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"Generating manifest for github.com/target/module@v1.2.3",
+				"Discovery workspace:",
+				"Discovered",
+				"dependent repositories:",
+				"example/module-a",
+				"example/module-b",
+				"DRY RUN: Would write manifest to",
+			},
+			notContains: []string{
+				"configured dependent repositories:",
+			},
+			description: "Discovery should find dependent modules in workspace",
+		},
+		{
+			name: "workspace discovery with exclusions",
+			args: []string{
+				"manifest", "generate",
+				"--module-path=github.com/target/module",
+				"--version=v1.2.3",
+				"--exclude=excluded",
+				"--dry-run",
+				"--yes",
+			},
+			setupFiles: func(workspace string) error {
+				return setupDiscoveryWorkspace(workspace)
+			},
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"Generating manifest for github.com/target/module@v1.2.3",
+				"Discovery workspace:",
+				"example/module-a",
+				"example/module-b",
+				"DRY RUN: Would write manifest to",
+			},
+			notContains: []string{
+				"example/module-d", // Should be excluded
+			},
+			description: "Discovery should respect exclude patterns",
+		},
+		{
+			name: "workspace discovery with inclusions",
+			args: []string{
+				"manifest", "generate",
+				"--module-path=github.com/target/module",
+				"--version=v1.2.3",
+				"--include=module-a",
+				"--dry-run",
+				"--yes",
+			},
+			setupFiles: func(workspace string) error {
+				return setupDiscoveryWorkspace(workspace)
+			},
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"Generating manifest for github.com/target/module@v1.2.3",
+				"Discovery workspace:",
+				"example/module-a",
+				"DRY RUN: Would write manifest to",
+			},
+			notContains: []string{
+				"example/module-b", // Should be excluded by include pattern
+				"example/module-d",
+			},
+			description: "Discovery should respect include patterns",
+		},
+		{
+			name: "workspace discovery no findings",
+			args: []string{
+				"manifest", "generate",
+				"--module-path=github.com/nonexistent/module",
+				"--version=v1.2.3",
+				"--dry-run",
+				"--yes",
+			},
+			setupFiles: func(workspace string) error {
+				return setupDiscoveryWorkspace(workspace)
+			},
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"Generating manifest for github.com/nonexistent/module@v1.2.3",
+				"Discovery workspace:",
+				"No dependent repositories found or configured.",
+				"DRY RUN: Would write manifest to",
+			},
+			notContains: []string{
+				"Discovered",
+				"example/module-a",
+			},
+			description: "Discovery should handle no findings gracefully",
+		},
+		{
+			name: "dry-run shows summary without writing",
+			args: []string{
+				"manifest", "generate",
+				"--module-path=github.com/target/module",
+				"--version=v1.2.3",
+				"--dry-run",
+				"--yes",
+			},
+			setupFiles: func(workspace string) error {
+				return setupDiscoveryWorkspace(workspace)
+			},
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"DRY RUN: Would write manifest to",
+				"--- Generated Manifest ---",
+				"module:",
+				"target:",
+				"dependents:",
+			},
+			notContains: []string{
+				"Manifest generated successfully:",
+				"File", "already exists",
+			},
+			description: "Dry-run should show manifest content without writing files",
+		},
+		{
+			name: "non-interactive mode skips confirmation",
+			args: []string{
+				"manifest", "generate",
+				"--module-path=github.com/target/module",
+				"--version=v1.2.3",
+				"--non-interactive",
+				"--dry-run",
+			},
+			setupFiles: func(workspace string) error {
+				return setupDiscoveryWorkspace(workspace)
+			},
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"--- Proceeding with manifest generation ---",
+				"DRY RUN: Would write manifest to",
+			},
+			notContains: []string{
+				"Proceed with manifest generation? [Y/n]:",
+			},
+			description: "Non-interactive mode should skip confirmation prompts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workspace := t.TempDir()
+
+			// Set up test files if needed
+			if tt.setupFiles != nil {
+				if err := tt.setupFiles(workspace); err != nil {
+					t.Fatalf("Failed to setup test files: %v", err)
+				}
+			}
+
+			// Add workspace to args if not already specified
+			argsWithWorkspace := append(tt.args, "--workspace="+workspace)
+
+			cmd := exec.Command("go", append([]string{"run", "."}, argsWithWorkspace...)...)
+			env := append(os.Environ(),
+				"CASCADE_WORKSPACE="+workspace,
+				"CASCADE_STATE_DIR="+workspace,
+				"CASCADE_DRY_RUN=true",
+			)
+			cmd.Env = env
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+
+			// Check exit code
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("Expected command to fail, but it succeeded. Output: %s", stdout.String())
+				}
+				if exitError, ok := err.(*exec.ExitError); ok {
+					if exitError.ExitCode() != tt.expectedExit {
+						t.Errorf("Expected exit code %d, got %d. Stderr: %s", tt.expectedExit, exitError.ExitCode(), stderr.String())
+					}
+				}
+			} else if err != nil {
+				t.Fatalf("Command failed unexpectedly: %v, stderr: %s, stdout: %s", err, stderr.String(), stdout.String())
+			}
+
+			output := stdout.String() + stderr.String()
+
+			// Check expected content
+			for _, expected := range tt.contains {
+				if !strings.Contains(output, expected) {
+					t.Errorf("%s: Expected output to contain %q, got:\n%s", tt.description, expected, output)
+				}
+			}
+
+			// Check content that should not be present
+			for _, notExpected := range tt.notContains {
+				if strings.Contains(output, notExpected) {
+					t.Errorf("%s: Expected output to NOT contain %q, got:\n%s", tt.description, notExpected, output)
+				}
+			}
+		})
+	}
+}
+
+// setupDiscoveryWorkspace creates a test workspace with discoverable modules
+func setupDiscoveryWorkspace(workspace string) error {
+	modules := map[string]string{
+		"module-a/go.mod": `module github.com/example/module-a
+
+go 1.21
+
+require github.com/target/module v1.0.0
+`,
+		"module-b/go.mod": `module github.com/example/module-b
+
+go 1.21
+
+require (
+	github.com/target/module v2.0.0
+	github.com/other/dep v1.5.0
+)
+`,
+		"module-c/go.mod": `module github.com/example/module-c
+
+go 1.21
+
+require github.com/other/dependency v1.0.0
+`,
+		"excluded/module-d/go.mod": `module github.com/example/module-d
+
+go 1.21
+
+require github.com/target/module v1.0.0
+`,
+	}
+
+	for path, content := range modules {
+		fullPath := workspace + "/" + path
+		if err := os.MkdirAll(strings.TrimSuffix(fullPath, "/go.mod"), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			return err
+		}
+
+		// Also create go.sum files to make modules valid
+		sumPath := strings.TrimSuffix(fullPath, ".mod") + ".sum"
+		if err := os.WriteFile(sumPath, []byte(""), 0644); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func TestCLIExitCodes(t *testing.T) {
 	tests := []struct {
 		name         string

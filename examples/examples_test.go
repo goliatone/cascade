@@ -123,10 +123,10 @@ func TestExampleManifestStructure(t *testing.T) {
 		{
 			"basic-manifest.yaml",
 			map[string]bool{
-				"single_module":     true,
-				"no_dependents":     true,
-				"default_settings":  true,
-				"no_notifications":  true,
+				"single_module":    true,
+				"no_dependents":    true,
+				"default_settings": true,
+				"no_notifications": true,
 			},
 		},
 		{
@@ -142,8 +142,8 @@ func TestExampleManifestStructure(t *testing.T) {
 		{
 			"custom-templates-manifest.yaml",
 			map[string]bool{
-				"custom_templates":    true,
-				"rich_pr_body":       true,
+				"custom_templates":      true,
+				"rich_pr_body":          true,
 				"webhook_notifications": true,
 				"environment_variables": true,
 			},
