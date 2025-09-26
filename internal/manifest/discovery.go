@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -288,16 +289,14 @@ func (w *workspaceDiscovery) getModuleVersionFromPath(ctx context.Context, modul
 		return "", fmt.Errorf("failed to list modules: %w", err)
 	}
 
-	// Parse JSON output line by line (each line is a separate JSON object)
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-
+	// Parse JSON output using decoder (go list outputs concatenated JSON objects)
+	decoder := json.NewDecoder(strings.NewReader(string(output)))
+	for {
 		var module moduleInfo
-		if err := json.Unmarshal([]byte(line), &module); err != nil {
+		if err := decoder.Decode(&module); err != nil {
+			if err == io.EOF {
+				break
+			}
 			continue // Skip malformed JSON
 		}
 
