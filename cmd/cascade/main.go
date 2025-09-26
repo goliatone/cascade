@@ -62,19 +62,58 @@ var (
 
 func main() {
 	if err := execute(); err != nil {
-		// Handle structured errors with appropriate exit codes
-		if cliErr, ok := err.(*CLIError); ok {
-			fmt.Fprintf(os.Stderr, "cascade: %s\n", cliErr.Message)
-			if cliErr.Cause != nil {
-				fmt.Fprintf(os.Stderr, "  Cause: %v\n", cliErr.Cause)
-			}
-			os.Exit(cliErr.ExitCode())
-		}
-
-		// Handle other error types
-		fmt.Fprintf(os.Stderr, "cascade: %v\n", err)
-		os.Exit(ExitGenericError)
+		handleCLIError(err)
 	}
+}
+
+// handleCLIError processes and exits with appropriate error codes
+func handleCLIError(err error) {
+	if err == nil {
+		return
+	}
+
+	// Handle structured errors with appropriate exit codes
+	if cliErr, ok := err.(*CLIError); ok {
+		fmt.Fprintf(os.Stderr, "cascade: %s\n", cliErr.Message)
+		if cliErr.Cause != nil {
+			fmt.Fprintf(os.Stderr, "  Cause: %v\n", cliErr.Cause)
+		}
+		os.Exit(cliErr.ExitCode())
+	}
+
+	// Try to infer error type from error message patterns for better exit codes
+	errorMsg := err.Error()
+
+	// Configuration and validation errors
+	if strings.Contains(errorMsg, "configuration") || strings.Contains(errorMsg, "config") {
+		fmt.Fprintf(os.Stderr, "cascade: configuration error: %v\n", err)
+		os.Exit(ExitConfigError)
+	}
+
+	// File system errors
+	if strings.Contains(errorMsg, "no such file") || strings.Contains(errorMsg, "permission denied") ||
+		strings.Contains(errorMsg, "file not found") || strings.Contains(errorMsg, "manifest") {
+		fmt.Fprintf(os.Stderr, "cascade: file error: %v\n", err)
+		os.Exit(ExitFileError)
+	}
+
+	// Validation errors
+	if strings.Contains(errorMsg, "must be specified") || strings.Contains(errorMsg, "invalid") ||
+		strings.Contains(errorMsg, "validation") || strings.Contains(errorMsg, "required") {
+		fmt.Fprintf(os.Stderr, "cascade: validation error: %v\n", err)
+		os.Exit(ExitValidationError)
+	}
+
+	// Network/connectivity errors
+	if strings.Contains(errorMsg, "network") || strings.Contains(errorMsg, "connection") ||
+		strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "unreachable") {
+		fmt.Fprintf(os.Stderr, "cascade: network error: %v\n", err)
+		os.Exit(ExitNetworkError)
+	}
+
+	// Generic error fallback
+	fmt.Fprintf(os.Stderr, "cascade: %v\n", err)
+	os.Exit(ExitGenericError)
 }
 
 // execute is the main entry point that sets up and runs the CLI
@@ -90,7 +129,31 @@ func newRootCommand() *cobra.Command {
 		Short: "Cascade orchestrates automated dependency updates across Go repositories",
 		Long: `Cascade is a CLI tool that orchestrates automated dependency updates across
 multiple Go repositories. It reads dependency manifests, plans updates,
-executes changes, and manages pull requests through GitHub integration.`,
+executes changes, and manages pull requests through GitHub integration.
+
+Configuration Sources (in precedence order):
+  1. Command-line flags (highest priority)
+  2. Environment variables (CASCADE_*)
+  3. Configuration files (~/.config/cascade/config.yaml)
+  4. Built-in defaults (lowest priority)
+
+Exit Codes:
+  0  - Success
+  1  - Generic error
+  2  - Configuration error (missing config, invalid values)
+  3  - Validation error (missing required flags, invalid arguments)
+  4  - Network error (connectivity issues, API failures)
+  5  - File system error (missing files, permission issues)
+  6  - State management error (corrupted state, lock failures)
+  7  - Planning error (manifest parsing, dependency resolution)
+  8  - Execution error (git operations, build failures)
+  9  - User interruption (SIGINT, SIGTERM)
+  10 - Resource exhaustion (disk space, memory)
+
+Examples:
+  cascade plan --module=github.com/example/lib --version=v1.2.3
+  cascade release --manifest=deps.yaml --dry-run
+  CASCADE_GITHUB_TOKEN=token cascade release --module=github.com/example/lib --version=v1.2.3`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -99,6 +162,20 @@ executes changes, and manages pull requests through GitHub integration.`,
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			cleanupContainer()
 		},
+	}
+
+	// Override Cobra's default error handling to use structured errors
+	cmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return newValidationError("invalid flag usage", err)
+	})
+
+	// Set up error handling for argument validation
+	cmd.Args = func(cmd *cobra.Command, args []string) error {
+		// Allow subcommands to handle their own args
+		if cmd.HasSubCommands() {
+			return nil
+		}
+		return cobra.ArbitraryArgs(cmd, args)
 	}
 
 	// Add configuration flags
@@ -278,7 +355,7 @@ func runPlan(manifestPath string) error {
 	// Load the manifest
 	manifest, err := container.Manifest().Load(manifestPath)
 	if err != nil {
-		return fmt.Errorf("failed to load manifest: %w", err)
+		return newFileError("failed to load manifest", err)
 	}
 
 	// Create target from config or CLI args
@@ -289,16 +366,16 @@ func runPlan(manifestPath string) error {
 
 	// Validate target is specified
 	if target.Module == "" {
-		return fmt.Errorf("target module must be specified via --module flag or config")
+		return newValidationError("target module must be specified via --module flag or config", nil)
 	}
 	if target.Version == "" {
-		return fmt.Errorf("target version must be specified via --version flag or config")
+		return newValidationError("target version must be specified via --version flag or config", nil)
 	}
 
 	// Generate the plan
 	plan, err := container.Planner().Plan(ctx, manifest, target)
 	if err != nil {
-		return fmt.Errorf("failed to generate plan: %w", err)
+		return newPlanningError("failed to generate plan", err)
 	}
 
 	// Display the plan
