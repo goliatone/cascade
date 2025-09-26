@@ -974,19 +974,39 @@ func deriveModuleName(modulePath string) string {
 	return parts[len(parts)-1]
 }
 
-// deriveRepository converts module path to repository format (removing domain)
+// deriveRepository converts module path to repository format for known hosts
 func deriveRepository(modulePath string) string {
 	if modulePath == "" {
 		return ""
 	}
-	// Remove domain prefix (e.g., "github.com/")
-	if strings.Contains(modulePath, "/") {
-		parts := strings.SplitN(modulePath, "/", 2)
-		if len(parts) > 1 {
-			return parts[1]
+
+	// For common hosting providers, extract the repository part (owner/repo)
+	parts := strings.Split(modulePath, "/")
+	if len(parts) >= 3 {
+		switch parts[0] {
+		case "github.com", "gitlab.com", "bitbucket.org":
+			return strings.Join(parts[1:3], "/")
 		}
 	}
+
+	// For non-hosted URLs or unknown hosts, preserve the original module path
+	// This prevents breaking URLs like go.uber.org/zap into invalid repository names
 	return modulePath
+}
+
+// deriveLocalModulePath calculates the relative path from repository root to module
+func deriveLocalModulePath(modulePath string) string {
+	parts := strings.Split(modulePath, "/")
+	if len(parts) >= 4 {
+		switch parts[0] {
+		case "github.com", "gitlab.com", "bitbucket.org":
+			// For hosted repos, everything after org/repo is the local path
+			return strings.Join(parts[3:], "/")
+		}
+	}
+	// For non-hosted URLs or short paths, default to root
+	// This handles cases like go.uber.org/zap where the entire URL is the "repository"
+	return "."
 }
 
 // buildDependentOptions converts string list to DependentOptions slice
@@ -1012,7 +1032,7 @@ func buildDependentOptions(dependents []string) []manifest.DependentOptions {
 		options[i] = manifest.DependentOptions{
 			Repository:      repo,
 			ModulePath:      modulePath,
-			LocalModulePath: ".",
+			LocalModulePath: deriveLocalModulePath(modulePath),
 		}
 	}
 
