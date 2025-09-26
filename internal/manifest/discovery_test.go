@@ -488,3 +488,122 @@ func TestWorkspaceDiscovery_shouldIncludeDirectory(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkspaceDiscovery_ResolveVersion(t *testing.T) {
+	discovery := NewWorkspaceDiscovery()
+	ctx := context.Background()
+
+	tests := []struct {
+		name                string
+		options             VersionResolutionOptions
+		expectError         bool
+		expectedSource      VersionResolutionSource
+		skipTest            bool // Skip tests that require network access
+		validateVersionFunc func(string) bool
+	}{
+		{
+			name: "requires target module",
+			options: VersionResolutionOptions{
+				WorkspaceDir: "/tmp",
+				Strategy:     VersionResolutionLocal,
+			},
+			expectError: true,
+		},
+		{
+			name: "requires workspace directory",
+			options: VersionResolutionOptions{
+				TargetModule: "github.com/example/module",
+				Strategy:     VersionResolutionLocal,
+			},
+			expectError: true,
+		},
+		{
+			name: "latest strategy requires network access",
+			options: VersionResolutionOptions{
+				WorkspaceDir:       "/tmp",
+				TargetModule:       "github.com/example/module",
+				Strategy:           VersionResolutionLatest,
+				AllowNetworkAccess: false,
+			},
+			expectError: true,
+		},
+		{
+			name: "unsupported strategy fails",
+			options: VersionResolutionOptions{
+				WorkspaceDir: "/tmp",
+				TargetModule: "github.com/example/module",
+				Strategy:     "unsupported",
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skipTest {
+				t.Skip("Skipping test that requires network access or external dependencies")
+			}
+
+			result, err := discovery.ResolveVersion(ctx, tt.options)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			if result == nil {
+				t.Errorf("expected result but got nil")
+				return
+			}
+
+			if tt.expectedSource != "" && result.Source != tt.expectedSource {
+				t.Errorf("expected source %s, got %s", tt.expectedSource, result.Source)
+			}
+
+			if tt.validateVersionFunc != nil && !tt.validateVersionFunc(result.Version) {
+				t.Errorf("version validation failed for: %s", result.Version)
+			}
+		})
+	}
+}
+
+func TestVersionResolutionStrategy_Values(t *testing.T) {
+	// Test that the constants are properly defined
+	strategies := []VersionResolutionStrategy{
+		VersionResolutionLocal,
+		VersionResolutionLatest,
+		VersionResolutionAuto,
+	}
+
+	expectedValues := []string{"local", "latest", "auto"}
+
+	for i, strategy := range strategies {
+		if string(strategy) != expectedValues[i] {
+			t.Errorf("expected strategy %d to be %s, got %s", i, expectedValues[i], string(strategy))
+		}
+	}
+}
+
+func TestVersionResolutionSource_Values(t *testing.T) {
+	// Test that the constants are properly defined
+	sources := []VersionResolutionSource{
+		VersionSourceLocal,
+		VersionSourceNetwork,
+		VersionSourceFallback,
+	}
+
+	expectedValues := []string{"local", "network", "fallback"}
+
+	for i, source := range sources {
+		if string(source) != expectedValues[i] {
+			t.Errorf("expected source %d to be %s, got %s", i, expectedValues[i], string(source))
+		}
+	}
+}

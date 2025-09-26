@@ -403,8 +403,7 @@ func TestCLIManifestGenerateDiscovery(t *testing.T) {
 			contains: []string{
 				"DRY RUN: Would write manifest to",
 				"--- Generated Manifest ---",
-				"module:",
-				"target:",
+				"module: github.com/target/module",
 				"dependents:",
 			},
 			notContains: []string{
@@ -428,7 +427,7 @@ func TestCLIManifestGenerateDiscovery(t *testing.T) {
 			expectError:  false,
 			expectedExit: 0,
 			contains: []string{
-				"--- Proceeding with manifest generation ---",
+				"--- DRY RUN: Would proceed with manifest generation ---",
 				"DRY RUN: Would write manifest to",
 			},
 			notContains: []string{
