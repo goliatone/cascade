@@ -14,6 +14,32 @@ import (
 	"github.com/goliatone/cascade/pkg/testsupport"
 )
 
+// mockLogger implements broker.Logger for testing.
+type mockLogger struct {
+	debugCalls []logCall
+	infoCalls  []logCall
+	warnCalls  []logCall
+	errorCalls []logCall
+}
+
+type logCall struct {
+	msg  string
+	args []any
+}
+
+func (m *mockLogger) Debug(msg string, args ...any) {
+	m.debugCalls = append(m.debugCalls, logCall{msg, args})
+}
+func (m *mockLogger) Info(msg string, args ...any) {
+	m.infoCalls = append(m.infoCalls, logCall{msg, args})
+}
+func (m *mockLogger) Warn(msg string, args ...any) {
+	m.warnCalls = append(m.warnCalls, logCall{msg, args})
+}
+func (m *mockLogger) Error(msg string, args ...any) {
+	m.errorCalls = append(m.errorCalls, logCall{msg, args})
+}
+
 func TestBroker_EnsurePRProducesExpectedPayload(t *testing.T) {
 	loader := manifest.NewLoader()
 	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
@@ -236,7 +262,7 @@ func TestBroker_EnsurePR_TableDriven(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := broker.New(tt.mockProvider, tt.mockNotifier, tt.config)
+			b := broker.New(tt.mockProvider, tt.mockNotifier, tt.config, &mockLogger{})
 
 			pr, err := b.EnsurePR(context.Background(), tt.workItem, tt.result)
 
@@ -360,7 +386,7 @@ func TestBroker_Comment(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := broker.New(tt.mockProvider, &mockNotifier{}, tt.config)
+			b := broker.New(tt.mockProvider, &mockNotifier{}, tt.config, &mockLogger{})
 
 			err := b.Comment(context.Background(), tt.pr, tt.body)
 
@@ -445,7 +471,7 @@ func TestBroker_Notify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := broker.New(&mockProvider{}, tt.mockNotifier, tt.config)
+			b := broker.New(&mockProvider{}, tt.mockNotifier, tt.config, &mockLogger{})
 
 			result, err := b.Notify(context.Background(), tt.workItem, tt.result)
 
@@ -471,6 +497,179 @@ func TestBroker_Notify(t *testing.T) {
 					t.Errorf("Notify() result.Message = %v, want %v", result.Message, tt.expectResult.Message)
 				}
 			}
+		})
+	}
+}
+
+func TestBroker_Notify_WithNoOpNotifier(t *testing.T) {
+	// Create a broker with NoOpNotifier
+	b := broker.New(&mockProvider{}, broker.NewNoOpNotifier(), broker.DefaultConfig(), &mockLogger{})
+
+	workItem := planner.WorkItem{
+		Module: "example.com/testmod",
+		Repo:   "owner/repo",
+	}
+
+	result := &executor.Result{
+		Status: executor.StatusCompleted,
+		Reason: "Tests passed",
+	}
+
+	notificationResult, err := b.Notify(context.Background(), workItem, result)
+
+	// Should not return an error
+	if err != nil {
+		t.Errorf("Notify() with NoOpNotifier returned unexpected error: %v", err)
+	}
+
+	// Should return a successful result
+	if notificationResult == nil {
+		t.Fatal("Notify() with NoOpNotifier returned nil result")
+	}
+
+	if notificationResult.Channel != "noop" {
+		t.Errorf("Expected channel 'noop', got '%s'", notificationResult.Channel)
+	}
+
+	expectedMessage := "Notification skipped (no integrations configured)"
+	if notificationResult.Message != expectedMessage {
+		t.Errorf("Expected message '%s', got '%s'", expectedMessage, notificationResult.Message)
+	}
+}
+
+func TestBroker_StructuredLogging(t *testing.T) {
+	tests := []struct {
+		name       string
+		scenario   string
+		workItem   planner.WorkItem
+		result     *executor.Result
+		expectLogs func(t *testing.T, logger *mockLogger)
+	}{
+		{
+			name:     "logs reviewer request failure",
+			scenario: "reviewer_failure",
+			workItem: planner.WorkItem{
+				Module: "example.com/testmod",
+				Repo:   "owner/repo",
+				PR: manifest.PRConfig{
+					Reviewers: []string{"reviewer1"},
+				},
+			},
+			result: &executor.Result{Status: executor.StatusCompleted},
+			expectLogs: func(t *testing.T, logger *mockLogger) {
+				if len(logger.warnCalls) != 1 {
+					t.Errorf("expected 1 warn call, got %d", len(logger.warnCalls))
+					return
+				}
+				call := logger.warnCalls[0]
+				if call.msg != "Failed to request reviewers" {
+					t.Errorf("expected 'Failed to request reviewers', got %q", call.msg)
+				}
+				// Check that structured fields are present
+				hasModule := false
+				hasRepo := false
+				for i := 0; i < len(call.args); i += 2 {
+					if i+1 >= len(call.args) {
+						break
+					}
+					key := call.args[i].(string)
+					if key == "module" && call.args[i+1].(string) == "example.com/testmod" {
+						hasModule = true
+					}
+					if key == "repo" && call.args[i+1].(string) == "owner/repo" {
+						hasRepo = true
+					}
+				}
+				if !hasModule {
+					t.Error("expected module field in log args")
+				}
+				if !hasRepo {
+					t.Error("expected repo field in log args")
+				}
+			},
+		},
+		{
+			name:     "logs failed execution skip",
+			scenario: "failed_execution",
+			workItem: planner.WorkItem{
+				Module: "example.com/testmod",
+				Repo:   "owner/repo",
+			},
+			result: &executor.Result{
+				Status: executor.StatusFailed,
+				Reason: "build failed",
+			},
+			expectLogs: func(t *testing.T, logger *mockLogger) {
+				if len(logger.infoCalls) != 1 {
+					t.Errorf("expected 1 info call, got %d", len(logger.infoCalls))
+					return
+				}
+				call := logger.infoCalls[0]
+				if call.msg != "Skipping PR creation for failed execution" {
+					t.Errorf("expected 'Skipping PR creation for failed execution', got %q", call.msg)
+				}
+			},
+		},
+		{
+			name:     "logs noop notification",
+			scenario: "noop_notification",
+			workItem: planner.WorkItem{
+				Module: "example.com/testmod",
+				Repo:   "owner/repo",
+			},
+			result: &executor.Result{Status: executor.StatusCompleted},
+			expectLogs: func(t *testing.T, logger *mockLogger) {
+				if len(logger.infoCalls) != 1 {
+					t.Errorf("expected 1 info call, got %d", len(logger.infoCalls))
+					return
+				}
+				call := logger.infoCalls[0]
+				if call.msg != "Notifications disabled" {
+					t.Errorf("expected 'Notifications disabled', got %q", call.msg)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &mockLogger{}
+			var mockProv *mockProvider
+			var mockNotif broker.Notifier
+
+			switch tt.scenario {
+			case "reviewer_failure":
+				mockProv = &mockProvider{
+					requestReviewers: func(ctx context.Context, repo string, number int, reviewers []string, teamReviewers []string) error {
+						return errors.New("reviewer request failed")
+					},
+					createOrUpdatePR: func(ctx context.Context, input broker.PRInput) (*broker.PullRequest, error) {
+						return &broker.PullRequest{URL: "test", Number: 1, Repo: input.Repo}, nil
+					},
+				}
+				mockNotif = &mockNotifier{
+					send: func(ctx context.Context, item planner.WorkItem, result *executor.Result) (*broker.NotificationResult, error) {
+						return nil, nil
+					},
+				}
+			case "failed_execution":
+				mockProv = &mockProvider{}
+				mockNotif = &mockNotifier{}
+			case "noop_notification":
+				mockProv = &mockProvider{}
+				mockNotif = broker.NewNoOpNotifier()
+			}
+
+			b := broker.New(mockProv, mockNotif, broker.DefaultConfig(), logger)
+
+			switch tt.scenario {
+			case "reviewer_failure", "failed_execution":
+				b.EnsurePR(context.Background(), tt.workItem, tt.result)
+			case "noop_notification":
+				b.Notify(context.Background(), tt.workItem, tt.result)
+			}
+
+			tt.expectLogs(t, logger)
 		})
 	}
 }

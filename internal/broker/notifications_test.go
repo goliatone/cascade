@@ -494,3 +494,64 @@ func ErrorAs(err error, target any) bool {
 	}
 	return false
 }
+
+func TestNoOpNotifier_Send(t *testing.T) {
+	ctx := context.Background()
+	notifier := NewNoOpNotifier()
+
+	workItem := planner.WorkItem{
+		Module: "example.com/testmod",
+		Repo:   "owner/repo",
+	}
+
+	result := &executor.Result{
+		Status: executor.StatusCompleted,
+		Reason: "Tests passed",
+	}
+
+	notificationResult, err := notifier.Send(ctx, workItem, result)
+
+	// Should not return an error
+	if err != nil {
+		t.Errorf("NoOpNotifier.Send() returned unexpected error: %v", err)
+	}
+
+	// Should return a successful result indicating notification was skipped
+	if notificationResult == nil {
+		t.Fatal("NoOpNotifier.Send() returned nil result")
+	}
+
+	if notificationResult.Channel != "noop" {
+		t.Errorf("Expected channel 'noop', got '%s'", notificationResult.Channel)
+	}
+
+	expectedMessage := "Notification skipped (no integrations configured)"
+	if notificationResult.Message != expectedMessage {
+		t.Errorf("Expected message '%s', got '%s'", expectedMessage, notificationResult.Message)
+	}
+}
+
+func TestNoOpNotifier_Send_WithNilResult(t *testing.T) {
+	ctx := context.Background()
+	notifier := NewNoOpNotifier()
+
+	workItem := planner.WorkItem{
+		Module: "example.com/testmod",
+		Repo:   "owner/repo",
+	}
+
+	notificationResult, err := notifier.Send(ctx, workItem, nil)
+
+	// Should still succeed even with nil result
+	if err != nil {
+		t.Errorf("NoOpNotifier.Send() returned unexpected error with nil result: %v", err)
+	}
+
+	if notificationResult == nil {
+		t.Fatal("NoOpNotifier.Send() returned nil result")
+	}
+
+	if notificationResult.Channel != "noop" {
+		t.Errorf("Expected channel 'noop', got '%s'", notificationResult.Channel)
+	}
+}
