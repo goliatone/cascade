@@ -35,31 +35,54 @@ func DefaultConfig() Config {
 	}
 }
 
+// Logger defines the logging interface used by the broker.
+type Logger interface {
+	Debug(msg string, args ...any)
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
+	Error(msg string, args ...any)
+}
+
 // New returns a broker implementation with the given provider and notifier.
 // Returns an error if provider or notifier is nil to fail fast on misconfiguration.
-func New(provider Provider, notifier Notifier, config Config) Broker {
+func New(provider Provider, notifier Notifier, config Config, logger Logger) Broker {
 	if provider == nil {
 		panic("broker.New: provider cannot be nil (use NewStub for testing)")
 	}
 	if notifier == nil {
 		panic("broker.New: notifier cannot be nil (use NewStub for testing)")
 	}
+	if logger == nil {
+		panic("broker.New: logger cannot be nil")
+	}
 	return &broker{
 		provider: provider,
 		notifier: notifier,
 		config:   config,
+		logger:   logger,
 	}
 }
 
+// noOpLogger is a no-op implementation of Logger for stub brokers.
+type noOpLogger struct{}
+
+func (noOpLogger) Debug(msg string, args ...any) {}
+func (noOpLogger) Info(msg string, args ...any)  {}
+func (noOpLogger) Warn(msg string, args ...any)  {}
+func (noOpLogger) Error(msg string, args ...any) {}
+
 // NewStub returns a stub broker implementation for testing.
 func NewStub() Broker {
-	return &broker{}
+	return &broker{
+		logger: noOpLogger{},
+	}
 }
 
 type broker struct {
 	provider Provider
 	notifier Notifier
 	config   Config
+	logger   Logger
 }
 
 func (b *broker) EnsurePR(ctx context.Context, item planner.WorkItem, result *executor.Result) (*PullRequest, error) {
@@ -87,7 +110,7 @@ func (b *broker) EnsurePR(ctx context.Context, item planner.WorkItem, result *ex
 	// Skip PR creation gracefully for failed execution results
 	if result != nil && result.Status == executor.StatusFailed {
 		// Log the failure but don't return an error to allow orchestration to continue
-		fmt.Printf("INFO: skipping PR creation for failed execution in %s: %s\n", item.Module, result.Reason)
+		b.logger.Info("Skipping PR creation for failed execution", "module", item.Module, "repo", item.Repo, "reason", result.Reason)
 		return nil, nil
 	}
 
@@ -133,8 +156,7 @@ func (b *broker) EnsurePR(ctx context.Context, item planner.WorkItem, result *ex
 
 		if err := b.provider.RequestReviewers(ctx, item.Repo, pr.Number, sanitizedReviewers, sanitizedTeamReviewers); err != nil {
 			// Don't fail the whole operation for reviewer errors
-			// TODO: Log this error
-			fmt.Printf("WARNING: failed to request reviewers for %s: %v\n", item.Module, err)
+			b.logger.Warn("Failed to request reviewers", "module", item.Module, "repo", item.Repo, "reviewers", sanitizedReviewers, "team_reviewers", sanitizedTeamReviewers, "error", err)
 		}
 	}
 
@@ -181,9 +203,13 @@ func (b *broker) Notify(ctx context.Context, item planner.WorkItem, result *exec
 	notificationResult, err := b.notifier.Send(ctx, item, result)
 	if err != nil {
 		// Log notification failures but don't fail the operation
-		// TODO: Use proper logger instead of fmt
-		fmt.Printf("WARNING: notification failed for %s: %v\n", item.Module, err)
+		b.logger.Warn("Notification failed", "module", item.Module, "repo", item.Repo, "error", err)
 		return nil, nil // Return nil so PR creation continues
+	}
+
+	// Log when notifications are intentionally disabled
+	if notificationResult != nil && notificationResult.Channel == "noop" {
+		b.logger.Info("Notifications disabled", "module", item.Module, "repo", item.Repo, "message", notificationResult.Message)
 	}
 
 	return notificationResult, nil
