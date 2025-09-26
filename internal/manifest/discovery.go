@@ -3,11 +3,15 @@ package manifest
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 // WorkspaceDiscovery provides functionality to discover Go modules and their dependencies
@@ -15,6 +19,10 @@ import (
 type WorkspaceDiscovery interface {
 	// DiscoverDependents finds Go modules in the workspace that depend on the target module.
 	DiscoverDependents(ctx context.Context, options DiscoveryOptions) ([]DependentOptions, error)
+
+	// ResolveVersion attempts to resolve the current version of a module within the workspace.
+	// It returns the resolved version or an error if resolution fails.
+	ResolveVersion(ctx context.Context, options VersionResolutionOptions) (*VersionResolution, error)
 }
 
 // DiscoveryOptions configures workspace discovery behavior.
@@ -40,6 +48,73 @@ type DiscoveredModule struct {
 	Path       string // File system path to the module
 	ModulePath string // Go module path from go.mod
 	Repository string // Inferred repository path
+}
+
+// VersionResolutionOptions configures version resolution behavior.
+type VersionResolutionOptions struct {
+	// WorkspaceDir is the root directory to scan for Go modules
+	WorkspaceDir string
+
+	// TargetModule is the module path we're trying to resolve the version for
+	TargetModule string
+
+	// Strategy determines how to resolve the version
+	Strategy VersionResolutionStrategy
+
+	// AllowNetworkAccess enables network-based resolution methods
+	AllowNetworkAccess bool
+}
+
+// VersionResolutionStrategy defines how to resolve module versions.
+type VersionResolutionStrategy string
+
+const (
+	// VersionResolutionLocal resolves version from local workspace dependencies
+	VersionResolutionLocal VersionResolutionStrategy = "local"
+
+	// VersionResolutionLatest resolves to the latest available version
+	VersionResolutionLatest VersionResolutionStrategy = "latest"
+
+	// VersionResolutionAuto tries local first, then latest if network access is allowed
+	VersionResolutionAuto VersionResolutionStrategy = "auto"
+)
+
+// VersionResolution contains the result of version resolution.
+type VersionResolution struct {
+	// Version is the resolved version
+	Version string
+
+	// Source indicates how the version was resolved
+	Source VersionResolutionSource
+
+	// SourcePath is the path where the version was found (for local resolutions)
+	SourcePath string
+
+	// Warnings contains any warnings generated during resolution
+	Warnings []string
+}
+
+// VersionResolutionSource indicates where a version was resolved from.
+type VersionResolutionSource string
+
+const (
+	// VersionSourceLocal indicates the version was found in local workspace
+	VersionSourceLocal VersionResolutionSource = "local"
+
+	// VersionSourceNetwork indicates the version was retrieved from network
+	VersionSourceNetwork VersionResolutionSource = "network"
+
+	// VersionSourceFallback indicates a fallback/default version was used
+	VersionSourceFallback VersionResolutionSource = "fallback"
+)
+
+// moduleInfo represents go list -m -json output
+type moduleInfo struct {
+	Path     string      `json:"Path"`
+	Version  string      `json:"Version"`
+	Replace  *moduleInfo `json:"Replace,omitempty"`
+	Main     bool        `json:"Main"`
+	Indirect bool        `json:"Indirect"`
 }
 
 // NewWorkspaceDiscovery creates a new workspace discovery instance.
@@ -85,6 +160,158 @@ func (w *workspaceDiscovery) DiscoverDependents(ctx context.Context, options Dis
 	}
 
 	return dependents, nil
+}
+
+// ResolveVersion attempts to resolve the current version of a module within the workspace.
+func (w *workspaceDiscovery) ResolveVersion(ctx context.Context, options VersionResolutionOptions) (*VersionResolution, error) {
+	if options.TargetModule == "" {
+		return nil, fmt.Errorf("target module is required")
+	}
+	if options.WorkspaceDir == "" {
+		return nil, fmt.Errorf("workspace directory is required")
+	}
+
+	resolution := &VersionResolution{
+		Warnings: []string{},
+	}
+
+	switch options.Strategy {
+	case VersionResolutionLocal:
+		return w.resolveLocalVersion(ctx, options.WorkspaceDir, options.TargetModule, resolution)
+	case VersionResolutionLatest:
+		if !options.AllowNetworkAccess {
+			return nil, fmt.Errorf("latest version resolution requires network access")
+		}
+		return w.resolveLatestVersion(ctx, options.TargetModule, resolution)
+	case VersionResolutionAuto:
+		// Try local first
+		localRes, localErr := w.resolveLocalVersion(ctx, options.WorkspaceDir, options.TargetModule, resolution)
+		if localErr == nil && localRes.Version != "" {
+			return localRes, nil
+		}
+
+		// Add warning about local resolution failure
+		if localErr != nil {
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("Local resolution failed: %v", localErr))
+		}
+
+		// Try network if allowed
+		if options.AllowNetworkAccess {
+			netRes, netErr := w.resolveLatestVersion(ctx, options.TargetModule, resolution)
+			if netErr == nil {
+				return netRes, nil
+			}
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("Network resolution failed: %v", netErr))
+		} else {
+			resolution.Warnings = append(resolution.Warnings, "Network access not allowed, cannot resolve latest version")
+		}
+
+		return nil, fmt.Errorf("failed to resolve version using auto strategy")
+	default:
+		return nil, fmt.Errorf("unsupported version resolution strategy: %s", options.Strategy)
+	}
+}
+
+// resolveLocalVersion attempts to find the module version from local workspace modules.
+func (w *workspaceDiscovery) resolveLocalVersion(ctx context.Context, workspaceDir, targetModule string, resolution *VersionResolution) (*VersionResolution, error) {
+	// Find all Go modules in the workspace
+	modules, err := w.findGoModules(ctx, DiscoveryOptions{
+		WorkspaceDir: workspaceDir,
+		TargetModule: targetModule,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find Go modules in workspace: %w", err)
+	}
+
+	// Check each module for the target dependency
+	for _, module := range modules {
+		version, err := w.getModuleVersionFromPath(ctx, module.Path, targetModule)
+		if err != nil {
+			continue // Skip modules where we can't resolve the version
+		}
+		if version != "" {
+			resolution.Version = version
+			resolution.Source = VersionSourceLocal
+			resolution.SourcePath = module.Path
+			return resolution, nil
+		}
+	}
+
+	return nil, fmt.Errorf("module %s not found in any workspace dependencies", targetModule)
+}
+
+// resolveLatestVersion attempts to get the latest version from the Go module proxy.
+func (w *workspaceDiscovery) resolveLatestVersion(ctx context.Context, targetModule string, resolution *VersionResolution) (*VersionResolution, error) {
+	// Use go list -m -versions to get available versions
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-versions", targetModule)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list module versions: %w", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("no version information available for module %s", targetModule)
+	}
+
+	// The first line should contain: module_path version1 version2 ...
+	parts := strings.Fields(lines[0])
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("unexpected go list output format")
+	}
+
+	// Skip the module path and collect versions
+	versions := parts[1:]
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no versions available for module %s", targetModule)
+	}
+
+	// Sort versions using semver and get the latest
+	sort.Slice(versions, func(i, j int) bool {
+		return semver.Compare(versions[i], versions[j]) < 0
+	})
+
+	latestVersion := versions[len(versions)-1]
+	resolution.Version = latestVersion
+	resolution.Source = VersionSourceNetwork
+	return resolution, nil
+}
+
+// getModuleVersionFromPath extracts the version of a specific module from a Go module path.
+func (w *workspaceDiscovery) getModuleVersionFromPath(ctx context.Context, modulePath, targetModule string) (string, error) {
+	// Use go list -m -json to get module information
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-json", "all")
+	cmd.Dir = modulePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to list modules: %w", err)
+	}
+
+	// Parse JSON output line by line (each line is a separate JSON object)
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var module moduleInfo
+		if err := json.Unmarshal([]byte(line), &module); err != nil {
+			continue // Skip malformed JSON
+		}
+
+		// Check if this is our target module
+		if module.Path == targetModule {
+			if module.Replace != nil {
+				// If the module is replaced, use the replacement version
+				return module.Replace.Version, nil
+			}
+			return module.Version, nil
+		}
+	}
+
+	return "", nil // Module not found
 }
 
 // findGoModules discovers all Go modules within the workspace directory.
