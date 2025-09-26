@@ -7,6 +7,7 @@ fi
 
 export LGR_NO_TIMESTAMP=true
 
+BINAME=cascade
 VERSION_FILE="./.version"
 
 # If we have a .taskenv file load it as source
@@ -96,6 +97,61 @@ function dev:test {
 function dev:cover {
     go test -coverprofile=coverage.out ./... && go tool cover -func coverage.out
 }
+
+
+
+##
+## -----
+##
+## install
+##
+## Install app binary to $GOPATH/bin with version info
+##
+function install {
+    lgr I "TASKFILE: Installing cascade to GOPATH..."
+
+    # Read current version without bumping
+    local version
+    version=$(version:get)
+
+    # Get git commit hash
+    local commit
+    commit=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+    # Get build date
+    local date
+    date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Build binary with version info (using build instead of install to avoid linker issues)
+    lgr I "Building version $version..."
+
+    # Use command to avoid function/alias conflicts
+    command go build -ldflags "-X main.version=$version -X main.commit=$commit -X main.date=$date" -o ./${BINAME}_temp ./cmd/$BINAME
+
+    if [ $? -eq 0 ]; then
+        # Manually install to GOPATH/bin
+        GOPATH=$(go env GOPATH)
+        mkdir -p "$GOPATH/bin"
+        mv ./${BINAME}_temp "$GOPATH/bin/$BINAME"
+        chmod +x "$GOPATH/bin/$BINAME"
+        lgr OK "${BINAME} installed to $GOPATH/bin"
+
+        # Check if GOPATH/bin is in PATH
+        if [[ ":$PATH:" != *":$(go env GOPATH)/bin:"* ]]; then
+            lgr W "$(go env GOPATH)/bin is not in your PATH"
+            lgr I "Add this to your shell profile: export PATH=\"\$PATH:$(go env GOPATH)/bin\""
+        else
+            lgr I "You can now use '$BINAME' from any directory"
+        fi
+
+        # Show where it's installed
+        which $BINAME 2>/dev/null && $BINAME --version 2>/dev/null || true
+    else
+        lgr E "Installation failed"
+        return 1
+    fi
+}
+
 
 ##
 ## ########################################
