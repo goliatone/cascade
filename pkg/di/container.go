@@ -194,7 +194,7 @@ func (b *builder) build() (Container, error) {
 	}
 
 	if b.manifestGenerator == nil {
-		b.manifestGenerator = provideManifestGenerator()
+		b.manifestGenerator = provideManifestGeneratorWithConfig(b.cfg, b.logger)
 	}
 
 	if b.planner == nil {
