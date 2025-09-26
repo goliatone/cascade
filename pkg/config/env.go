@@ -62,6 +62,11 @@ func (p *EnvParser) ParseEnv() (*Config, error) {
 		errs = append(errs, err.Error())
 	}
 
+	// Parse manifest generator configuration
+	if err := p.parseManifestGenerator(config); err != nil {
+		errs = append(errs, err.Error())
+	}
+
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("environment variable parsing errors: %s", strings.Join(errs, "; "))
 	}
@@ -242,6 +247,84 @@ func (p *EnvParser) parseState(config *Config) error {
 
 	if len(errs) > 0 {
 		return fmt.Errorf("state configuration errors: %s", strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+// parseManifestGenerator parses manifest generator-related environment variables
+func (p *EnvParser) parseManifestGenerator(config *Config) error {
+	var errs []string
+
+	// Parse default workspace
+	if workspace := p.getEnv(EnvManifestGeneratorWorkspace); workspace != "" {
+		config.ManifestGenerator.DefaultWorkspace = workspace
+	}
+
+	// Parse test command
+	if testCmd := p.getEnv(EnvManifestGeneratorTestCommand); testCmd != "" {
+		config.ManifestGenerator.Tests.Command = testCmd
+	}
+
+	// Parse test timeout
+	if timeoutStr := p.getEnv(EnvManifestGeneratorTestTimeout); timeoutStr != "" {
+		timeout, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvManifestGeneratorTestTimeout, err))
+		} else {
+			config.ManifestGenerator.Tests.Timeout = timeout
+		}
+	}
+
+	// Parse notifications enabled
+	if enabledStr := p.getEnv(EnvManifestGeneratorNotificationsEnable); enabledStr != "" {
+		enabled, err := p.parseBool(enabledStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvManifestGeneratorNotificationsEnable, err))
+		} else {
+			config.ManifestGenerator.Notifications.Enabled = enabled
+		}
+	}
+
+	// Parse default branch
+	if branch := p.getEnv(EnvManifestGeneratorDefaultBranch); branch != "" {
+		config.ManifestGenerator.DefaultBranch = branch
+	}
+
+	// Parse discovery enabled
+	if enabledStr := p.getEnv(EnvManifestGeneratorDiscoveryEnabled); enabledStr != "" {
+		enabled, err := p.parseBool(enabledStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvManifestGeneratorDiscoveryEnabled, err))
+		} else {
+			config.ManifestGenerator.Discovery.Enabled = enabled
+		}
+	}
+
+	// Parse discovery max depth
+	if depthStr := p.getEnv(EnvManifestGeneratorDiscoveryMaxDepth); depthStr != "" {
+		depth, err := strconv.Atoi(depthStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: must be a positive integer", EnvManifestGeneratorDiscoveryMaxDepth))
+		} else if depth <= 0 {
+			errs = append(errs, fmt.Sprintf("invalid %s: must be greater than 0, got %d", EnvManifestGeneratorDiscoveryMaxDepth, depth))
+		} else {
+			config.ManifestGenerator.Discovery.MaxDepth = depth
+		}
+	}
+
+	// Parse discovery interactive
+	if interactiveStr := p.getEnv(EnvManifestGeneratorDiscoveryInteractive); interactiveStr != "" {
+		interactive, err := p.parseBool(interactiveStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvManifestGeneratorDiscoveryInteractive, err))
+		} else {
+			config.ManifestGenerator.Discovery.Interactive = interactive
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("manifest generator configuration errors: %s", strings.Join(errs, "; "))
 	}
 
 	return nil
