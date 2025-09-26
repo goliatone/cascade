@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/goliatone/cascade/internal/broker"
 	execpkg "github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/manifest"
@@ -379,6 +381,42 @@ func TestRunResumeWithMockDependencies(t *testing.T) {
 						t.Errorf("expected state error message, got: %s", errorMsg)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestIsProductionCommand(t *testing.T) {
+	tests := []struct {
+		name           string
+		commandName    string
+		isProduction   bool
+	}{
+		{"plan command", "plan", false},
+		{"release command", "release", true},
+		{"resume command", "resume", true},
+		{"revert command", "revert", true},
+		{"unknown command", "unknown", false},
+		{"nil command", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cmd *cobra.Command
+			if tt.commandName != "" {
+				root := newRootCommand()
+				// Find the subcommand
+				for _, subcmd := range root.Commands() {
+					if subcmd.Name() == tt.commandName {
+						cmd = subcmd
+						break
+					}
+				}
+			}
+
+			result := isProductionCommand(cmd)
+			if result != tt.isProduction {
+				t.Errorf("isProductionCommand(%s) = %v, want %v", tt.commandName, result, tt.isProduction)
 			}
 		})
 	}

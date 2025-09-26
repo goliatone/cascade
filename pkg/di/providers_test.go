@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/goliatone/cascade/internal/broker"
@@ -173,6 +174,86 @@ func isStubBroker(b broker.Broker) bool {
 	providerField := value.FieldByName("provider")
 	return providerField.IsValid() && providerField.IsNil()
 }
+
+func TestProvideBrokerForProduction_NoToken(t *testing.T) {
+	withClearedGitHubEnv(t, func() {
+		logger := testLogger{}
+		cfg := &config.Config{}
+
+		broker, err := provideBrokerForProduction(cfg, &http.Client{}, logger)
+
+		if err == nil {
+			t.Fatal("expected error when no GitHub token provided for production broker")
+		}
+		if broker != nil {
+			t.Fatal("expected nil broker when production broker creation fails")
+		}
+
+		expectedMsg := "production commands require GitHub credentials"
+		if !strings.Contains(err.Error(), expectedMsg) {
+			t.Errorf("error message should mention production credentials requirement, got: %v", err)
+		}
+	})
+}
+
+func TestProvideBrokerForProduction_WithToken(t *testing.T) {
+	withClearedGitHubEnv(t, func() {
+		logger := testLogger{}
+		cfg := &config.Config{}
+		cfg.Integration.GitHub.Token = "test-token"
+
+		broker, err := provideBrokerForProduction(cfg, &http.Client{}, logger)
+
+		if err != nil {
+			t.Fatalf("expected no error when GitHub token is provided, got: %v", err)
+		}
+		if broker == nil {
+			t.Fatal("expected non-nil broker when GitHub token is provided")
+		}
+		if isStubBroker(broker) {
+			t.Fatal("expected real broker when GitHub token is provided")
+		}
+	})
+}
+
+func TestProvideBrokerForProduction_DryRunMode(t *testing.T) {
+	withClearedGitHubEnv(t, func() {
+		logger := testLogger{}
+		cfg := &config.Config{}
+		cfg.Executor.DryRun = true // Enable dry-run mode
+
+		broker, err := provideBrokerForProduction(cfg, &http.Client{}, logger)
+
+		if err != nil {
+			t.Fatalf("expected no error in dry-run mode, got: %v", err)
+		}
+		if broker == nil {
+			t.Fatal("expected non-nil broker in dry-run mode")
+		}
+		if !isStubBroker(broker) {
+			t.Fatal("expected stub broker in dry-run mode")
+		}
+	})
+}
+
+func TestProvideBrokerForProduction_NilConfig(t *testing.T) {
+	logger := testLogger{}
+
+	broker, err := provideBrokerForProduction(nil, &http.Client{}, logger)
+
+	if err == nil {
+		t.Fatal("expected error when config is nil")
+	}
+	if broker != nil {
+		t.Fatal("expected nil broker when config is nil")
+	}
+
+	expectedMsg := "configuration is required for production broker"
+	if err.Error() != expectedMsg {
+		t.Errorf("expected error message '%s', got: %v", expectedMsg, err)
+	}
+}
+
 
 func TestSlogAdapter(t *testing.T) {
 	logger := provideLogger()
