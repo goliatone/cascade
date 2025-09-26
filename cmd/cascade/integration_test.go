@@ -128,8 +128,8 @@ func TestCLIIntegrationPlanDryRun(t *testing.T) {
 	t.Logf("Captured output: %s", outputStr)
 }
 
-// TestCLIHelpOutput tests that the CLI help output is properly formatted
-func TestCLIHelpOutput(t *testing.T) {
+// TestCLIHelpIntegration tests that the CLI help output is properly formatted via main execution
+func TestCLIHelpIntegration(t *testing.T) {
 	// Create a temporary directory for test outputs
 	tempDir := t.TempDir()
 

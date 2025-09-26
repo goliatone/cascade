@@ -1,0 +1,42 @@
+{
+  "ManifestVersion": 1,
+  "Defaults": {
+    "Branch": "main",
+    "Tests": [
+      {
+        "Cmd": [
+          "go",
+          "test",
+          "./...",
+          "-race",
+          "-count=1"
+        ],
+        "Dir": ""
+      }
+    ],
+    "ExtraCommands": [],
+    "Labels": [
+      "automation:cascade"
+    ],
+    "CommitTemplate": "chore(deps): bump {{ module }} to {{ version }}",
+    "Notifications": {
+      "SlackChannel": "",
+      "Webhook": ""
+    },
+    "PR": {
+      "TitleTemplate": "chore(deps): bump {{ module }} to {{ version }}",
+      "BodyTemplate": "Automated dependency update for {{ module }} to {{ version }}",
+      "Reviewers": null,
+      "TeamReviewers": null
+    }
+  },
+  "Modules": [
+    {
+      "Name": "go-errors",
+      "Module": "github.com/goliatone/go-errors",
+      "Repo": "goliatone/go-errors",
+      "ReleaseArtifact": "",
+      "Dependents": []
+    }
+  ]
+}

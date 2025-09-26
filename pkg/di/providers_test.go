@@ -34,6 +34,11 @@ func TestProviderFunctions(t *testing.T) {
 			wantType: "*manifest.loader",
 		},
 		{
+			name:     "provideManifestGenerator returns manifest.Generator",
+			provider: func() interface{} { return provideManifestGenerator() },
+			wantType: "*manifest.generator",
+		},
+		{
 			name:     "providePlanner returns planner.Planner",
 			provider: func() interface{} { return providePlanner() },
 			wantType: "*planner.planner",
@@ -84,6 +89,10 @@ func TestProviderFunctions(t *testing.T) {
 			case "provideManifest returns manifest.Loader":
 				if _, ok := result.(manifest.Loader); !ok {
 					t.Errorf("result does not implement manifest.Loader")
+				}
+			case "provideManifestGenerator returns manifest.Generator":
+				if _, ok := result.(manifest.Generator); !ok {
+					t.Errorf("result does not implement manifest.Generator")
 				}
 			case "providePlanner returns planner.Planner":
 				if _, ok := result.(planner.Planner); !ok {

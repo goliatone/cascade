@@ -1,0 +1,144 @@
+{
+  "ManifestVersion": 1,
+  "Defaults": {
+    "Branch": "main",
+    "Tests": [
+      {
+        "Cmd": [
+          "go",
+          "test",
+          "./...",
+          "-race",
+          "-count=1"
+        ],
+        "Dir": "."
+      }
+    ],
+    "ExtraCommands": [
+      {
+        "Cmd": [
+          "go",
+          "mod",
+          "tidy"
+        ],
+        "Dir": "."
+      }
+    ],
+    "Labels": [
+      "automation:cascade",
+      "type:dependency"
+    ],
+    "CommitTemplate": "chore(deps): bump {{ module }} to {{ version }}",
+    "Notifications": {
+      "SlackChannel": "#general-releases",
+      "Webhook": "https://hooks.slack.com/test"
+    },
+    "PR": {
+      "TitleTemplate": "chore(deps): update {{ module }} to {{ version }}",
+      "BodyTemplate": "Automated dependency update",
+      "Reviewers": null,
+      "TeamReviewers": null
+    }
+  },
+  "Modules": [
+    {
+      "Name": "go-logger",
+      "Module": "github.com/goliatone/go-logger",
+      "Repo": "goliatone/go-logger",
+      "ReleaseArtifact": "release.json",
+      "Dependents": [
+        {
+          "Repo": "goliatone/go-router",
+          "Module": "github.com/goliatone/go-router",
+          "ModulePath": ".",
+          "Branch": "develop",
+          "Tests": [
+            {
+              "Cmd": [
+                "task",
+                "test"
+              ],
+              "Dir": "."
+            }
+          ],
+          "ExtraCommands": [
+            {
+              "Cmd": [
+                "task",
+                "lint"
+              ],
+              "Dir": "."
+            }
+          ],
+          "Labels": [
+            "package:go-router",
+            "priority:high"
+          ],
+          "Notifications": {
+            "SlackChannel": "#go-router-releases",
+            "Webhook": ""
+          },
+          "PR": {
+            "TitleTemplate": "chore: update router deps",
+            "BodyTemplate": "router.pr.tpl.md",
+            "Reviewers": [
+              "reviewer1"
+            ],
+            "TeamReviewers": [
+              "team-go"
+            ]
+          },
+          "Canary": true,
+          "Skip": false,
+          "Env": {
+            "ENV": "test"
+          },
+          "Timeout": 1800000000000
+        },
+        {
+          "Repo": "goliatone/go-auth",
+          "Module": "github.com/goliatone/go-auth",
+          "ModulePath": ".",
+          "Branch": "main",
+          "Tests": [
+            {
+              "Cmd": [
+                "task",
+                "test:integration"
+              ],
+              "Dir": "."
+            }
+          ],
+          "ExtraCommands": [
+            {
+              "Cmd": [
+                "go",
+                "run",
+                "./cmd/db/migrate",
+                "--dry-run"
+              ],
+              "Dir": "."
+            }
+          ],
+          "Labels": [
+            "package:go-auth"
+          ],
+          "Notifications": {
+            "SlackChannel": "#go-auth-releases",
+            "Webhook": ""
+          },
+          "PR": {
+            "TitleTemplate": "",
+            "BodyTemplate": "",
+            "Reviewers": null,
+            "TeamReviewers": null
+          },
+          "Canary": false,
+          "Skip": false,
+          "Env": {},
+          "Timeout": 0
+        }
+      ]
+    }
+  ]
+}

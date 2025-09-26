@@ -1,0 +1,76 @@
+{
+  "ManifestVersion": 1,
+  "Defaults": {
+    "Branch": "main",
+    "Tests": [
+      {
+        "Cmd": [
+          "go",
+          "test",
+          "./...",
+          "-race",
+          "-count=1"
+        ],
+        "Dir": ""
+      }
+    ],
+    "ExtraCommands": [],
+    "Labels": [
+      "automation:cascade"
+    ],
+    "CommitTemplate": "chore(deps): bump {{ module }} to {{ version }}",
+    "Notifications": {
+      "SlackChannel": "",
+      "Webhook": ""
+    },
+    "PR": {
+      "TitleTemplate": "chore(deps): bump {{ module }} to {{ version }}",
+      "BodyTemplate": "Automated dependency update for {{ module }} to {{ version }}",
+      "Reviewers": null,
+      "TeamReviewers": null
+    }
+  },
+  "Modules": [
+    {
+      "Name": "go-repository-bun",
+      "Module": "github.com/goliatone/go-repository-bun",
+      "Repo": "goliatone/go-repository-bun",
+      "ReleaseArtifact": "",
+      "Dependents": [
+        {
+          "Repo": "goliatone/go-auth",
+          "Module": "github.com/goliatone/go-auth",
+          "ModulePath": ".",
+          "Branch": "main",
+          "Tests": [
+            {
+              "Cmd": [
+                "task",
+                "test:integration"
+              ],
+              "Dir": "."
+            }
+          ],
+          "ExtraCommands": [],
+          "Labels": [
+            "package:go-auth"
+          ],
+          "Notifications": {
+            "SlackChannel": "",
+            "Webhook": ""
+          },
+          "PR": {
+            "TitleTemplate": "",
+            "BodyTemplate": "",
+            "Reviewers": null,
+            "TeamReviewers": null
+          },
+          "Canary": false,
+          "Skip": false,
+          "Env": {},
+          "Timeout": 0
+        }
+      ]
+    }
+  ]
+}
