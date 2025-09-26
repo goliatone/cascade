@@ -374,15 +374,21 @@ Use subcommands to perform specific manifest operations.`,
 // newManifestGenerateCommand creates the manifest generate subcommand
 func newManifestGenerateCommand() *cobra.Command {
 	var (
-		moduleName   string
-		modulePath   string
-		repository   string
-		version      string
-		outputPath   string
-		dependents   []string
-		slackChannel string
-		webhook      string
-		force        bool
+		moduleName      string
+		modulePath      string
+		repository      string
+		version         string
+		outputPath      string
+		dependents      []string
+		slackChannel    string
+		webhook         string
+		force           bool
+		yes             bool
+		nonInteractive  bool
+		workspace       string
+		maxDepth        int
+		includePatterns []string
+		excludePatterns []string
 	)
 
 	cmd := &cobra.Command{
@@ -393,31 +399,47 @@ func newManifestGenerateCommand() *cobra.Command {
 and configuration options. The manifest follows the TDD defaults and includes
 sensible default configurations for commit templates, PR templates, and notifications.
 
+When --dependents is omitted, cascade will automatically discover dependent repositories
+by scanning the workspace for Go modules that import the target module.
+
+The command will display a summary of discovered dependents and default configurations
+before proceeding. Use --yes or --non-interactive to skip confirmation prompts.
+
 Examples:
   cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3
   cascade manifest gen --module-path=github.com/example/lib --module-name=mylib --version=v1.2.3 --output=deps.yaml
-  cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3 --dependents=owner/repo1,owner/repo2`,
+  cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3 --dependents=owner/repo1,owner/repo2
+  cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3 --workspace=/path/to/workspace --max-depth=3
+  cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3 --yes --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runManifestGenerate(moduleName, modulePath, repository, version, outputPath, dependents, slackChannel, webhook, force)
+			return runManifestGenerate(moduleName, modulePath, repository, version, outputPath, dependents, slackChannel, webhook, force, yes, nonInteractive, workspace, maxDepth, includePatterns, excludePatterns)
 		},
 	}
 
 	// Required flags
 	cmd.Flags().StringVar(&modulePath, "module-path", "", "Go module path (e.g., github.com/example/lib) [required]")
-	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3) [required]")
+	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3, latest, or omit for local resolution)")
 
 	// Optional flags
 	cmd.Flags().StringVar(&moduleName, "module-name", "", "Human-friendly module name (defaults to basename of module path)")
 	cmd.Flags().StringVar(&repository, "repository", "", "GitHub repository (defaults to module path without domain)")
 	cmd.Flags().StringVar(&outputPath, "output", "", "Output file path (default: deps.yaml or workspace manifest path)")
-	cmd.Flags().StringSliceVar(&dependents, "dependents", []string{}, "Dependent repositories (format: owner/repo)")
+	cmd.Flags().StringSliceVar(&dependents, "dependents", []string{}, "Dependent repositories (format: owner/repo). If omitted, discovers dependents in workspace")
 	cmd.Flags().StringVar(&slackChannel, "slack-channel", "", "Default Slack notification channel")
 	cmd.Flags().StringVar(&webhook, "webhook", "", "Default webhook URL for notifications")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing manifest without prompting")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Automatically confirm all prompts")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Run in non-interactive mode (same as --yes)")
+
+	// Workspace discovery flags
+	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace directory to scan for dependents (default: config workspace or current directory)")
+	cmd.Flags().IntVar(&maxDepth, "max-depth", 0, "Maximum depth to scan in workspace directory (0 = no limit)")
+	cmd.Flags().StringSliceVar(&includePatterns, "include", []string{}, "Directory patterns to include during discovery")
+	cmd.Flags().StringSliceVar(&excludePatterns, "exclude", []string{}, "Directory patterns to exclude during discovery (e.g., vendor, .git)")
 
 	// Mark required flags
 	cmd.MarkFlagRequired("module-path")
-	cmd.MarkFlagRequired("version")
+	// version is no longer required as it can be resolved automatically
 
 	return cmd
 }
@@ -786,7 +808,7 @@ func runRevert(stateID string) error {
 	return nil
 }
 
-func runManifestGenerate(moduleName, modulePath, repository, version, outputPath string, dependents []string, slackChannel, webhook string, force bool) error {
+func runManifestGenerate(moduleName, modulePath, repository, version, outputPath string, dependents []string, slackChannel, webhook string, force, yes, nonInteractive bool, workspace string, maxDepth int, includePatterns, excludePatterns []string) error {
 	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
@@ -812,12 +834,56 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		repository = deriveRepository(modulePath)
 	}
 
+	// Resolve version if not provided or if "latest" specified
+	finalVersion := version
+	var versionWarnings []string
+	if finalVersion == "" || finalVersion == "latest" {
+		workspaceDir := resolveWorkspaceDir(workspace, cfg)
+		resolvedVersion, warnings, err := resolveVersionFromWorkspace(ctx, modulePath, finalVersion, workspaceDir, logger)
+		if err != nil {
+			if finalVersion == "" {
+				return newValidationError("version resolution failed and no explicit version provided", err)
+			} else {
+				return newValidationError("latest version resolution failed", err)
+			}
+		}
+		finalVersion = resolvedVersion
+		versionWarnings = warnings
+	}
+
 	// Resolve output path
 	finalOutputPath := resolveGenerateOutputPath(outputPath, cfg)
 
+	// Resolve workspace discovery options if dependents not explicitly provided
+	finalDependents := dependents
+	var discoveredDependents []manifest.DependentOptions
+	workspaceDir := ""
+
+	if len(dependents) == 0 {
+		workspaceDir = resolveWorkspaceDir(workspace, cfg)
+		var err error
+		discoveredDependents, err = discoverWorkspaceDependents(ctx, modulePath, workspaceDir, maxDepth, includePatterns, excludePatterns, logger)
+		if err != nil {
+			logger.Warn("Workspace discovery failed, proceeding with empty dependents list", "error", err)
+		} else {
+			finalDependents = dependentsOptionsToStrings(discoveredDependents)
+			if len(finalDependents) > 0 {
+				logger.Info("Discovered dependents in workspace",
+					"count", len(finalDependents),
+					"workspace", workspaceDir,
+					"dependents", finalDependents)
+			}
+		}
+	}
+
+	// Display discovery summary and handle confirmation
+	if err := displayDiscoverySummary(modulePath, finalVersion, workspaceDir, discoveredDependents, finalDependents, versionWarnings, yes, nonInteractive, cfg.Executor.DryRun); err != nil {
+		return err
+	}
+
 	logger.Info("Generating dependency manifest",
 		"module", modulePath,
-		"version", version,
+		"version", finalVersion,
 		"output", finalOutputPath)
 
 	// Build generate options
@@ -825,8 +891,8 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		ModuleName:        moduleName,
 		ModulePath:        modulePath,
 		Repository:        repository,
-		Version:           version,
-		Dependents:        buildDependentOptions(dependents),
+		Version:           finalVersion,
+		Dependents:        buildDependentOptions(finalDependents),
 		DefaultBranch:     "main",
 		DefaultLabels:     []string{"automation:cascade"},
 		DefaultCommitTmpl: "chore(deps): bump {{ .Module }} to {{ .Version }}",
@@ -1343,4 +1409,178 @@ func appendReason(existing, addition string) string {
 		return addition
 	}
 	return existing + "; " + addition
+}
+
+// resolveWorkspaceDir determines the workspace directory for discovery
+func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
+	// Use explicit workspace if provided
+	if workspace != "" {
+		if !filepath.IsAbs(workspace) {
+			if abs, err := filepath.Abs(workspace); err == nil {
+				return abs
+			}
+		}
+		return workspace
+	}
+
+	// Use config workspace path
+	if cfg != nil && cfg.Workspace.Path != "" {
+		return cfg.Workspace.Path
+	}
+
+	// Default to current directory
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd
+	}
+
+	return "."
+}
+
+// discoverWorkspaceDependents uses the workspace discovery to find dependent modules
+func discoverWorkspaceDependents(ctx context.Context, targetModule, workspaceDir string, maxDepth int, includePatterns, excludePatterns []string, logger di.Logger) ([]manifest.DependentOptions, error) {
+	discovery := manifest.NewWorkspaceDiscovery()
+
+	options := manifest.DiscoveryOptions{
+		WorkspaceDir:    workspaceDir,
+		TargetModule:    targetModule,
+		MaxDepth:        maxDepth,
+		IncludePatterns: includePatterns,
+		ExcludePatterns: excludePatterns,
+	}
+
+	dependents, err := discovery.DiscoverDependents(ctx, options)
+	if err != nil {
+		return nil, fmt.Errorf("workspace discovery failed: %w", err)
+	}
+
+	if logger != nil {
+		logger.Debug("Workspace discovery completed",
+			"target_module", targetModule,
+			"workspace", workspaceDir,
+			"found_dependents", len(dependents),
+			"max_depth", maxDepth)
+	}
+
+	return dependents, nil
+}
+
+// dependentsOptionsToStrings converts DependentOptions to string slice for CLI compatibility
+func dependentsOptionsToStrings(dependents []manifest.DependentOptions) []string {
+	if len(dependents) == 0 {
+		return []string{}
+	}
+
+	result := make([]string, len(dependents))
+	for i, dep := range dependents {
+		// Use repository format (owner/repo) for CLI compatibility
+		result[i] = dep.Repository
+	}
+
+	return result
+}
+
+// resolveVersionFromWorkspace resolves the module version using workspace discovery
+func resolveVersionFromWorkspace(ctx context.Context, modulePath, version, workspaceDir string, logger di.Logger) (string, []string, error) {
+	discovery := manifest.NewWorkspaceDiscovery()
+
+	var strategy manifest.VersionResolutionStrategy
+	allowNetwork := true
+
+	if version == "latest" {
+		strategy = manifest.VersionResolutionLatest
+	} else {
+		// Auto strategy: try local first, then network
+		strategy = manifest.VersionResolutionAuto
+	}
+
+	options := manifest.VersionResolutionOptions{
+		WorkspaceDir:       workspaceDir,
+		TargetModule:       modulePath,
+		Strategy:           strategy,
+		AllowNetworkAccess: allowNetwork,
+	}
+
+	resolution, err := discovery.ResolveVersion(ctx, options)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// Log resolution source
+	if logger != nil {
+		logger.Info("Version resolved",
+			"module", modulePath,
+			"version", resolution.Version,
+			"source", string(resolution.Source),
+			"source_path", resolution.SourcePath)
+	}
+
+	return resolution.Version, resolution.Warnings, nil
+}
+
+// displayDiscoverySummary shows the discovery results and handles user confirmation
+func displayDiscoverySummary(modulePath, version, workspaceDir string, discoveredDependents []manifest.DependentOptions, finalDependents, versionWarnings []string, yes, nonInteractive, dryRun bool) error {
+	// Always show summary if discovery was performed or if we have dependents
+	shouldShowSummary := workspaceDir != "" || len(finalDependents) > 0
+
+	if !shouldShowSummary {
+		return nil
+	}
+
+	// Display summary
+	fmt.Printf("Generating manifest for %s@%s\n", modulePath, version)
+
+	if workspaceDir != "" {
+		fmt.Printf("Discovery workspace: %s\n", workspaceDir)
+	}
+
+	if len(discoveredDependents) > 0 {
+		fmt.Printf("Discovered %d dependent repositories:\n", len(discoveredDependents))
+		for i, dep := range discoveredDependents {
+			fmt.Printf("  %d. %s (module: %s)\n", i+1, dep.Repository, dep.ModulePath)
+		}
+	} else if len(finalDependents) > 0 {
+		fmt.Printf("Using %d configured dependent repositories:\n", len(finalDependents))
+		for i, dep := range finalDependents {
+			fmt.Printf("  %d. %s\n", i+1, dep)
+		}
+	} else {
+		fmt.Println("No dependent repositories found or configured.")
+	}
+
+	// Show version warnings if any
+	if len(versionWarnings) > 0 {
+		fmt.Println("\nVersion Resolution Warnings:")
+		for _, warning := range versionWarnings {
+			fmt.Printf("  ! %s\n", warning)
+		}
+	}
+
+	// Default test commands that will be applied
+	fmt.Println("\nDefault configurations:")
+	fmt.Println("  Branch: main")
+	fmt.Println("  Labels: [automation:cascade]")
+	fmt.Println("  Test commands: go test ./... -race -count=1")
+	fmt.Println("  Commit template: chore(deps): bump {{ .Module }} to {{ .Version }}")
+	fmt.Println("  PR title: chore(deps): bump {{ .Module }} to {{ .Version }}")
+
+	// Handle confirmation unless in dry-run mode, yes flag, or non-interactive mode
+	if !dryRun && !yes && !nonInteractive {
+		fmt.Printf("\nProceed with manifest generation? [Y/n]: ")
+		var response string
+		fmt.Scanln(&response)
+
+		// Default to yes if empty response, check for explicit no
+		if response != "" && (response == "n" || response == "N" || response == "no" || response == "NO") {
+			fmt.Println("Manifest generation cancelled.")
+			return fmt.Errorf("manifest generation cancelled by user")
+		}
+	}
+
+	if dryRun {
+		fmt.Println("\n--- DRY RUN: Would proceed with manifest generation ---")
+	} else if yes || nonInteractive {
+		fmt.Println("\n--- Proceeding with manifest generation ---")
+	}
+
+	return nil
 }
