@@ -67,8 +67,9 @@ func provideBroker() broker.Broker {
 }
 
 // provideBrokerWithConfig creates a broker implementation configured from config.
-// Returns a real broker with GitHub provider and Slack notifier if credentials are available,
-// otherwise returns a stub broker for dry-run operations with clear warnings.
+// Returns a real broker with GitHub provider and Slack notifier if credentials are available.
+// For dry-run operations, returns a stub broker with clear warnings.
+// For production operations (release/resume/revert), fails fast if GitHub credentials are missing.
 func provideBrokerWithConfig(cfg *config.Config, httpClient *http.Client, logger Logger) broker.Broker {
 	if cfg == nil {
 		logger.Warn("No configuration provided, using stub broker")
@@ -92,6 +93,33 @@ func provideBrokerWithConfig(cfg *config.Config, httpClient *http.Client, logger
 	brokerCfg.DryRun = cfg.Executor.DryRun
 
 	return broker.New(provider, notifier, brokerCfg)
+}
+
+// provideBrokerForProduction creates a broker implementation for production commands.
+// Unlike provideBrokerWithConfig, this function returns an error if GitHub credentials
+// are missing and dry-run is not enabled, preventing production commands from running
+// with a stub broker.
+func provideBrokerForProduction(cfg *config.Config, httpClient *http.Client, logger Logger) (broker.Broker, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration is required for production broker")
+	}
+
+	if cfg.Executor.DryRun {
+		logger.Info("Dry-run mode enabled, using stub broker")
+		return broker.NewStub(), nil
+	}
+
+	provider, err := newGitHubProviderFromConfig(cfg, httpClient, logger)
+	if err != nil {
+		return nil, fmt.Errorf("production commands require GitHub credentials: %w\n\nTo fix this issue:\n  1. Set CASCADE_GITHUB_TOKEN environment variable, or\n  2. Configure integration.github.token in your config file, or\n  3. Use --dry-run flag to test without GitHub integration", err)
+	}
+
+	notifier := newNotifierFromConfig(cfg, httpClient, logger)
+
+	brokerCfg := broker.DefaultConfig()
+	brokerCfg.DryRun = cfg.Executor.DryRun
+
+	return broker.New(provider, notifier, brokerCfg), nil
 }
 
 func newGitHubProviderFromConfig(cfg *config.Config, baseHTTP *http.Client, logger Logger) (broker.Provider, error) {

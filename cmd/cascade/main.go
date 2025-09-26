@@ -129,13 +129,46 @@ func initializeContainer(cmd *cobra.Command) error {
 		return newConfigError("failed to build configuration", err)
 	}
 
+	// Determine if this is a production command that requires credentials
+	containerOptions := []di.Option{di.WithConfig(cfg)}
+	if isProductionCommand(cmd) {
+		containerOptions = append(containerOptions, di.WithProductionCredentials())
+	}
+
 	// Create container with configuration
-	container, err = di.New(di.WithConfig(cfg))
+	container, err = di.New(containerOptions...)
 	if err != nil {
 		return newConfigError("failed to initialize dependencies", err)
 	}
 
 	return nil
+}
+
+// isProductionCommand determines if the given command requires production credentials.
+// Production commands (release, resume, revert) create PRs and make API calls that require GitHub tokens.
+// The plan command can work with stub implementations for dry-run scenarios.
+func isProductionCommand(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+
+	// Walk up the command hierarchy to find the root command name
+	current := cmd
+	for current.Parent() != nil {
+		current = current.Parent()
+	}
+
+	// Check the immediate subcommand of root
+	if cmd.Parent() != nil && cmd.Parent().Name() == "cascade" {
+		switch cmd.Name() {
+		case "release", "resume", "revert":
+			return true
+		case "plan":
+			return false
+		}
+	}
+
+	return false
 }
 
 // cleanupContainer performs cleanup of container resources

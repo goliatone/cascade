@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -388,9 +389,9 @@ func TestRunResumeWithMockDependencies(t *testing.T) {
 
 func TestIsProductionCommand(t *testing.T) {
 	tests := []struct {
-		name           string
-		commandName    string
-		isProduction   bool
+		name         string
+		commandName  string
+		isProduction bool
 	}{
 		{"plan command", "plan", false},
 		{"release command", "release", true},
@@ -420,4 +421,130 @@ func TestIsProductionCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProductionCommandsFailWithoutCredentials(t *testing.T) {
+	// Clear any GitHub environment variables that might interfere
+	withClearedGitHubEnv(t, func() {
+		productionCommands := []string{"release", "resume", "revert"}
+
+		for _, commandName := range productionCommands {
+			t.Run(commandName+" without credentials", func(t *testing.T) {
+				// Create a root command and find the specific subcommand
+				root := newRootCommand()
+				var cmd *cobra.Command
+				for _, subcmd := range root.Commands() {
+					if subcmd.Name() == commandName {
+						cmd = subcmd
+						break
+					}
+				}
+
+				if cmd == nil {
+					t.Fatalf("command %s not found", commandName)
+				}
+
+				// Test container creation directly since CLI flag parsing is complex
+				cfg := &config.Config{
+					Module:  "github.com/example/test",
+					Version: "v1.0.0",
+				}
+
+				// This should fail for production commands without GitHub credentials
+				_, err := di.New(
+					di.WithConfig(cfg),
+					di.WithProductionCredentials(),
+				)
+
+				// Should get a configuration error about missing GitHub credentials
+				if err == nil {
+					t.Fatalf("expected error for %s command without GitHub credentials", commandName)
+				}
+
+				errorMsg := err.Error()
+				if !contains(errorMsg, "production commands require GitHub credentials") {
+					t.Errorf("expected error about production credentials requirement, got: %s", errorMsg)
+				}
+
+				// Verify it mentions the mitigation steps
+				if !contains(errorMsg, "CASCADE_GITHUB_TOKEN") || !contains(errorMsg, "--dry-run") {
+					t.Errorf("expected error to mention mitigation options (env var or dry-run), got: %s", errorMsg)
+				}
+			})
+		}
+	})
+}
+
+func TestPlanCommandWorksWithoutCredentials(t *testing.T) {
+	// Clear any GitHub environment variables that might interfere
+	withClearedGitHubEnv(t, func() {
+		// Test container creation for plan command (should not require production credentials)
+		cfg := &config.Config{
+			Module:  "github.com/example/test",
+			Version: "v1.0.0",
+		}
+
+		// Plan command should not use WithProductionCredentials, so this should succeed
+		_, err := di.New(di.WithConfig(cfg))
+
+		// Should succeed or fail for reasons other than missing credentials
+		if err != nil {
+			errorMsg := err.Error()
+			// Should not fail due to missing production credentials
+			if contains(errorMsg, "production commands require GitHub credentials") {
+				t.Errorf("plan command should not require GitHub credentials, got: %s", errorMsg)
+			}
+			// Other errors (like config defaults loading issues) are acceptable for this test
+		}
+	})
+}
+
+func TestDryRunModeWorksWithoutCredentials(t *testing.T) {
+	// Clear any GitHub environment variables that might interfere
+	withClearedGitHubEnv(t, func() {
+		// Test container creation with dry-run enabled (should work without GitHub credentials)
+		cfg := &config.Config{
+			Module:  "github.com/example/test",
+			Version: "v1.0.0",
+			Executor: config.ExecutorConfig{
+				DryRun: true, // Enable dry-run mode
+			},
+		}
+
+		// Even with production credentials requirement, dry-run should work without GitHub token
+		_, err := di.New(
+			di.WithConfig(cfg),
+			di.WithProductionCredentials(),
+		)
+
+		// Should succeed or fail for reasons other than missing credentials
+		if err != nil {
+			errorMsg := err.Error()
+			// Should not fail due to missing production credentials in dry-run mode
+			if contains(errorMsg, "production commands require GitHub credentials") {
+				t.Errorf("production command in dry-run mode should not require GitHub credentials, got: %s", errorMsg)
+			}
+			// Other errors (like config defaults loading issues) are acceptable for this test
+		}
+	})
+}
+
+// Helper function to clear GitHub environment variables for testing
+func withClearedGitHubEnv(t *testing.T, fn func()) {
+	t.Helper()
+	vars := []string{"GITHUB_TOKEN", "GITHUB_ACCESS_TOKEN", "GH_TOKEN", "CASCADE_GITHUB_TOKEN"}
+	original := make(map[string]string, len(vars))
+	for _, v := range vars {
+		original[v] = os.Getenv(v)
+		os.Unsetenv(v)
+	}
+	defer func() {
+		for _, v := range vars {
+			if val, ok := original[v]; ok {
+				os.Setenv(v, val)
+			}
+		}
+	}()
+
+	fn()
 }

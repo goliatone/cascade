@@ -254,7 +254,6 @@ func TestProvideBrokerForProduction_NilConfig(t *testing.T) {
 	}
 }
 
-
 func TestSlogAdapter(t *testing.T) {
 	logger := provideLogger()
 

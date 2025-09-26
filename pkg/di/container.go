@@ -64,6 +64,9 @@ type builder struct {
 	// Configuration
 	cfg *config.Config
 
+	// Build options
+	requireProductionCredentials bool
+
 	// Infrastructure dependencies
 	logger     Logger
 	httpClient *http.Client
@@ -188,7 +191,15 @@ func (b *builder) build() (Container, error) {
 
 	// Broker depends on config for GitHub/Slack credentials and dry-run mode
 	if b.broker == nil {
-		b.broker = provideBrokerWithConfig(b.cfg, b.httpClient, b.logger)
+		if b.requireProductionCredentials {
+			broker, err := provideBrokerForProduction(b.cfg, b.httpClient, b.logger)
+			if err != nil {
+				return nil, fmt.Errorf("di: failed to provide production broker: %w", err)
+			}
+			b.broker = broker
+		} else {
+			b.broker = provideBrokerWithConfig(b.cfg, b.httpClient, b.logger)
+		}
 	}
 
 	// State manager depends on config for storage directory and settings
@@ -327,6 +338,18 @@ func WithStateManager(mgr state.Manager) Option {
 			return fmt.Errorf("state manager cannot be nil")
 		}
 		b.stateManager = mgr
+		return nil
+	}
+}
+
+// Build options
+
+// WithProductionCredentials requires that production-level credentials (GitHub token)
+// be available for commands that create PRs or make API calls. If credentials are
+// missing and dry-run is not enabled, container creation will fail.
+func WithProductionCredentials() Option {
+	return func(b *builder) error {
+		b.requireProductionCredentials = true
 		return nil
 	}
 }
