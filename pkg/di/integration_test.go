@@ -32,6 +32,7 @@ func TestIntegrationContainerMessageFlow(t *testing.T) {
 
 	// Create fake implementations to track message flow
 	fakeManifest := &fakeManifestLoader{messages: []string{}}
+	fakeManifestGenerator := &fakeManifestGenerator{messages: []string{}}
 	fakePlanner := &fakePlanner{messages: []string{}}
 	fakeExecutor := &fakeExecutor{messages: []string{}}
 	fakeBroker := &fakeBroker{messages: []string{}}
@@ -43,6 +44,7 @@ func TestIntegrationContainerMessageFlow(t *testing.T) {
 		di.WithConfig(cfg),
 		di.WithLogger(fakeLogger),
 		di.WithManifestLoader(fakeManifest),
+		di.WithManifestGenerator(fakeManifestGenerator),
 		di.WithPlanner(fakePlanner),
 		di.WithExecutor(fakeExecutor),
 		di.WithBroker(fakeBroker),
@@ -55,6 +57,9 @@ func TestIntegrationContainerMessageFlow(t *testing.T) {
 	// Verify that all services are accessible and correctly wired
 	if container.Manifest() == nil {
 		t.Error("manifest loader is nil")
+	}
+	if container.ManifestGenerator() == nil {
+		t.Error("manifest generator is nil")
 	}
 	if container.Planner() == nil {
 		t.Error("planner is nil")
@@ -214,6 +219,15 @@ func (f *fakeManifestLoader) Load(path string) (*manifest.Manifest, error) {
 
 func (f *fakeManifestLoader) Generate(workdir string) (*manifest.Manifest, error) {
 	f.messages = append(f.messages, "manifest.Generate called")
+	return &manifest.Manifest{}, nil
+}
+
+type fakeManifestGenerator struct {
+	messages []string
+}
+
+func (f *fakeManifestGenerator) Generate(ctx context.Context, options manifest.GenerateOptions) (*manifest.Manifest, error) {
+	f.messages = append(f.messages, "manifestGenerator.Generate called")
 	return &manifest.Manifest{}, nil
 }
 

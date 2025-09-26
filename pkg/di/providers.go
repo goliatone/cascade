@@ -27,6 +27,12 @@ func provideManifest() manifest.Loader {
 	return manifest.NewLoader()
 }
 
+// provideManifestGenerator creates a default manifest generator implementation.
+// Uses the basic generator that creates manifest structures from options.
+func provideManifestGenerator() manifest.Generator {
+	return manifest.NewGenerator()
+}
+
 // providePlanner creates a default planner implementation.
 // The planner computes cascade plans from manifests and targets.
 func providePlanner() planner.Planner {

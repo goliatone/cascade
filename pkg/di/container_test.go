@@ -36,6 +36,12 @@ func (m *mockManifestLoader) Generate(workdir string) (*manifest.Manifest, error
 	return nil, errors.New("not implemented")
 }
 
+type mockManifestGenerator struct{}
+
+func (m *mockManifestGenerator) Generate(ctx context.Context, options manifest.GenerateOptions) (*manifest.Manifest, error) {
+	return nil, errors.New("not implemented")
+}
+
 type mockPlanner struct{}
 
 func (m *mockPlanner) Plan(ctx context.Context, manifest *manifest.Manifest, target planner.Target) (*planner.Plan, error) {
@@ -154,6 +160,12 @@ func TestNew_OptionValidation(t *testing.T) {
 			errContains: "manifest loader cannot be nil",
 		},
 		{
+			name:        "nil manifest generator should error",
+			opts:        []di.Option{di.WithManifestGenerator(nil)},
+			wantErr:     true,
+			errContains: "manifest generator cannot be nil",
+		},
+		{
 			name:        "nil planner should error",
 			opts:        []di.Option{di.WithPlanner(nil)},
 			wantErr:     true,
@@ -184,6 +196,7 @@ func TestNew_OptionValidation(t *testing.T) {
 				di.WithLogger(&mockLogger{}),
 				di.WithHTTPClient(&http.Client{}),
 				di.WithManifestLoader(&mockManifestLoader{}),
+				di.WithManifestGenerator(&mockManifestGenerator{}),
 				di.WithPlanner(&mockPlanner{}),
 				di.WithExecutor(&mockExecutor{}),
 				di.WithBroker(&mockBroker{}),
@@ -261,6 +274,16 @@ func TestOptions_IndividualValidation(t *testing.T) {
 		{
 			name:    "WithManifestLoader with valid loader",
 			option:  di.WithManifestLoader(&mockManifestLoader{}),
+			wantErr: "",
+		},
+		{
+			name:    "WithManifestGenerator with nil",
+			option:  di.WithManifestGenerator(nil),
+			wantErr: "manifest generator cannot be nil",
+		},
+		{
+			name:    "WithManifestGenerator with valid generator",
+			option:  di.WithManifestGenerator(&mockManifestGenerator{}),
 			wantErr: "",
 		},
 		{

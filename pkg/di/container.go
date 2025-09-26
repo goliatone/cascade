@@ -3,6 +3,7 @@ package di
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/goliatone/cascade/internal/broker"
 	"github.com/goliatone/cascade/internal/executor"
@@ -25,6 +26,7 @@ type Logger interface {
 type Container interface {
 	// Core service accessors
 	Manifest() manifest.Loader
+	ManifestGenerator() manifest.Generator
 	Planner() planner.Planner
 	Executor() executor.Executor
 	Broker() broker.Broker
@@ -66,38 +68,42 @@ type builder struct {
 
 	// Build options
 	requireProductionCredentials bool
+	enableInstrumentation        bool
 
 	// Infrastructure dependencies
 	logger     Logger
 	httpClient *http.Client
 
 	// Core service dependencies
-	manifestLoader manifest.Loader
-	planner        planner.Planner
-	executor       executor.Executor
-	broker         broker.Broker
-	stateManager   state.Manager
+	manifestLoader    manifest.Loader
+	manifestGenerator manifest.Generator
+	planner           planner.Planner
+	executor          executor.Executor
+	broker            broker.Broker
+	stateManager      state.Manager
 }
 
 // container implements the Container interface with concrete dependencies.
 // It holds all resolved services and provides access through interface methods.
 type container struct {
-	cfg            *config.Config
-	logger         Logger
-	httpClient     *http.Client
-	manifestLoader manifest.Loader
-	planner        planner.Planner
-	executor       executor.Executor
-	broker         broker.Broker
-	stateManager   state.Manager
+	cfg               *config.Config
+	logger            Logger
+	httpClient        *http.Client
+	manifestLoader    manifest.Loader
+	manifestGenerator manifest.Generator
+	planner           planner.Planner
+	executor          executor.Executor
+	broker            broker.Broker
+	stateManager      state.Manager
 }
 
 // Core service accessors
-func (c *container) Manifest() manifest.Loader   { return c.manifestLoader }
-func (c *container) Planner() planner.Planner    { return c.planner }
-func (c *container) Executor() executor.Executor { return c.executor }
-func (c *container) Broker() broker.Broker       { return c.broker }
-func (c *container) State() state.Manager        { return c.stateManager }
+func (c *container) Manifest() manifest.Loader             { return c.manifestLoader }
+func (c *container) ManifestGenerator() manifest.Generator { return c.manifestGenerator }
+func (c *container) Planner() planner.Planner              { return c.planner }
+func (c *container) Executor() executor.Executor           { return c.executor }
+func (c *container) Broker() broker.Broker                 { return c.broker }
+func (c *container) State() state.Manager                  { return c.stateManager }
 
 // Configuration and infrastructure accessors
 func (c *container) Config() *config.Config   { return c.cfg }
@@ -135,6 +141,12 @@ func (c *container) Close() error {
 		}
 	}
 
+	if closer, ok := c.manifestGenerator.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("manifest generator close: %w", err))
+		}
+	}
+
 	// Close HTTP client transport if it implements closer
 	if c.httpClient.Transport != nil {
 		if closer, ok := c.httpClient.Transport.(interface{ Close() error }); ok {
@@ -156,6 +168,7 @@ func (c *container) Close() error {
 // It validates that required dependencies are present and creates default implementations
 // for any that are missing but can be auto-constructed.
 func (b *builder) build() (Container, error) {
+	start := time.Now()
 	// Provide defaults for missing dependencies
 	// Configuration must be resolved first as other services depend on it
 	if b.cfg == nil {
@@ -178,6 +191,10 @@ func (b *builder) build() (Container, error) {
 
 	if b.manifestLoader == nil {
 		b.manifestLoader = provideManifest()
+	}
+
+	if b.manifestGenerator == nil {
+		b.manifestGenerator = provideManifestGenerator()
 	}
 
 	if b.planner == nil {
@@ -220,6 +237,9 @@ func (b *builder) build() (Container, error) {
 	if b.manifestLoader == nil {
 		return nil, fmt.Errorf("di: manifest loader is required")
 	}
+	if b.manifestGenerator == nil {
+		return nil, fmt.Errorf("di: manifest generator is required")
+	}
 	if b.planner == nil {
 		return nil, fmt.Errorf("di: planner is required")
 	}
@@ -234,16 +254,30 @@ func (b *builder) build() (Container, error) {
 	}
 
 	// Create and return the container with all dependencies wired
-	return &container{
-		cfg:            b.cfg,
-		logger:         b.logger,
-		httpClient:     b.httpClient,
-		manifestLoader: b.manifestLoader,
-		planner:        b.planner,
-		executor:       b.executor,
-		broker:         b.broker,
-		stateManager:   b.stateManager,
-	}, nil
+	c := &container{
+		cfg:               b.cfg,
+		logger:            b.logger,
+		httpClient:        b.httpClient,
+		manifestLoader:    b.manifestLoader,
+		manifestGenerator: b.manifestGenerator,
+		planner:           b.planner,
+		executor:          b.executor,
+		broker:            b.broker,
+		stateManager:      b.stateManager,
+	}
+
+	// Log container creation metrics if instrumentation is enabled
+	if b.enableInstrumentation && b.logger != nil {
+		duration := time.Since(start)
+		b.logger.Debug("DI container created",
+			"duration_ms", duration.Milliseconds(),
+			"config_present", b.cfg != nil,
+			"production_mode", b.requireProductionCredentials,
+			"services_count", 6, // manifest (loader, generator), planner, executor, broker, state
+		)
+	}
+
+	return c, nil
 }
 
 // Configuration options
@@ -294,6 +328,17 @@ func WithManifestLoader(loader manifest.Loader) Option {
 			return fmt.Errorf("manifest loader cannot be nil")
 		}
 		b.manifestLoader = loader
+		return nil
+	}
+}
+
+// WithManifestGenerator injects a custom manifest generator implementation.
+func WithManifestGenerator(generator manifest.Generator) Option {
+	return func(b *builder) error {
+		if generator == nil {
+			return fmt.Errorf("manifest generator cannot be nil")
+		}
+		b.manifestGenerator = generator
 		return nil
 	}
 }
@@ -350,6 +395,16 @@ func WithStateManager(mgr state.Manager) Option {
 func WithProductionCredentials() Option {
 	return func(b *builder) error {
 		b.requireProductionCredentials = true
+		return nil
+	}
+}
+
+// WithInstrumentation enables logging hooks and metrics for DI container creation
+// and service usage. This is useful for debugging and monitoring container
+// performance in production environments.
+func WithInstrumentation() Option {
+	return func(b *builder) error {
+		b.enableInstrumentation = true
 		return nil
 	}
 }

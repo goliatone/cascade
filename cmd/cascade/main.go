@@ -194,6 +194,7 @@ Examples:
 
 // initializeContainer sets up the dependency injection container with configuration
 func initializeContainer(cmd *cobra.Command) error {
+	start := time.Now()
 	// Build configuration from flags, environment, and files
 	builder := config.NewBuilder().
 		FromFile("").  // Auto-discover config file
@@ -212,10 +213,29 @@ func initializeContainer(cmd *cobra.Command) error {
 		containerOptions = append(containerOptions, di.WithProductionCredentials())
 	}
 
+	// Enable instrumentation if debug logging is enabled
+	if cfg.Logging.Level == "debug" || cfg.Logging.Verbose {
+		containerOptions = append(containerOptions, di.WithInstrumentation())
+	}
+
 	// Create container with configuration
 	container, err = di.New(containerOptions...)
 	if err != nil {
 		return newConfigError("failed to initialize dependencies", err)
+	}
+
+	// Log container initialization metrics if logger is available
+	if logger := container.Logger(); logger != nil {
+		duration := time.Since(start)
+		commandName := cmd.Name()
+		if cmd.Parent() != nil {
+			commandName = cmd.Parent().Name() + " " + cmd.Name()
+		}
+		logger.Debug("CLI container initialized",
+			"command", commandName,
+			"duration_ms", duration.Milliseconds(),
+			"production_mode", isProductionCommand(cmd),
+		)
 	}
 
 	return nil
@@ -338,9 +358,20 @@ closing pull requests and cleaning up branches as needed.`,
 // Command implementations
 
 func runPlan(manifestPath string) error {
+	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
 	config := container.Config()
+
+	defer func() {
+		if logger != nil {
+			logger.Debug("Plan command completed",
+				"duration_ms", time.Since(start).Milliseconds(),
+				"manifest", manifestPath,
+				"dry_run", config.Executor.DryRun,
+			)
+		}
+	}()
 
 	// Use default manifest path if none provided
 	if manifestPath == "" {
@@ -394,9 +425,20 @@ func runPlan(manifestPath string) error {
 }
 
 func runRelease(manifestPath string) error {
+	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
 	cfg := container.Config()
+
+	defer func() {
+		if logger != nil {
+			logger.Debug("Release command completed",
+				"duration_ms", time.Since(start).Milliseconds(),
+				"manifest", manifestPath,
+				"dry_run", cfg.Executor.DryRun,
+			)
+		}
+	}()
 
 	manifestPath = resolveManifestPath(manifestPath, cfg)
 	if manifestPath == "" {
@@ -480,9 +522,20 @@ func runRelease(manifestPath string) error {
 }
 
 func runResume(stateID string) error {
+	start := time.Now()
 	logger := container.Logger()
 	cfg := container.Config()
 	ctx := context.Background()
+
+	defer func() {
+		if logger != nil {
+			logger.Debug("Resume command completed",
+				"duration_ms", time.Since(start).Milliseconds(),
+				"state_id", stateID,
+				"dry_run", cfg.Executor.DryRun,
+			)
+		}
+	}()
 
 	module, version, err := resolveModuleVersion(stateID, cfg)
 	if err != nil {
@@ -564,9 +617,20 @@ func runResume(stateID string) error {
 }
 
 func runRevert(stateID string) error {
+	start := time.Now()
 	logger := container.Logger()
 	cfg := container.Config()
 	ctx := context.Background()
+
+	defer func() {
+		if logger != nil {
+			logger.Debug("Revert command completed",
+				"duration_ms", time.Since(start).Milliseconds(),
+				"state_id", stateID,
+				"dry_run", cfg.Executor.DryRun,
+			)
+		}
+	}()
 
 	module, version, err := resolveModuleVersion(stateID, cfg)
 	if err != nil {
