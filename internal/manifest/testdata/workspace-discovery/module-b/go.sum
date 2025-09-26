@@ -1,0 +1,4 @@
+github.com/target/module v2.0.0 h1:example
+github.com/target/module v2.0.0/go.mod h1:example
+github.com/other/dep v1.5.0 h1:example
+github.com/other/dep v1.5.0/go.mod h1:example
