@@ -154,7 +154,7 @@ func (w *workspaceDiscovery) DiscoverDependents(ctx context.Context, options Dis
 			dependent := DependentOptions{
 				Repository:      w.inferRepository(module.ModulePath),
 				ModulePath:      module.ModulePath,
-				LocalModulePath: ".", // Default to root of repository
+				LocalModulePath: w.inferLocalModulePath(module.ModulePath),
 			}
 			dependents = append(dependents, dependent)
 		}
@@ -461,8 +461,26 @@ func (w *workspaceDiscovery) inferRepository(modulePath string) string {
 		}
 	}
 
-	// Fallback: use the full module path as repository
+	// For non-hosted URLs or unknown hosts, preserve the original module path
+	// This prevents breaking URLs like go.uber.org/zap into invalid repository names
 	return modulePath
+}
+
+// inferLocalModulePath calculates the relative path from repository root to module
+func (w *workspaceDiscovery) inferLocalModulePath(modulePath string) string {
+	parts := strings.Split(modulePath, "/")
+
+	if len(parts) >= 4 {
+		switch parts[0] {
+		case "github.com", "gitlab.com", "bitbucket.org":
+			// For hosted repos, everything after org/repo is the local path
+			return strings.Join(parts[3:], "/")
+		}
+	}
+
+	// For non-hosted URLs or short paths, default to root
+	// This handles cases like go.uber.org/zap where the entire URL is the "repository"
+	return "."
 }
 
 // shouldIncludeDirectory checks if a directory should be included based on patterns.
