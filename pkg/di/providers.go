@@ -92,7 +92,7 @@ func provideBrokerWithConfig(cfg *config.Config, httpClient *http.Client, logger
 	brokerCfg := broker.DefaultConfig()
 	brokerCfg.DryRun = cfg.Executor.DryRun
 
-	return broker.New(provider, notifier, brokerCfg)
+	return broker.New(provider, notifier, brokerCfg, logger)
 }
 
 // provideBrokerForProduction creates a broker implementation for production commands.
@@ -119,7 +119,7 @@ func provideBrokerForProduction(cfg *config.Config, httpClient *http.Client, log
 	brokerCfg := broker.DefaultConfig()
 	brokerCfg.DryRun = cfg.Executor.DryRun
 
-	return broker.New(provider, notifier, brokerCfg), nil
+	return broker.New(provider, notifier, brokerCfg, logger), nil
 }
 
 func newGitHubProviderFromConfig(cfg *config.Config, baseHTTP *http.Client, logger Logger) (broker.Provider, error) {
@@ -221,7 +221,8 @@ func newNotifierFromConfig(cfg *config.Config, baseClient *http.Client, logger L
 
 	switch len(notifiers) {
 	case 0:
-		return noopNotifier{}
+		logger.Info("No notification integrations configured, using no-op notifier")
+		return broker.NewNoOpNotifier()
 	case 1:
 		return notifiers[0]
 	default:
@@ -243,12 +244,6 @@ func cloneHTTPClient(base *http.Client, timeout time.Duration) *http.Client {
 		clone.Transport = newHeaderRoundTripper(nil, defaultHTTPHeaders(nil))
 	}
 	return &clone
-}
-
-type noopNotifier struct{}
-
-func (noopNotifier) Send(ctx context.Context, item planner.WorkItem, result *executor.Result) (*broker.NotificationResult, error) {
-	return nil, nil
 }
 
 // provideState creates a default state manager implementation.
