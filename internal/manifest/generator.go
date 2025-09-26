@@ -50,12 +50,64 @@ type DependentOptions struct {
 	Timeout         time.Duration     // Operation timeout
 }
 
+// GeneratorConfig defines configuration options for the manifest generator.
+type GeneratorConfig struct {
+	// DefaultWorkspace is the default workspace directory for discovering dependent modules.
+	DefaultWorkspace string
+
+	// Tests contains default test command configurations.
+	Tests TestsConfig
+
+	// Notifications contains default notification settings.
+	Notifications NotificationsConfig
+
+	// DefaultBranch is the default branch name to use for dependency updates.
+	DefaultBranch string
+
+	// Discovery contains settings for automatic dependent discovery.
+	Discovery DiscoveryConfig
+}
+
+// TestsConfig contains default test command configurations.
+type TestsConfig struct {
+	Command          string
+	Timeout          time.Duration
+	WorkingDirectory string
+}
+
+// NotificationsConfig contains default notification settings.
+type NotificationsConfig struct {
+	Enabled   bool
+	Channels  []string
+	OnSuccess bool
+	OnFailure bool
+}
+
+// DiscoveryConfig contains settings for automatic dependent discovery.
+type DiscoveryConfig struct {
+	Enabled         bool
+	MaxDepth        int
+	IncludePatterns []string
+	ExcludePatterns []string
+	Interactive     bool
+}
+
 // NewGenerator returns a default manifest generator implementation.
 func NewGenerator() Generator {
 	return &generator{}
 }
 
-type generator struct{}
+// NewGeneratorWithConfig returns a manifest generator implementation with configuration.
+func NewGeneratorWithConfig(config *GeneratorConfig) Generator {
+	if config == nil {
+		return &generator{}
+	}
+	return &generator{config: config}
+}
+
+type generator struct {
+	config *GeneratorConfig
+}
 
 // Generate creates a new manifest based on the provided options.
 func (g *generator) Generate(ctx context.Context, options GenerateOptions) (*Manifest, error) {
@@ -82,13 +134,17 @@ func (g *generator) Generate(ctx context.Context, options GenerateOptions) (*Man
 
 // buildDefaults creates the default configuration section.
 func (g *generator) buildDefaults(options GenerateOptions) Defaults {
+	// Use config defaults first, then options, then hard-coded defaults
+	defaultBranch := g.getConfigBranch(options.DefaultBranch)
+	defaultTests := g.getConfigTests(options.DefaultTests)
+
 	defaults := Defaults{
-		Branch:         g.getOrDefault(options.DefaultBranch, "main"),
+		Branch:         g.getOrDefault(defaultBranch, "main"),
 		Labels:         g.getLabelsOrDefault(options.DefaultLabels),
 		CommitTemplate: g.getOrDefault(options.DefaultCommitTmpl, "chore(deps): bump {{ module }} to {{ version }}"),
-		Tests:          g.getTestsOrDefault(options.DefaultTests),
+		Tests:          defaultTests,
 		ExtraCommands:  options.DefaultExtraCommands,
-		Notifications:  options.DefaultNotifications,
+		Notifications:  g.mergeNotifications(options.DefaultNotifications),
 		PR:             g.getPRConfigOrDefault(options.DefaultPRConfig),
 	}
 
@@ -193,4 +249,54 @@ func (g *generator) getPRConfigOrDefault(pr PRConfig) PRConfig {
 		pr.BodyTemplate = "Automated dependency update for {{ module }} to {{ version }}"
 	}
 	return pr
+}
+
+// Helper functions that use config defaults
+
+func (g *generator) getConfigBranch(optionsBranch string) string {
+	if optionsBranch != "" {
+		return optionsBranch
+	}
+	if g.config != nil && g.config.DefaultBranch != "" {
+		return g.config.DefaultBranch
+	}
+	return ""
+}
+
+func (g *generator) getConfigTests(optionsTests []Command) []Command {
+	if optionsTests != nil && len(optionsTests) > 0 {
+		return optionsTests
+	}
+
+	// Use config default test command if available
+	if g.config != nil && g.config.Tests.Command != "" {
+		cmd := []string{"go", "test", "./..."}
+		if g.config.Tests.Command != "go test ./..." {
+			// Parse the command string into slice - for now, simple split
+			// TODO: Implement proper shell command parsing if needed
+			cmd = []string{"sh", "-c", g.config.Tests.Command}
+		}
+
+		testCmd := Command{Cmd: cmd}
+		if g.config.Tests.WorkingDirectory != "" {
+			testCmd.Dir = g.config.Tests.WorkingDirectory
+		}
+
+		return []Command{testCmd}
+	}
+
+	// Fall back to default
+	return g.getTestsOrDefault(nil)
+}
+
+func (g *generator) mergeNotifications(optionsNotifications Notifications) Notifications {
+	if g.config == nil {
+		return optionsNotifications
+	}
+
+	// The Notifications type has SlackChannel and Webhook fields
+	// For now, we'll return the options as-is since the config notification
+	// structure differs from the manifest notification structure
+	// TODO: Map config notification channels to manifest notification fields
+	return optionsNotifications
 }
