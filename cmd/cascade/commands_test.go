@@ -548,3 +548,235 @@ func withClearedGitHubEnv(t *testing.T, fn func()) {
 
 	fn()
 }
+
+// Mock manifest generator for testing
+type mockManifestGenerator struct {
+	generateFunc func(ctx context.Context, options manifest.GenerateOptions) (*manifest.Manifest, error)
+}
+
+func (m *mockManifestGenerator) Generate(ctx context.Context, options manifest.GenerateOptions) (*manifest.Manifest, error) {
+	if m.generateFunc != nil {
+		return m.generateFunc(ctx, options)
+	}
+	return &manifest.Manifest{
+		ManifestVersion: 1,
+		Modules: []manifest.Module{
+			{
+				Name:   options.ModuleName,
+				Module: options.ModulePath,
+			},
+		},
+	}, nil
+}
+
+func TestManifestGenerate_PathResolution(t *testing.T) {
+	tests := []struct {
+		name            string
+		outputPath      string
+		configManifest  string
+		configWorkspace string
+		expectedPath    string
+	}{
+		{
+			name:         "explicit output path",
+			outputPath:   "/custom/path/deps.yaml",
+			expectedPath: "/custom/path/deps.yaml",
+		},
+		{
+			name:           "config manifest path",
+			configManifest: "/workspace/manifest.yaml",
+			expectedPath:   "/workspace/manifest.yaml",
+		},
+		{
+			name:         "default to current directory",
+			expectedPath: "deps.yaml", // Will be made absolute in the function
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Workspace: config.WorkspaceConfig{
+					ManifestPath: tt.configManifest,
+					Path:         tt.configWorkspace,
+				},
+			}
+
+			result := resolveGenerateOutputPath(tt.outputPath, cfg)
+
+			// For "default to current directory" test, result should end with deps.yaml
+			if tt.expectedPath == "deps.yaml" {
+				if !strings.HasSuffix(result, "deps.yaml") {
+					t.Errorf("expected path to end with deps.yaml, got: %s", result)
+				}
+			} else {
+				if result != tt.expectedPath {
+					t.Errorf("expected path %s, got %s", tt.expectedPath, result)
+				}
+			}
+		})
+	}
+}
+
+func TestManifestGenerate_OverwriteBehavior(t *testing.T) {
+	tests := []struct {
+		name            string
+		force           bool
+		existingFile    bool
+		expectOverwrite bool
+	}{
+		{
+			name:            "force flag overwrites existing file",
+			force:           true,
+			existingFile:    true,
+			expectOverwrite: true,
+		},
+		{
+			name:            "no force flag on new file",
+			force:           false,
+			existingFile:    false,
+			expectOverwrite: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temporary directory
+			tempDir := t.TempDir()
+			outputPath := tempDir + "/deps.yaml"
+
+			// Create existing file if needed
+			if tt.existingFile {
+				if err := os.WriteFile(outputPath, []byte("existing content"), 0644); err != nil {
+					t.Fatalf("failed to create existing file: %v", err)
+				}
+			}
+
+			// Create mock container
+			logger := &mockLogger{}
+			cfg := &config.Config{
+				Executor: config.ExecutorConfig{DryRun: false},
+			}
+
+			generator := &mockManifestGenerator{
+				generateFunc: func(ctx context.Context, options manifest.GenerateOptions) (*manifest.Manifest, error) {
+					return &manifest.Manifest{
+						ManifestVersion: 1,
+						Modules: []manifest.Module{
+							{
+								Name:   options.ModuleName,
+								Module: options.ModulePath,
+							},
+						},
+					}, nil
+				},
+			}
+
+			mockContainer, err := di.New(
+				di.WithConfig(cfg),
+				di.WithLogger(logger),
+				di.WithManifestGenerator(generator),
+			)
+			if err != nil {
+				t.Fatalf("failed to create mock container: %v", err)
+			}
+
+			// Set the global container for the test
+			originalContainer := container
+			container = mockContainer
+			defer func() { container = originalContainer }()
+
+			// Call the function under test
+			err = runManifestGenerate(
+				"test-module",
+				"github.com/example/test",
+				"example/test",
+				"v1.0.0",
+				outputPath,
+				[]string{},
+				"",
+				"",
+				tt.force,
+			)
+
+			// Check that no error occurred for valid cases
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			// Check that file exists if we expected overwrite
+			if tt.expectOverwrite {
+				if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+					t.Errorf("expected file to exist at %s", outputPath)
+				}
+			}
+		})
+	}
+}
+
+func TestManifestGenerate_WorkspaceHandling(t *testing.T) {
+	// Create temporary directory for workspace
+	tempDir := t.TempDir()
+
+	cfg := &config.Config{
+		Workspace: config.WorkspaceConfig{
+			Path:         tempDir,
+			ManifestPath: tempDir + "/custom-deps.yaml",
+		},
+		Executor: config.ExecutorConfig{DryRun: false},
+	}
+
+	// Create mock container
+	logger := &mockLogger{}
+	generator := &mockManifestGenerator{
+		generateFunc: func(ctx context.Context, options manifest.GenerateOptions) (*manifest.Manifest, error) {
+			return &manifest.Manifest{
+				ManifestVersion: 1,
+				Modules: []manifest.Module{
+					{
+						Name:   options.ModuleName,
+						Module: options.ModulePath,
+					},
+				},
+			}, nil
+		},
+	}
+
+	mockContainer, err := di.New(
+		di.WithConfig(cfg),
+		di.WithLogger(logger),
+		di.WithManifestGenerator(generator),
+	)
+	if err != nil {
+		t.Fatalf("failed to create mock container: %v", err)
+	}
+
+	// Set the global container for the test
+	originalContainer := container
+	container = mockContainer
+	defer func() { container = originalContainer }()
+
+	// Call the function without explicit output path (should use workspace config)
+	err = runManifestGenerate(
+		"test-module",
+		"github.com/example/test",
+		"example/test",
+		"v1.0.0",
+		"", // Empty output path should use workspace config
+		[]string{},
+		"",
+		"",
+		false, // force
+	)
+
+	// Check that no error occurred
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Check that file was created in the workspace location
+	expectedPath := cfg.Workspace.ManifestPath
+	if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+		t.Errorf("expected file to exist at workspace path %s", expectedPath)
+	}
+}

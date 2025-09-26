@@ -20,7 +20,7 @@ func TestCLIHelp(t *testing.T) {
 			contains: []string{
 				"Cascade is a CLI tool that orchestrates automated dependency updates",
 				"Available Commands:",
-				"plan", "release", "resume", "revert",
+				"manifest", "plan", "release", "resume", "revert",
 				"Flags:",
 			},
 		},
@@ -58,6 +58,42 @@ func TestCLIHelp(t *testing.T) {
 				"Revert undoes changes made by a cascade operation",
 				"Usage:",
 				"cascade revert [state-id]",
+			},
+		},
+		{
+			name: "manifest help",
+			args: []string{"manifest", "--help"},
+			contains: []string{
+				"Manifest management commands",
+				"Available Commands:",
+				"generate",
+				"Usage:",
+				"cascade manifest [command]",
+			},
+		},
+		{
+			name: "manifest generate help",
+			args: []string{"manifest", "generate", "--help"},
+			contains: []string{
+				"Generate creates a new dependency manifest file",
+				"--module-path string",
+				"--version string",
+				"--dependents strings",
+				"--output string",
+				"--slack-channel string",
+				"Examples:",
+				"cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3",
+			},
+		},
+		{
+			name: "manifest gen alias help",
+			args: []string{"manifest", "gen", "--help"},
+			contains: []string{
+				"Generate creates a new dependency manifest file",
+				"--module-path string",
+				"--version string",
+				"Aliases:",
+				"generate, gen",
 			},
 		},
 	}
