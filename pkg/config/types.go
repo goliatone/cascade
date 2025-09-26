@@ -21,6 +21,9 @@ type Config struct {
 	// State contains state persistence settings
 	State StateConfig `json:"state" yaml:"state"`
 
+	// ManifestGenerator contains defaults for manifest generation operations
+	ManifestGenerator ManifestGeneratorConfig `json:"manifest_generator" yaml:"manifest_generator"`
+
 	// Target module and version for cascade operations
 	// These are typically specified via command-line flags
 	Module  string `json:"module,omitempty" yaml:"module,omitempty"`
@@ -144,6 +147,104 @@ type StateConfig struct {
 	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
+// ManifestGeneratorConfig contains default settings for manifest generation
+// operations to reduce the need for command-line flags.
+type ManifestGeneratorConfig struct {
+	// DefaultWorkspace is the default workspace directory for discovering dependent modules.
+	// If empty, uses current directory or config workspace path.
+	DefaultWorkspace string `json:"default_workspace,omitempty" yaml:"default_workspace,omitempty"`
+
+	// Tests contains default test command configurations.
+	Tests TestsConfig `json:"tests" yaml:"tests"`
+
+	// Notifications contains default notification settings for manifest operations.
+	Notifications NotificationsConfig `json:"notifications" yaml:"notifications"`
+
+	// TemplateProfiles contains predefined template configurations.
+	TemplateProfiles map[string]TemplateProfileConfig `json:"template_profiles,omitempty" yaml:"template_profiles,omitempty"`
+
+	// DefaultBranch is the default branch name to use for dependency updates.
+	// Default: "cascade/update-deps"
+	DefaultBranch string `json:"default_branch,omitempty" yaml:"default_branch,omitempty"`
+
+	// DiscoverySettings contains settings for automatic dependent discovery.
+	Discovery DiscoveryConfig `json:"discovery" yaml:"discovery"`
+}
+
+// TestsConfig contains default test command configurations.
+type TestsConfig struct {
+	// Command is the default test command to run for discovered dependents.
+	// Default: "go test ./..."
+	Command string `json:"command,omitempty" yaml:"command,omitempty"`
+
+	// Timeout is the default timeout for test execution.
+	// Default: 5 minutes
+	Timeout time.Duration `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+
+	// WorkingDirectory is the default working directory for test execution.
+	// If empty, uses the module root directory.
+	WorkingDirectory string `json:"working_directory,omitempty" yaml:"working_directory,omitempty"`
+}
+
+// NotificationsConfig contains default notification settings.
+type NotificationsConfig struct {
+	// Enabled controls whether notifications are sent by default.
+	// Default: false
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// Channels contains the default notification channels to use.
+	Channels []string `json:"channels,omitempty" yaml:"channels,omitempty"`
+
+	// OnSuccess controls whether to send notifications on successful operations.
+	// Default: false
+	OnSuccess bool `json:"on_success" yaml:"on_success"`
+
+	// OnFailure controls whether to send notifications on failed operations.
+	// Default: true
+	OnFailure bool `json:"on_failure" yaml:"on_failure"`
+}
+
+// TemplateProfileConfig contains predefined template configurations
+// that can be referenced by name during manifest generation.
+type TemplateProfileConfig struct {
+	// Name is the profile identifier used in CLI commands.
+	Name string `json:"name" yaml:"name" validate:"required"`
+
+	// Description provides a human-readable description of the profile.
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Tests overrides the default test configuration for this profile.
+	Tests *TestsConfig `json:"tests,omitempty" yaml:"tests,omitempty"`
+
+	// Notifications overrides the default notification configuration for this profile.
+	Notifications *NotificationsConfig `json:"notifications,omitempty" yaml:"notifications,omitempty"`
+
+	// Branch overrides the default branch name for this profile.
+	Branch string `json:"branch,omitempty" yaml:"branch,omitempty"`
+}
+
+// DiscoveryConfig contains settings for automatic dependent discovery.
+type DiscoveryConfig struct {
+	// Enabled controls whether automatic discovery is enabled by default.
+	// Default: true
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// MaxDepth limits how deep to scan for dependent modules in workspace discovery.
+	// Default: 3
+	MaxDepth int `json:"max_depth,omitempty" yaml:"max_depth,omitempty" validate:"min=1"`
+
+	// IncludePatterns contains glob patterns for directories/files to include in discovery.
+	IncludePatterns []string `json:"include_patterns,omitempty" yaml:"include_patterns,omitempty"`
+
+	// ExcludePatterns contains glob patterns for directories/files to exclude from discovery.
+	// Default: ["vendor/*", ".git/*", "node_modules/*"]
+	ExcludePatterns []string `json:"exclude_patterns,omitempty" yaml:"exclude_patterns,omitempty"`
+
+	// Interactive controls whether to prompt for confirmation of discovered dependents.
+	// Default: true (can be overridden by --yes or --non-interactive flags)
+	Interactive bool `json:"interactive" yaml:"interactive"`
+}
+
 // Environment variable mapping constants for configuration parsing
 const (
 	// Workspace environment variables
@@ -176,6 +277,16 @@ const (
 	EnvStateDir       = "CASCADE_STATE_DIR"
 	EnvStateRetention = "CASCADE_STATE_RETENTION"
 	EnvStateEnabled   = "CASCADE_STATE_ENABLED"
+
+	// Manifest Generator environment variables
+	EnvManifestGeneratorWorkspace            = "CASCADE_MANIFEST_GENERATOR_WORKSPACE"
+	EnvManifestGeneratorTestCommand          = "CASCADE_MANIFEST_GENERATOR_TEST_COMMAND"
+	EnvManifestGeneratorTestTimeout          = "CASCADE_MANIFEST_GENERATOR_TEST_TIMEOUT"
+	EnvManifestGeneratorNotificationsEnable  = "CASCADE_MANIFEST_GENERATOR_NOTIFICATIONS_ENABLED"
+	EnvManifestGeneratorDefaultBranch        = "CASCADE_MANIFEST_GENERATOR_DEFAULT_BRANCH"
+	EnvManifestGeneratorDiscoveryEnabled     = "CASCADE_MANIFEST_GENERATOR_DISCOVERY_ENABLED"
+	EnvManifestGeneratorDiscoveryMaxDepth    = "CASCADE_MANIFEST_GENERATOR_DISCOVERY_MAX_DEPTH"
+	EnvManifestGeneratorDiscoveryInteractive = "CASCADE_MANIFEST_GENERATOR_DISCOVERY_INTERACTIVE"
 )
 
 // New returns a Config populated with safe zero values.
