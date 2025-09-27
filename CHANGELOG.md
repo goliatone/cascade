@@ -1,5 +1,43 @@
 # Changelog
 
+# [0.1.1](https://github.com/goliatone/cascade/compare/v0.1.0...v0.1.1) - (2025-09-27)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Flag defaults ([9794e76](https://github.com/goliatone/cascade/commit/9794e76c032a3c160136b728783111ba5f2b19c7))  - (goliatone)
+- Apply defaults ([102db82](https://github.com/goliatone/cascade/commit/102db8243131718fb5a848ff3ae33906ea957aba))  - (goliatone)
+- Test ([c938acd](https://github.com/goliatone/cascade/commit/c938acd692a0b1742faaca20f83fb6014663fa19))  - (goliatone)
+- Update default file name ([c367320](https://github.com/goliatone/cascade/commit/c3673209451d61af7c6b015f0e1816c519387447))  - (goliatone)
+- Update tests ([20440dc](https://github.com/goliatone/cascade/commit/20440dc8d947cd1e39320056a0a0b7191c8a6c63))  - (goliatone)
+- Readme ([f51baba](https://github.com/goliatone/cascade/commit/f51baba737cc03b60dc5285bde7402cb39e86f81))  - (goliatone)
+- Ci:build task ([337f1e9](https://github.com/goliatone/cascade/commit/337f1e951bd166cd5ef73fb732dfd6dcdac9c07a))  - (goliatone)
+- Taskfile for intall and release ([a29cca3](https://github.com/goliatone/cascade/commit/a29cca39b2ace42d7cb04e59101b570e9cde2197))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.1 ([4a015ff](https://github.com/goliatone/cascade/commit/4a015ffb6cc5f648ff47785f8fa876bd35699318))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Clone url attr ([acfe8aa](https://github.com/goliatone/cascade/commit/acfe8aa777de9cb7d53d16766b7c4dd7528f3427))  - (goliatone)
+- Flag defaults ([3dddb90](https://github.com/goliatone/cascade/commit/3dddb901ccfb8a8476d3b9b2b1a7617b6375dd5b))  - (goliatone)
+- New default context building ([c874bdd](https://github.com/goliatone/cascade/commit/c874bdd3a6a9f4b3c257d480c3e39fe9dc645597))  - (goliatone)
+- Smart defaults for manifest generate command ([2d851d1](https://github.com/goliatone/cascade/commit/2d851d1eb7fe8fee1f0b2fc2de0b68ab783ed3d8))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Break down main command ([f875edb](https://github.com/goliatone/cascade/commit/f875edbbaa81b194b1c5b4366b0d8ac978cc8009))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Fix workspace value ([37ec19b](https://github.com/goliatone/cascade/commit/37ec19b34c3b46b0c03e7740ab7b8c6aba6b7679))  - (goliatone)
+- Refactor defult flag values ([695cab8](https://github.com/goliatone/cascade/commit/695cab89194b34cb2dfea140f22afa2984229826))  - (goliatone)
+- Update tests ([46f6425](https://github.com/goliatone/cascade/commit/46f6425644e9fef75872c91444c67a61eee1edce))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.0 ([5bd2d95](https://github.com/goliatone/cascade/commit/5bd2d95f60d967fb68b68189b42cdf52357d8760))  - (goliatone)
+
 # [0.1.0](https://github.com/goliatone/cascade/tree/v0.1.0) - (2025-09-27)
 
 ## <!-- 1 -->🐛 Bug Fixes
