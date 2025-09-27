@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,6 +24,8 @@ import (
 	"github.com/goliatone/cascade/internal/state"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
+	gh "github.com/google/go-github/v66/github"
+	oauth2 "golang.org/x/oauth2"
 )
 
 // Exit codes for different error types
@@ -870,42 +875,43 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 	finalOutputPath := resolveGenerateOutputPath(outputPath, cfg)
 
 	// Resolve discovery options if dependents not explicitly provided
-	finalDependents := dependents
 	var discoveredDependents []manifest.DependentOptions
 	workspaceDir := ""
+	finalDependentOptions := []manifest.DependentOptions{}
 
 	if len(dependents) == 0 {
-		// Perform discovery from multiple sources and merge results
-		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, githubOrg, workspace, maxDepth,
+		workspaceDir = resolveWorkspaceDir(workspace, cfg)
+		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, githubOrg, workspaceDir, maxDepth,
 			includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns, cfg, logger)
 		if err != nil {
 			logger.Warn("Discovery failed, proceeding with empty dependents list", "error", err)
 		} else {
 			discoveredDependents = mergedDependents
-			finalDependents = dependentsOptionsToStrings(discoveredDependents)
+			finalDependentOptions = append(finalDependentOptions, discoveredDependents...)
 
-			if len(finalDependents) > 0 {
+			if len(discoveredDependents) > 0 {
 				logger.Info("Discovery completed",
-					"total_dependents", len(finalDependents),
-					"dependents", finalDependents)
+					"total_dependents", len(discoveredDependents),
+					"dependents", dependentsOptionsToStrings(discoveredDependents))
 			}
 		}
 
-		// Apply interactive filtering if enabled
 		if len(discoveredDependents) > 0 && !yes && !nonInteractive {
 			filteredDependents, err := promptForDependentSelection(discoveredDependents)
 			if err != nil {
 				return fmt.Errorf("dependent selection failed: %w", err)
 			}
 			discoveredDependents = filteredDependents
-			finalDependents = dependentsOptionsToStrings(discoveredDependents)
+			finalDependentOptions = append([]manifest.DependentOptions{}, discoveredDependents...)
 		}
-
-		workspaceDir = resolveWorkspaceDir(workspace, cfg)
+	} else {
+		finalDependentOptions = buildDependentOptions(dependents)
 	}
 
+	finalDependentNames := dependentsOptionsToStrings(finalDependentOptions)
+
 	// Display discovery summary and handle confirmation
-	if err := displayDiscoverySummary(modulePath, finalVersion, workspaceDir, discoveredDependents, finalDependents, versionWarnings, yes, nonInteractive, cfg.Executor.DryRun); err != nil {
+	if err := displayDiscoverySummary(modulePath, finalVersion, workspaceDir, discoveredDependents, finalDependentNames, versionWarnings, yes, nonInteractive, cfg.Executor.DryRun); err != nil {
 		return err
 	}
 
@@ -920,7 +926,7 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		ModulePath:        modulePath,
 		Repository:        repository,
 		Version:           finalVersion,
-		Dependents:        buildDependentOptions(finalDependents),
+		Dependents:        finalDependentOptions,
 		DefaultBranch:     getDefaultBranch(cfg),
 		DefaultLabels:     []string{"automation:cascade"},
 		DefaultCommitTmpl: "chore(deps): bump {{ .Module }} to {{ .Version }}",
@@ -1737,6 +1743,185 @@ func getDiscoveryExcludePatterns(cliPatterns []string, cfg *config.Config) []str
 	return []string{"vendor/*", ".git/*", "node_modules/*"} // Sensible defaults
 }
 
+// getGitHubIncludePatterns returns the include patterns for GitHub discovery
+func getGitHubIncludePatterns(cliPatterns []string, cfg *config.Config) []string {
+	if len(cliPatterns) > 0 {
+		return cliPatterns
+	}
+	if cfg != nil && len(cfg.ManifestGenerator.Discovery.GitHub.IncludePatterns) > 0 {
+		return cfg.ManifestGenerator.Discovery.GitHub.IncludePatterns
+	}
+	return nil
+}
+
+// getGitHubExcludePatterns returns the exclude patterns for GitHub discovery
+func getGitHubExcludePatterns(cliPatterns []string, cfg *config.Config) []string {
+	if len(cliPatterns) > 0 {
+		return cliPatterns
+	}
+	if cfg != nil && len(cfg.ManifestGenerator.Discovery.GitHub.ExcludePatterns) > 0 {
+		return cfg.ManifestGenerator.Discovery.GitHub.ExcludePatterns
+	}
+	return nil
+}
+
+// newGitHubClient constructs a GitHub client using configuration and shared HTTP client settings
+func newGitHubClient(ctx context.Context, cfg *config.Config) (*gh.Client, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration required for GitHub discovery")
+	}
+
+	token := strings.TrimSpace(cfg.Integration.GitHub.Token)
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv(config.EnvGitHubToken))
+	}
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
+	}
+	if token == "" {
+		token = strings.TrimSpace(os.Getenv("GH_TOKEN"))
+	}
+	if token == "" {
+		return nil, fmt.Errorf("github token required for discovery")
+	}
+
+	var baseHTTP *http.Client
+	if container != nil {
+		baseHTTP = container.HTTPClient()
+	}
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	oauthClient := oauth2.NewClient(ctx, ts)
+
+	if baseHTTP != nil {
+		if transport, ok := oauthClient.Transport.(*oauth2.Transport); ok {
+			if baseHTTP.Transport != nil {
+				transport.Base = baseHTTP.Transport
+			}
+		}
+		if baseHTTP.Timeout > 0 {
+			oauthClient.Timeout = baseHTTP.Timeout
+		}
+	}
+
+	endpoint := strings.TrimSpace(cfg.Integration.GitHub.Endpoint)
+	if endpoint == "" {
+		return gh.NewClient(oauthClient), nil
+	}
+
+	baseURL, uploadURL := normalizeEnterpriseEndpoints(endpoint)
+	client, err := gh.NewEnterpriseClient(baseURL, uploadURL, oauthClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
+	}
+	return client, nil
+}
+
+// normalizeEnterpriseEndpoints mirrors pkg/di provider logic for GitHub enterprise endpoints
+func normalizeEnterpriseEndpoints(endpoint string) (string, string) {
+	base := strings.TrimSpace(endpoint)
+	if base == "" {
+		return "", ""
+	}
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+
+	trimmed := strings.TrimSuffix(base, "/")
+	if strings.HasSuffix(trimmed, "/api/v3") {
+		prefix := strings.TrimSuffix(trimmed, "/api/v3")
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		return prefix + "api/v3/", prefix + "api/uploads/"
+	}
+
+	return base, base
+}
+
+// matchesRepoPatterns evaluates include/exclude patterns against repository names
+func matchesRepoPatterns(repo string, includePatterns, excludePatterns []string) bool {
+	repoLower := strings.ToLower(repo)
+	repoName := repoLower
+	if idx := strings.Index(repoLower, "/"); idx >= 0 {
+		repoName = repoLower[idx+1:]
+	}
+
+	matchesPattern := func(pattern string) bool {
+		pattern = strings.ToLower(pattern)
+		if ok, _ := path.Match(pattern, repoLower); ok {
+			return true
+		}
+		if ok, _ := path.Match(pattern, repoName); ok {
+			return true
+		}
+		return false
+	}
+
+	for _, pattern := range excludePatterns {
+		if matchesPattern(pattern) {
+			return false
+		}
+	}
+
+	if len(includePatterns) == 0 {
+		return true
+	}
+
+	for _, pattern := range includePatterns {
+		if matchesPattern(pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// fetchModuleInfoFromGitHub downloads go.mod content and extracts module information
+func fetchModuleInfoFromGitHub(ctx context.Context, client *gh.Client, repo *gh.Repository, goModPath string) (string, string, error) {
+	owner := repo.GetOwner().GetLogin()
+	name := repo.GetName()
+
+	file, _, resp, err := client.Repositories.GetContents(ctx, owner, name, goModPath, nil)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			return "", "", fmt.Errorf("go.mod not found at %s", goModPath)
+		}
+		return "", "", err
+	}
+
+	content, err := file.GetContent()
+	if err != nil {
+		return "", "", err
+	}
+
+	modulePath := parseGoModModulePath(content)
+	if modulePath == "" {
+		modulePath = fmt.Sprintf("github.com/%s/%s", owner, name)
+	}
+
+	localPath := path.Dir(goModPath)
+	if localPath == "." || localPath == "/" {
+		localPath = "."
+	}
+
+	return modulePath, localPath, nil
+}
+
+// parseGoModModulePath extracts the module path from go.mod content
+func parseGoModModulePath(content string) string {
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "module ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				return parts[1]
+			}
+		}
+	}
+	return ""
+}
+
 // resolveGitHubOrg returns the GitHub organization from CLI flag or config
 func resolveGitHubOrg(cliOrg string, cfg *config.Config) string {
 	// CLI flag takes priority
@@ -1760,8 +1945,86 @@ func resolveGitHubOrg(cliOrg string, cfg *config.Config) string {
 // discoverGitHubDependents discovers dependent repositories in a GitHub organization
 // This is a placeholder implementation for Task 3.2 - actual implementation comes in Task 3.1
 func discoverGitHubDependents(ctx context.Context, targetModule, organization string, includePatterns, excludePatterns []string, cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
-	// Placeholder implementation - Task 3.1 (GitHub Discovery API Client) not yet implemented
-	return nil, fmt.Errorf("GitHub discovery not yet implemented: Task 3.1 required")
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration required for GitHub discovery")
+	}
+
+	client, err := newGitHubClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	finalInclude := includePatterns
+	finalExclude := excludePatterns
+
+	if len(finalInclude) == 0 {
+		finalInclude = cfg.ManifestGenerator.Discovery.GitHub.IncludePatterns
+	}
+	if len(finalExclude) == 0 {
+		finalExclude = cfg.ManifestGenerator.Discovery.GitHub.ExcludePatterns
+	}
+
+	return discoverGitHubDependentsWithClient(ctx, client, targetModule, organization, finalInclude, finalExclude, logger)
+}
+
+// discoverGitHubDependentsWithClient executes GitHub discovery using a prepared client (primarily for testing)
+func discoverGitHubDependentsWithClient(ctx context.Context, client *gh.Client, targetModule, organization string, includePatterns, excludePatterns []string, logger di.Logger) ([]manifest.DependentOptions, error) {
+	if client == nil {
+		return nil, fmt.Errorf("github client is required")
+	}
+
+	query := fmt.Sprintf("org:%s \"%s\" path:go.mod", organization, targetModule)
+	options := &gh.SearchOptions{ListOptions: gh.ListOptions{PerPage: 100}}
+
+	dependents := make([]manifest.DependentOptions, 0)
+	fetchedRepos := make(map[string]struct{})
+
+	for {
+		results, resp, err := client.Search.Code(ctx, query, options)
+		if err != nil {
+			return nil, fmt.Errorf("github code search failed: %w", err)
+		}
+
+		for _, item := range results.CodeResults {
+			repo := item.GetRepository()
+			fullName := repo.GetFullName()
+
+			if !matchesRepoPatterns(fullName, includePatterns, excludePatterns) {
+				continue
+			}
+
+			modulePath, localModulePath, err := fetchModuleInfoFromGitHub(ctx, client, repo, item.GetPath())
+			if err != nil {
+				if logger != nil {
+					logger.Warn("Failed to fetch module info from GitHub",
+						"repository", fullName,
+						"path", item.GetPath(),
+						"error", err)
+				}
+				continue
+			}
+
+			key := fmt.Sprintf("%s|%s|%s", fullName, modulePath, localModulePath)
+			if _, exists := fetchedRepos[key]; exists {
+				continue
+			}
+			fetchedRepos[key] = struct{}{}
+
+			dependents = append(dependents, manifest.DependentOptions{
+				Repository:      fullName,
+				ModulePath:      modulePath,
+				LocalModulePath: localModulePath,
+				DiscoverySource: "github",
+			})
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		options.Page = resp.NextPage
+	}
+
+	return dependents, nil
 }
 
 // performMultiSourceDiscovery performs discovery from multiple sources and merges the results.
@@ -1776,13 +2039,20 @@ func performMultiSourceDiscovery(ctx context.Context, targetModule, githubOrg, w
 
 	// Step 1: Attempt GitHub discovery if organization is specified
 	finalGitHubOrg := resolveGitHubOrg(githubOrg, cfg)
-	if finalGitHubOrg != "" {
+	shouldRunGitHub := finalGitHubOrg != ""
+	if githubOrg == "" && cfg != nil && !cfg.ManifestGenerator.Discovery.GitHub.Enabled {
+		shouldRunGitHub = false
+	}
+	if shouldRunGitHub {
+		finalGitHubInclude := getGitHubIncludePatterns(githubIncludePatterns, cfg)
+		finalGitHubExclude := getGitHubExcludePatterns(githubExcludePatterns, cfg)
+
 		if logger != nil {
 			logger.Info("Attempting GitHub discovery", "organization", finalGitHubOrg)
 		}
 
 		ghDeps, err := discoverGitHubDependents(ctx, targetModule, finalGitHubOrg,
-			githubIncludePatterns, githubExcludePatterns, cfg, logger)
+			finalGitHubInclude, finalGitHubExclude, cfg, logger)
 		if err != nil {
 			discoveryErrors = append(discoveryErrors, fmt.Errorf("GitHub discovery failed: %w", err))
 			if logger != nil {
