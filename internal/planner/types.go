@@ -21,6 +21,7 @@ type Plan struct {
 // WorkItem represents the actions required to update a dependent repository.
 type WorkItem struct {
 	Repo          string
+	CloneURL      string
 	Module        string
 	ModulePath    string
 	SourceModule  string
