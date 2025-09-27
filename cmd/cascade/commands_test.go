@@ -44,9 +44,9 @@ type mockPlanner struct {
 	planFunc func(ctx context.Context, m *manifest.Manifest, target planner.Target) (*planner.Plan, error)
 }
 
-func (m *mockPlanner) Plan(ctx context.Context, manifest *manifest.Manifest, target planner.Target) (*planner.Plan, error) {
-	if m.planFunc != nil {
-		return m.planFunc(ctx, manifest, target)
+func (mp *mockPlanner) Plan(ctx context.Context, m *manifest.Manifest, target planner.Target) (*planner.Plan, error) {
+	if mp.planFunc != nil {
+		return mp.planFunc(ctx, m, target)
 	}
 	return &planner.Plan{Target: target, Items: []planner.WorkItem{}}, nil
 }
