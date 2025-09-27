@@ -61,7 +61,7 @@ cascade manifest generate \
   --workspace="$WORKSPACE" \
   --github-org=goliatone \
   --yes \
-  --output=deps.yaml
+  --output=.cascade.yaml
 ```
 
 Highlights:
@@ -71,12 +71,12 @@ Highlights:
 - **Version resolution** understands `--version=latest` or an omitted version flag and resolves the latest published tag, falling back to local usage when offline.
 - **Config-driven defaults** for tests, notifications, branch naming, and discovery filters reduce the number of CLI flags you need.
 
-The generated `deps.yaml` lands in the current directory unless you pass an absolute `--output` path.
+The generated `.cascade.yaml` lands in the current directory unless you pass an absolute `--output` path.
 
 #### 2. Inspect & Adjust
 
 ```bash
-cat deps.yaml
+cat .cascade.yaml
 ```
 
 Confirm branch names, commands, labels, and notification targets before executing. Edit as needed.
@@ -86,7 +86,7 @@ Cascade shows a discovery summary (workspace + GitHub results) and, unless `--ye
 
 ```bash
 cascade plan \
-  --manifest=deps.yaml \
+  --manifest=.cascade.yaml \
   --module="$TARGET_MODULE" \
   --version="$TARGET_VERSION" \
   --dry-run \
@@ -99,7 +99,7 @@ The plan output lists repositories, branches, commands, and PR metadata without 
 
 ```bash
 cascade release \
-  --manifest=deps.yaml \
+  --manifest=.cascade.yaml \
   --workspace="$WORKSPACE" \
   --parallel=2 \
   --timeout=15m \
@@ -133,8 +133,8 @@ cascade revert go-errors@v1.4.0
 ```bash
 # Quick cheatsheet
 cascade manifest generate --module-path=$TARGET_MODULE --version=latest --github-org=goliatone --yes --dry-run
-cascade plan --manifest=deps.yaml --dry-run
-cascade release --manifest=deps.yaml
+cascade plan --manifest=.cascade.yaml --dry-run
+cascade release --manifest=.cascade.yaml
 cascade resume go-errors@v1.4.0
 cascade revert go-errors@v1.4.0
 ```
@@ -143,7 +143,7 @@ cascade revert go-errors@v1.4.0
 
 ### Manifest File
 
-The `deps.yaml` manifest file defines module dependencies and update rules. You can generate a starter manifest using `cascade manifest generate`, or craft one manually:
+The `.cascade.yaml` manifest file defines module dependencies and update rules. You can generate a starter manifest using `cascade manifest generate`, or craft one manually:
 
 ```yaml
 manifest_version: 1
@@ -226,7 +226,7 @@ With this configuration in place, manifest generation typically only needs the m
 cascade manifest generate --module-path=$TARGET_MODULE --version=latest --yes
 ```
 
-Cascade resolves the latest tag, discovers dependents in the workspace and GitHub org, applies the default test command, and writes the manifest to `deps.yaml`.
+Cascade resolves the latest tag, discovers dependents in the workspace and GitHub org, applies the default test command, and writes the manifest to `.cascade.yaml`.
 
 ### Examples
 
