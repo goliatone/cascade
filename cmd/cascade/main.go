@@ -873,58 +873,35 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 	finalDependents := dependents
 	var discoveredDependents []manifest.DependentOptions
 	workspaceDir := ""
-	githubDiscoveryUsed := false
 
 	if len(dependents) == 0 {
-		// Priority 1: GitHub discovery if GitHub org is specified via CLI or config
-		finalGitHubOrg := resolveGitHubOrg(githubOrg, cfg)
-		if finalGitHubOrg != "" {
-			logger.Info("Attempting GitHub discovery", "organization", finalGitHubOrg)
+		// Perform discovery from multiple sources and merge results
+		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, githubOrg, workspace, maxDepth,
+			includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns, cfg, logger)
+		if err != nil {
+			logger.Warn("Discovery failed, proceeding with empty dependents list", "error", err)
+		} else {
+			discoveredDependents = mergedDependents
+			finalDependents = dependentsOptionsToStrings(discoveredDependents)
 
-			githubDependents, err := discoverGitHubDependents(ctx, modulePath, finalGitHubOrg, githubIncludePatterns, githubExcludePatterns, cfg, logger)
-			if err != nil {
-				logger.Warn("GitHub discovery failed, falling back to workspace discovery", "error", err)
-			} else {
-				discoveredDependents = githubDependents
-				finalDependents = dependentsOptionsToStrings(discoveredDependents)
-				githubDiscoveryUsed = true
-				if len(finalDependents) > 0 {
-					logger.Info("Discovered dependents via GitHub",
-						"count", len(finalDependents),
-						"organization", finalGitHubOrg,
-						"dependents", finalDependents)
-				}
+			if len(finalDependents) > 0 {
+				logger.Info("Discovery completed",
+					"total_dependents", len(finalDependents),
+					"dependents", finalDependents)
 			}
 		}
 
-		// Priority 2: Workspace discovery if GitHub discovery not used or failed
-		if !githubDiscoveryUsed || len(discoveredDependents) == 0 {
-			workspaceDir = resolveWorkspaceDir(workspace, cfg)
-			var err error
-			workspaceDependents, err := discoverWorkspaceDependents(ctx, modulePath, workspaceDir, maxDepth, includePatterns, excludePatterns, cfg, logger)
+		// Apply interactive filtering if enabled
+		if len(discoveredDependents) > 0 && !yes && !nonInteractive {
+			filteredDependents, err := promptForDependentSelection(discoveredDependents)
 			if err != nil {
-				logger.Warn("Workspace discovery failed, proceeding with empty dependents list", "error", err)
-			} else {
-				// If GitHub discovery was used but found nothing, use workspace results
-				// If GitHub discovery wasn't used, use workspace results
-				if !githubDiscoveryUsed {
-					discoveredDependents = workspaceDependents
-					finalDependents = dependentsOptionsToStrings(discoveredDependents)
-				} else if len(discoveredDependents) == 0 {
-					// GitHub discovery was used but found nothing, fall back to workspace
-					discoveredDependents = workspaceDependents
-					finalDependents = dependentsOptionsToStrings(discoveredDependents)
-					githubDiscoveryUsed = false // Mark as workspace discovery for logging
-				}
-
-				if len(finalDependents) > 0 && !githubDiscoveryUsed {
-					logger.Info("Discovered dependents in workspace",
-						"count", len(finalDependents),
-						"workspace", workspaceDir,
-						"dependents", finalDependents)
-				}
+				return fmt.Errorf("dependent selection failed: %w", err)
 			}
+			discoveredDependents = filteredDependents
+			finalDependents = dependentsOptionsToStrings(discoveredDependents)
 		}
+
+		workspaceDir = resolveWorkspaceDir(workspace, cfg)
 	}
 
 	// Display discovery summary and handle confirmation
@@ -1785,4 +1762,285 @@ func resolveGitHubOrg(cliOrg string, cfg *config.Config) string {
 func discoverGitHubDependents(ctx context.Context, targetModule, organization string, includePatterns, excludePatterns []string, cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
 	// Placeholder implementation - Task 3.1 (GitHub Discovery API Client) not yet implemented
 	return nil, fmt.Errorf("GitHub discovery not yet implemented: Task 3.1 required")
+}
+
+// performMultiSourceDiscovery performs discovery from multiple sources and merges the results.
+// This implements Task 3.3: Result Merging & Conflict Resolution.
+func performMultiSourceDiscovery(ctx context.Context, targetModule, githubOrg, workspace string, maxDepth int,
+	includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns []string,
+	cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
+
+	var githubDependents []manifest.DependentOptions
+	var workspaceDependents []manifest.DependentOptions
+	var discoveryErrors []error
+
+	// Step 1: Attempt GitHub discovery if organization is specified
+	finalGitHubOrg := resolveGitHubOrg(githubOrg, cfg)
+	if finalGitHubOrg != "" {
+		if logger != nil {
+			logger.Info("Attempting GitHub discovery", "organization", finalGitHubOrg)
+		}
+
+		ghDeps, err := discoverGitHubDependents(ctx, targetModule, finalGitHubOrg,
+			githubIncludePatterns, githubExcludePatterns, cfg, logger)
+		if err != nil {
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("GitHub discovery failed: %w", err))
+			if logger != nil {
+				logger.Warn("GitHub discovery failed", "error", err)
+			}
+		} else {
+			githubDependents = ghDeps
+			if logger != nil && len(githubDependents) > 0 {
+				logger.Info("GitHub discovery completed",
+					"organization", finalGitHubOrg,
+					"found_dependents", len(githubDependents))
+			}
+		}
+	}
+
+	// Step 2: Attempt workspace discovery
+	workspaceDir := resolveWorkspaceDir(workspace, cfg)
+	if workspaceDir != "" {
+		if logger != nil {
+			logger.Info("Attempting workspace discovery", "workspace", workspaceDir)
+		}
+
+		wsDeps, err := discoverWorkspaceDependents(ctx, targetModule, workspaceDir, maxDepth,
+			includePatterns, excludePatterns, cfg, logger)
+		if err != nil {
+			discoveryErrors = append(discoveryErrors, fmt.Errorf("workspace discovery failed: %w", err))
+			if logger != nil {
+				logger.Warn("Workspace discovery failed", "error", err)
+			}
+		} else {
+			workspaceDependents = wsDeps
+			if logger != nil && len(workspaceDependents) > 0 {
+				logger.Info("Workspace discovery completed",
+					"workspace", workspaceDir,
+					"found_dependents", len(workspaceDependents))
+			}
+		}
+	}
+
+	// Step 3: Merge and deduplicate results
+	mergedDependents := mergeDiscoveryResults(githubDependents, workspaceDependents, logger)
+
+	if len(mergedDependents) == 0 {
+		if len(discoveryErrors) > 0 {
+			// Return the first error if no results were found and errors occurred
+			return nil, discoveryErrors[0]
+		}
+		if logger != nil {
+			logger.Info("No dependent repositories discovered")
+		}
+	} else if logger != nil {
+		logger.Info("Discovery results merged",
+			"github_dependents", len(githubDependents),
+			"workspace_dependents", len(workspaceDependents),
+			"merged_total", len(mergedDependents))
+	}
+
+	return mergedDependents, nil
+}
+
+// mergeDiscoveryResults merges and deduplicates discovery results from multiple sources.
+// Deduplication is based on repository name and module path pairs.
+func mergeDiscoveryResults(githubDependents, workspaceDependents []manifest.DependentOptions, logger di.Logger) []manifest.DependentOptions {
+	// Use a map to deduplicate based on repo+module pair
+	dependentMap := make(map[string]manifest.DependentOptions)
+
+	// Add workspace dependents first (they may have more accurate local paths)
+	for _, dep := range workspaceDependents {
+		key := dependentKey(dep.Repository, dep.ModulePath)
+		dep.DiscoverySource = "workspace"
+		dependentMap[key] = dep
+	}
+
+	// Add GitHub dependents, potentially overriding workspace entries
+	conflictCount := 0
+	for _, dep := range githubDependents {
+		key := dependentKey(dep.Repository, dep.ModulePath)
+		if existing, exists := dependentMap[key]; exists {
+			// Conflict detected - merge the entries, preferring more complete information
+			merged := mergeConflictingDependents(existing, dep, logger)
+			dependentMap[key] = merged
+			conflictCount++
+		} else {
+			dep.DiscoverySource = "github"
+			dependentMap[key] = dep
+		}
+	}
+
+	// Convert map back to slice
+	result := make([]manifest.DependentOptions, 0, len(dependentMap))
+	for _, dep := range dependentMap {
+		result = append(result, dep)
+	}
+
+	if logger != nil && conflictCount > 0 {
+		logger.Info("Resolved discovery conflicts",
+			"conflicts", conflictCount,
+			"final_count", len(result))
+	}
+
+	return result
+}
+
+// dependentKey creates a unique key for deduplication based on repository and module path.
+func dependentKey(repository, modulePath string) string {
+	return fmt.Sprintf("%s|%s", repository, modulePath)
+}
+
+// mergeConflictingDependents merges two DependentOptions that refer to the same repo/module.
+// It prefers more complete information and logs the merge decisions.
+func mergeConflictingDependents(existing, new manifest.DependentOptions, logger di.Logger) manifest.DependentOptions {
+	merged := existing
+
+	// Prefer non-empty local module paths (workspace discovery usually provides these)
+	if merged.LocalModulePath == "." && new.LocalModulePath != "." && new.LocalModulePath != "" {
+		merged.LocalModulePath = new.LocalModulePath
+	}
+
+	// Track both discovery sources
+	if existing.DiscoverySource != "" && new.DiscoverySource != "" {
+		merged.DiscoverySource = fmt.Sprintf("%s+%s", existing.DiscoverySource, new.DiscoverySource)
+	} else if new.DiscoverySource != "" {
+		merged.DiscoverySource = new.DiscoverySource
+	}
+
+	if logger != nil {
+		logger.Debug("Merged conflicting dependents",
+			"repository", merged.Repository,
+			"module_path", merged.ModulePath,
+			"sources", merged.DiscoverySource,
+			"local_module_path", merged.LocalModulePath)
+	}
+
+	return merged
+}
+
+// promptForDependentSelection allows users to interactively select which discovered
+// dependents to include in the manifest.
+func promptForDependentSelection(dependents []manifest.DependentOptions) ([]manifest.DependentOptions, error) {
+	if len(dependents) == 0 {
+		return dependents, nil
+	}
+
+	fmt.Printf("\nDiscovered %d dependent repositories:\n\n", len(dependents))
+
+	// Display the discovered dependents with indices
+	for i, dep := range dependents {
+		source := dep.DiscoverySource
+		if source == "" {
+			source = "unknown"
+		}
+		fmt.Printf("  %d. %s (module: %s, source: %s)\n", i+1, dep.Repository, dep.ModulePath, source)
+		if dep.LocalModulePath != "." && dep.LocalModulePath != "" {
+			fmt.Printf("     Local path: %s\n", dep.LocalModulePath)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  a - include all")
+	fmt.Println("  n - include none")
+	fmt.Println("  1,2,3 - include specific repositories by number")
+	fmt.Println("  1-3,5 - include ranges and specific repositories")
+	fmt.Print("\nSelect dependents to include [a]: ")
+
+	var input string
+	fmt.Scanln(&input)
+
+	// Default to "all" if no input provided
+	if input == "" || input == "a" || input == "all" {
+		return dependents, nil
+	}
+
+	// Handle "none" case
+	if input == "n" || input == "none" {
+		return []manifest.DependentOptions{}, nil
+	}
+
+	// Parse selection indices
+	selectedIndices, err := parseSelectionInput(input, len(dependents))
+	if err != nil {
+		return nil, fmt.Errorf("invalid selection: %w", err)
+	}
+
+	// Build result with selected dependents
+	result := make([]manifest.DependentOptions, 0, len(selectedIndices))
+	for _, index := range selectedIndices {
+		result = append(result, dependents[index])
+	}
+
+	fmt.Printf("Selected %d dependents for inclusion.\n", len(result))
+	return result, nil
+}
+
+// parseSelectionInput parses user input for dependent selection.
+// Supports formats like "1,2,3", "1-3,5", etc.
+func parseSelectionInput(input string, maxIndex int) ([]int, error) {
+	if input == "" {
+		return nil, fmt.Errorf("empty input")
+	}
+
+	var indices []int
+	parts := strings.Split(input, ",")
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Handle range (e.g., "1-3")
+		if strings.Contains(part, "-") {
+			rangeParts := strings.Split(part, "-")
+			if len(rangeParts) != 2 {
+				return nil, fmt.Errorf("invalid range format: %s", part)
+			}
+
+			start, err := strconv.Atoi(strings.TrimSpace(rangeParts[0]))
+			if err != nil {
+				return nil, fmt.Errorf("invalid start number in range %s: %w", part, err)
+			}
+
+			end, err := strconv.Atoi(strings.TrimSpace(rangeParts[1]))
+			if err != nil {
+				return nil, fmt.Errorf("invalid end number in range %s: %w", part, err)
+			}
+
+			if start < 1 || end > maxIndex || start > end {
+				return nil, fmt.Errorf("invalid range %s: must be between 1 and %d", part, maxIndex)
+			}
+
+			for i := start; i <= end; i++ {
+				indices = append(indices, i-1) // Convert to 0-based indexing
+			}
+		} else {
+			// Handle single number
+			num, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid number: %s", part)
+			}
+
+			if num < 1 || num > maxIndex {
+				return nil, fmt.Errorf("number %d out of range: must be between 1 and %d", num, maxIndex)
+			}
+
+			indices = append(indices, num-1) // Convert to 0-based indexing
+		}
+	}
+
+	// Remove duplicates
+	uniqueIndices := make([]int, 0, len(indices))
+	seen := make(map[int]bool)
+	for _, index := range indices {
+		if !seen[index] {
+			uniqueIndices = append(uniqueIndices, index)
+			seen[index] = true
+		}
+	}
+
+	return uniqueIndices, nil
 }
