@@ -113,23 +113,17 @@ function dev:cover {
 function install {
     lgr I "TASKFILE: Installing cascade to GOPATH..."
 
-    # Read current version without bumping
-    local version
-    version=$(version:get)
-
-    # Get git commit hash
-    local commit
-    commit=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-
-    # Get build date
-    local date
-    date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    VERSION=$(version:get)
+    BUILD_DATE=$(date -u +%FT%TZ)
+    BUILD_COMMIT=$(git rev-parse HEAD)
+    BUILD_USER=$(id -u -n)
 
     # Build binary with version info (using build instead of install to avoid linker issues)
-    lgr I "Building version $version..."
+    lgr I "Building version $VERSION..."
 
     # Use command to avoid function/alias conflicts
-    command go build -ldflags "-X main.version=$version -X main.commit=$commit -X main.date=$date" -o ./${BINNAME}_temp ./cmd/$BINNAME
+    LDFLAGS="-s -w -X '${PROJECT}/pkg/version.Tag=${VERSION}' -X '${PROJECT}/pkg/version.Time=${BUILD_DATE}' -X '${PROJECT}/pkg/version.User=${BUILD_USER}' -X '${PROJECT}/pkg/version.Commit=${BUILD_COMMIT}'"
+    command go build -ldflags "${LDFLAGS}" -o ./${BINNAME}_temp ./cmd/$BINNAME
 
     if [ $? -eq 0 ]; then
         # Manually install to GOPATH/bin
