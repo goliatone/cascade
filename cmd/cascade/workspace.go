@@ -108,29 +108,30 @@ func detectParentWorkspace(moduleDir, modulePath string) string {
 
 	// Walk up the directory tree looking for a directory that contains multiple Go modules
 	current := moduleDir
+	var potentialWorkspace string // To store a candidate workspace
+
 	for i := 0; i < 5; i++ { // Limit traversal to avoid going too far up
 		parent := filepath.Dir(current)
 		if parent == current || parent == "/" || parent == "." {
 			break
 		}
 
-		// Check if this directory name matches the organization
-		if filepath.Base(parent) == org {
-			// Validate this directory contains multiple Go modules
-			if isValidWorkspace(parent) {
-				return parent
+		// A valid workspace MUST contain multiple go modules.
+		if containsMultipleModules(parent) {
+			// If the parent is named after the org, we are confident this is the workspace.
+			if filepath.Base(parent) == org {
+				return parent // This is our ideal workspace, return immediately.
 			}
-		}
-
-		// Also check if parent contains multiple modules (even if not named after org)
-		if isValidWorkspace(parent) && containsMultipleModules(parent) {
-			return parent
+			// Otherwise, keep it as a potential candidate and keep searching for a better one.
+			if potentialWorkspace == "" {
+				potentialWorkspace = parent
+			}
 		}
 
 		current = parent
 	}
 
-	return ""
+	return potentialWorkspace
 }
 
 // detectGopathOrgWorkspace checks $GOPATH/src/{hosting}/{org}/ for a workspace
