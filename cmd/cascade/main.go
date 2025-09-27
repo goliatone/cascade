@@ -199,10 +199,16 @@ Examples:
 func initializeContainer(cmd *cobra.Command) error {
 	start := time.Now()
 	// Build configuration from flags, environment, and files
+	// First extract config file path from flags if provided
+	var configFile string
+	if cmd.Flags().Changed("config") {
+		configFile, _ = cmd.Flags().GetString("config")
+	}
+
 	builder := config.NewBuilder().
-		FromFile("").  // Auto-discover config file
-		FromEnv().     // Load from environment
-		FromFlags(cmd) // Load from command flags (highest precedence)
+		FromFile(configFile). // Use explicit config file or auto-discover
+		FromEnv().            // Load from environment
+		FromFlags(cmd)        // Load from command flags (highest precedence)
 
 	var err error
 	cfg, err = builder.Build()
@@ -389,6 +395,10 @@ func newManifestGenerateCommand() *cobra.Command {
 		maxDepth        int
 		includePatterns []string
 		excludePatterns []string
+		// GitHub discovery flags
+		githubOrg             string
+		githubIncludePatterns []string
+		githubExcludePatterns []string
 	)
 
 	cmd := &cobra.Command{
@@ -412,7 +422,7 @@ Examples:
   cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3 --workspace=/path/to/workspace --max-depth=3
   cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3 --yes --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runManifestGenerate(moduleName, modulePath, repository, version, outputPath, dependents, slackChannel, webhook, force, yes, nonInteractive, workspace, maxDepth, includePatterns, excludePatterns)
+			return runManifestGenerate(moduleName, modulePath, repository, version, outputPath, dependents, slackChannel, webhook, force, yes, nonInteractive, workspace, maxDepth, includePatterns, excludePatterns, githubOrg, githubIncludePatterns, githubExcludePatterns)
 		},
 	}
 
@@ -436,6 +446,11 @@ Examples:
 	cmd.Flags().IntVar(&maxDepth, "max-depth", 0, "Maximum depth to scan in workspace directory (0 = no limit)")
 	cmd.Flags().StringSliceVar(&includePatterns, "include", []string{}, "Directory patterns to include during discovery")
 	cmd.Flags().StringSliceVar(&excludePatterns, "exclude", []string{}, "Directory patterns to exclude during discovery (e.g., vendor, .git)")
+
+	// GitHub discovery flags
+	cmd.Flags().StringVar(&githubOrg, "github-org", "", "GitHub organization to search for dependent repositories")
+	cmd.Flags().StringSliceVar(&githubIncludePatterns, "github-include", []string{}, "Repository name patterns to include during GitHub discovery")
+	cmd.Flags().StringSliceVar(&githubExcludePatterns, "github-exclude", []string{}, "Repository name patterns to exclude during GitHub discovery")
 
 	// Mark required flags
 	cmd.MarkFlagRequired("module-path")
@@ -808,7 +823,7 @@ func runRevert(stateID string) error {
 	return nil
 }
 
-func runManifestGenerate(moduleName, modulePath, repository, version, outputPath string, dependents []string, slackChannel, webhook string, force, yes, nonInteractive bool, workspace string, maxDepth int, includePatterns, excludePatterns []string) error {
+func runManifestGenerate(moduleName, modulePath, repository, version, outputPath string, dependents []string, slackChannel, webhook string, force, yes, nonInteractive bool, workspace string, maxDepth int, includePatterns, excludePatterns []string, githubOrg string, githubIncludePatterns, githubExcludePatterns []string) error {
 	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
@@ -854,24 +869,60 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 	// Resolve output path
 	finalOutputPath := resolveGenerateOutputPath(outputPath, cfg)
 
-	// Resolve workspace discovery options if dependents not explicitly provided
+	// Resolve discovery options if dependents not explicitly provided
 	finalDependents := dependents
 	var discoveredDependents []manifest.DependentOptions
 	workspaceDir := ""
+	githubDiscoveryUsed := false
 
 	if len(dependents) == 0 {
-		workspaceDir = resolveWorkspaceDir(workspace, cfg)
-		var err error
-		discoveredDependents, err = discoverWorkspaceDependents(ctx, modulePath, workspaceDir, maxDepth, includePatterns, excludePatterns, logger)
-		if err != nil {
-			logger.Warn("Workspace discovery failed, proceeding with empty dependents list", "error", err)
-		} else {
-			finalDependents = dependentsOptionsToStrings(discoveredDependents)
-			if len(finalDependents) > 0 {
-				logger.Info("Discovered dependents in workspace",
-					"count", len(finalDependents),
-					"workspace", workspaceDir,
-					"dependents", finalDependents)
+		// Priority 1: GitHub discovery if GitHub org is specified via CLI or config
+		finalGitHubOrg := resolveGitHubOrg(githubOrg, cfg)
+		if finalGitHubOrg != "" {
+			logger.Info("Attempting GitHub discovery", "organization", finalGitHubOrg)
+
+			githubDependents, err := discoverGitHubDependents(ctx, modulePath, finalGitHubOrg, githubIncludePatterns, githubExcludePatterns, cfg, logger)
+			if err != nil {
+				logger.Warn("GitHub discovery failed, falling back to workspace discovery", "error", err)
+			} else {
+				discoveredDependents = githubDependents
+				finalDependents = dependentsOptionsToStrings(discoveredDependents)
+				githubDiscoveryUsed = true
+				if len(finalDependents) > 0 {
+					logger.Info("Discovered dependents via GitHub",
+						"count", len(finalDependents),
+						"organization", finalGitHubOrg,
+						"dependents", finalDependents)
+				}
+			}
+		}
+
+		// Priority 2: Workspace discovery if GitHub discovery not used or failed
+		if !githubDiscoveryUsed || len(discoveredDependents) == 0 {
+			workspaceDir = resolveWorkspaceDir(workspace, cfg)
+			var err error
+			workspaceDependents, err := discoverWorkspaceDependents(ctx, modulePath, workspaceDir, maxDepth, includePatterns, excludePatterns, cfg, logger)
+			if err != nil {
+				logger.Warn("Workspace discovery failed, proceeding with empty dependents list", "error", err)
+			} else {
+				// If GitHub discovery was used but found nothing, use workspace results
+				// If GitHub discovery wasn't used, use workspace results
+				if !githubDiscoveryUsed {
+					discoveredDependents = workspaceDependents
+					finalDependents = dependentsOptionsToStrings(discoveredDependents)
+				} else if len(discoveredDependents) == 0 {
+					// GitHub discovery was used but found nothing, fall back to workspace
+					discoveredDependents = workspaceDependents
+					finalDependents = dependentsOptionsToStrings(discoveredDependents)
+					githubDiscoveryUsed = false // Mark as workspace discovery for logging
+				}
+
+				if len(finalDependents) > 0 && !githubDiscoveryUsed {
+					logger.Info("Discovered dependents in workspace",
+						"count", len(finalDependents),
+						"workspace", workspaceDir,
+						"dependents", finalDependents)
+				}
 			}
 		}
 	}
@@ -886,22 +937,20 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		"version", finalVersion,
 		"output", finalOutputPath)
 
-	// Build generate options
+	// Build generate options with config defaults merged
 	options := manifest.GenerateOptions{
 		ModuleName:        moduleName,
 		ModulePath:        modulePath,
 		Repository:        repository,
 		Version:           finalVersion,
 		Dependents:        buildDependentOptions(finalDependents),
-		DefaultBranch:     "main",
+		DefaultBranch:     getDefaultBranch(cfg),
 		DefaultLabels:     []string{"automation:cascade"},
 		DefaultCommitTmpl: "chore(deps): bump {{ .Module }} to {{ .Version }}",
-		DefaultTests: []manifest.Command{
-			{Cmd: []string{"go", "test", "./...", "-race", "-count=1"}},
-		},
+		DefaultTests:      getDefaultTests(cfg),
 		DefaultNotifications: manifest.Notifications{
-			SlackChannel: slackChannel,
-			Webhook:      webhook,
+			SlackChannel: getDefaultSlackChannel(slackChannel, cfg),
+			Webhook:      getDefaultWebhook(webhook, cfg),
 		},
 		DefaultPRConfig: manifest.PRConfig{
 			TitleTemplate: "chore(deps): bump {{ .Module }} to {{ .Version }}",
@@ -1448,6 +1497,11 @@ func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 		return cfg.Workspace.Path
 	}
 
+	// Use manifest generator default workspace
+	if cfg != nil && cfg.ManifestGenerator.DefaultWorkspace != "" {
+		return cfg.ManifestGenerator.DefaultWorkspace
+	}
+
 	// Default to current directory
 	if cwd, err := os.Getwd(); err == nil {
 		return cwd
@@ -1457,15 +1511,20 @@ func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 }
 
 // discoverWorkspaceDependents uses the workspace discovery to find dependent modules
-func discoverWorkspaceDependents(ctx context.Context, targetModule, workspaceDir string, maxDepth int, includePatterns, excludePatterns []string, logger di.Logger) ([]manifest.DependentOptions, error) {
+func discoverWorkspaceDependents(ctx context.Context, targetModule, workspaceDir string, maxDepth int, includePatterns, excludePatterns []string, cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
 	discovery := manifest.NewWorkspaceDiscovery()
+
+	// Apply config defaults for discovery options
+	finalMaxDepth := getDiscoveryMaxDepth(maxDepth, cfg)
+	finalIncludePatterns := getDiscoveryIncludePatterns(includePatterns, cfg)
+	finalExcludePatterns := getDiscoveryExcludePatterns(excludePatterns, cfg)
 
 	options := manifest.DiscoveryOptions{
 		WorkspaceDir:    workspaceDir,
 		TargetModule:    targetModule,
-		MaxDepth:        maxDepth,
-		IncludePatterns: includePatterns,
-		ExcludePatterns: excludePatterns,
+		MaxDepth:        finalMaxDepth,
+		IncludePatterns: finalIncludePatterns,
+		ExcludePatterns: finalExcludePatterns,
 	}
 
 	dependents, err := discovery.DiscoverDependents(ctx, options)
@@ -1603,4 +1662,127 @@ func displayDiscoverySummary(modulePath, version, workspaceDir string, discovere
 	}
 
 	return nil
+}
+
+// Config defaults merging functions for manifest generation
+
+// getDefaultBranch returns the configured default branch or fallback
+func getDefaultBranch(cfg *config.Config) string {
+	if cfg != nil && cfg.ManifestGenerator.DefaultBranch != "" {
+		return cfg.ManifestGenerator.DefaultBranch
+	}
+	return "main"
+}
+
+// getDefaultTests returns the configured default test commands or fallback
+func getDefaultTests(cfg *config.Config) []manifest.Command {
+	if cfg != nil && cfg.ManifestGenerator.Tests.Command != "" {
+		testCmd := manifest.Command{}
+
+		// Parse command - respect the exact command from config
+		parts := strings.Fields(cfg.ManifestGenerator.Tests.Command)
+		if len(parts) > 0 {
+			testCmd.Cmd = parts
+		} else {
+			// Fallback to shell execution for complex commands
+			testCmd.Cmd = []string{"sh", "-c", cfg.ManifestGenerator.Tests.Command}
+		}
+
+		if cfg.ManifestGenerator.Tests.WorkingDirectory != "" {
+			testCmd.Dir = cfg.ManifestGenerator.Tests.WorkingDirectory
+		}
+
+		return []manifest.Command{testCmd}
+	}
+
+	// Default fallback
+	return []manifest.Command{
+		{Cmd: []string{"go", "test", "./...", "-race", "-count=1"}},
+	}
+}
+
+// getDefaultSlackChannel returns the CLI-provided channel or config default
+func getDefaultSlackChannel(cliChannel string, cfg *config.Config) string {
+	if cliChannel != "" {
+		return cliChannel
+	}
+	if cfg != nil && len(cfg.ManifestGenerator.Notifications.Channels) > 0 {
+		// Use first configured channel as Slack channel
+		return cfg.ManifestGenerator.Notifications.Channels[0]
+	}
+	if cfg != nil && cfg.Integration.Slack.Channel != "" {
+		return cfg.Integration.Slack.Channel
+	}
+	return ""
+}
+
+// getDefaultWebhook returns the CLI-provided webhook or config default
+func getDefaultWebhook(cliWebhook string, cfg *config.Config) string {
+	if cliWebhook != "" {
+		return cliWebhook
+	}
+	if cfg != nil && cfg.Integration.Slack.WebhookURL != "" {
+		return cfg.Integration.Slack.WebhookURL
+	}
+	return ""
+}
+
+// getDiscoveryMaxDepth returns the CLI-provided maxDepth or config default
+func getDiscoveryMaxDepth(cliMaxDepth int, cfg *config.Config) int {
+	if cliMaxDepth > 0 {
+		return cliMaxDepth
+	}
+	if cfg != nil && cfg.ManifestGenerator.Discovery.MaxDepth > 0 {
+		return cfg.ManifestGenerator.Discovery.MaxDepth
+	}
+	return 0 // 0 means unlimited depth
+}
+
+// getDiscoveryIncludePatterns returns the CLI-provided patterns or config defaults
+func getDiscoveryIncludePatterns(cliPatterns []string, cfg *config.Config) []string {
+	if len(cliPatterns) > 0 {
+		return cliPatterns
+	}
+	if cfg != nil && len(cfg.ManifestGenerator.Discovery.IncludePatterns) > 0 {
+		return cfg.ManifestGenerator.Discovery.IncludePatterns
+	}
+	return []string{} // Empty means include all
+}
+
+// getDiscoveryExcludePatterns returns the CLI-provided patterns or config defaults
+func getDiscoveryExcludePatterns(cliPatterns []string, cfg *config.Config) []string {
+	if len(cliPatterns) > 0 {
+		return cliPatterns
+	}
+	if cfg != nil && len(cfg.ManifestGenerator.Discovery.ExcludePatterns) > 0 {
+		return cfg.ManifestGenerator.Discovery.ExcludePatterns
+	}
+	return []string{"vendor/*", ".git/*", "node_modules/*"} // Sensible defaults
+}
+
+// resolveGitHubOrg returns the GitHub organization from CLI flag or config
+func resolveGitHubOrg(cliOrg string, cfg *config.Config) string {
+	// CLI flag takes priority
+	if cliOrg != "" {
+		return cliOrg
+	}
+
+	// Check config for GitHub discovery organization
+	if cfg != nil && cfg.ManifestGenerator.Discovery.GitHub.Organization != "" {
+		return cfg.ManifestGenerator.Discovery.GitHub.Organization
+	}
+
+	// Check config for general GitHub organization (fallback)
+	if cfg != nil && cfg.Integration.GitHub.Organization != "" {
+		return cfg.Integration.GitHub.Organization
+	}
+
+	return ""
+}
+
+// discoverGitHubDependents discovers dependent repositories in a GitHub organization
+// This is a placeholder implementation for Task 3.2 - actual implementation comes in Task 3.1
+func discoverGitHubDependents(ctx context.Context, targetModule, organization string, includePatterns, excludePatterns []string, cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
+	// Placeholder implementation - Task 3.1 (GitHub Discovery API Client) not yet implemented
+	return nil, fmt.Errorf("GitHub discovery not yet implemented: Task 3.1 required")
 }
