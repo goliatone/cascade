@@ -92,10 +92,12 @@ func TestDiscoverGitHubDependents_ReturnsDependents(t *testing.T) {
 }
 
 func TestDiscoverGitHubDependents_MissingToken(t *testing.T) {
-	cfg := &config.Config{}
-	if _, err := discoverGitHubDependents(context.Background(), "github.com/test/module", "testorg", nil, nil, cfg, nil); err == nil {
-		t.Fatalf("expected error when token missing")
-	}
+	withClearedGitHubEnv(t, func() {
+		cfg := &config.Config{}
+		if _, err := discoverGitHubDependents(context.Background(), "github.com/test/module", "testorg", nil, nil, cfg, nil); err == nil {
+			t.Fatalf("expected error when token missing")
+		}
+	})
 }
 
 func TestMatchesRepoPatterns(t *testing.T) {
