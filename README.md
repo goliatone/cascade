@@ -36,7 +36,7 @@ go install github.com/goliatone/cascade@latest
 
 ### End-to-End Example: Updating `github.com/goliatone/go-errors`
 
-The following workflow shows how to bootstrap, plan, execute, and monitor a dependency rollout for the local `go-errors` module located at `/Users/goliatone/Development/GO/src/github.com/goliatone/go-errors`.
+The following workflow shows how to bootstrap, plan, execute, and monitor a dependency rollout for the local `go-errors` module located at `~/Development/GO/src/github.com/goliatone/go-errors`.
 
 > **Prerequisites**
 > - Go 1.21+
