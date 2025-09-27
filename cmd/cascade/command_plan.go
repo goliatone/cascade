@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/goliatone/cascade/internal/planner"
@@ -11,27 +12,54 @@ import (
 
 // newPlanCommand creates the plan subcommand
 func newPlanCommand() *cobra.Command {
-	return &cobra.Command{
+	var (
+		manifestPath string
+		modulePath   string
+		version      string
+	)
+
+	cmd := &cobra.Command{
 		Use:   "plan [manifest]",
 		Short: "Plan dependency updates without executing them",
 		Long: `Plan analyzes the dependency manifest and creates an execution plan
-showing what updates would be performed, without making any changes.`,
+showing what updates would be performed, without making any changes.
+
+Smart Defaults:
+  - Manifest path: Auto-detected as .cascade.yaml or from positional argument
+  - Module path: Auto-detected from go.mod in current directory tree
+  - Version: Auto-detected from .version file, VERSION file, or latest git tag
+
+Examples:
+  cascade plan                                    # Use all auto-detected defaults
+  cascade plan --module=github.com/example/lib   # Override just the module
+  cascade plan --version=v1.2.3                  # Override just the version
+  cascade plan custom-manifest.yaml              # Use custom manifest file`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			manifestPath := ""
+			manifestArg := ""
 			if len(args) > 0 {
-				manifestPath = args[0]
+				manifestArg = args[0]
 			}
-			return runPlan(manifestPath)
+			return runPlan(manifestPath, manifestArg, modulePath, version)
 		},
 	}
+
+	// Module and version flags (auto-detected if not provided)
+	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Manifest file path (default: .cascade.yaml)")
+	cmd.Flags().StringVar(&modulePath, "module", "", "Target module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
+	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3). Auto-detected from .version file or git tags if not provided")
+
+	return cmd
 }
 
-func runPlan(manifestPath string) error {
+func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string) error {
 	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
 	config := container.Config()
+
+	// Resolve manifest path using same logic as manifest generate
+	manifestPath := resolvePlanManifestPath(manifestFlag, manifestArg, config)
 
 	defer func() {
 		if logger != nil {
@@ -43,15 +71,54 @@ func runPlan(manifestPath string) error {
 		}
 	}()
 
-	// Use default manifest path if none provided
-	if manifestPath == "" {
-		manifestPath = config.Workspace.ManifestPath
-	}
-	if manifestPath == "" {
-		manifestPath = ".cascade.yaml" // Default fallback
+	// Detect module information when not explicitly provided
+	finalModulePath := strings.TrimSpace(moduleFlag)
+	moduleDir := ""
+	if autoModulePath, autoModuleDir, err := detectModuleInfo(); err == nil {
+		moduleDir = autoModuleDir
+		if finalModulePath == "" {
+			finalModulePath = autoModulePath
+		}
+	} else if finalModulePath == "" && config.Module == "" {
+		return newValidationError("module path must be provided via --module flag, config, or go.mod must be present in the current directory", err)
 	}
 
-	logger.Info("Planning dependency updates", "manifest", manifestPath)
+	// Use config fallback if no flag or auto-detection
+	if finalModulePath == "" {
+		finalModulePath = config.Module
+	}
+
+	// Resolve version if not provided
+	finalVersion := strings.TrimSpace(versionFlag)
+	var versionWarnings []string
+	if finalVersion == "" {
+		detectedVersion, warnings := detectDefaultVersion(ctx, moduleDir)
+		versionWarnings = append(versionWarnings, warnings...)
+		finalVersion = detectedVersion
+	}
+
+	// Use config fallback if no flag or auto-detection
+	if finalVersion == "" {
+		finalVersion = config.Version
+	}
+
+	// Validate target is specified
+	if finalModulePath == "" {
+		return newValidationError("target module must be specified via --module flag, config, or go.mod detection", nil)
+	}
+	if finalVersion == "" {
+		return newValidationError("target version must be specified via --version flag, config, or version detection", nil)
+	}
+
+	// Display any version detection warnings
+	for _, warning := range versionWarnings {
+		logger.Warn("Version detection warning", "warning", warning)
+	}
+
+	logger.Info("Planning dependency updates",
+		"manifest", manifestPath,
+		"module", finalModulePath,
+		"version", finalVersion)
 
 	// Load the manifest
 	manifest, err := container.Manifest().Load(manifestPath)
@@ -59,18 +126,10 @@ func runPlan(manifestPath string) error {
 		return newFileError("failed to load manifest", err)
 	}
 
-	// Create target from config or CLI args
+	// Create target with resolved values
 	target := planner.Target{
-		Module:  config.Module,
-		Version: config.Version,
-	}
-
-	// Validate target is specified
-	if target.Module == "" {
-		return newValidationError("target module must be specified via --module flag or config", nil)
-	}
-	if target.Version == "" {
-		return newValidationError("target version must be specified via --version flag or config", nil)
+		Module:  finalModulePath,
+		Version: finalVersion,
 	}
 
 	// Generate the plan
