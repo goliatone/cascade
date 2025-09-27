@@ -103,7 +103,7 @@ func TestValidateWorkspace(t *testing.T) {
 			name: "relative manifest path",
 			workspace: config.WorkspaceConfig{
 				Path:         "/tmp/cascade",
-				ManifestPath: "deps.yaml",
+				ManifestPath: ".cascade.yaml",
 			},
 			wantError: true,
 			errorMsg:  "manifest path must be absolute",
@@ -731,7 +731,7 @@ func TestValidationErrors_Multiple(t *testing.T) {
 func TestManifestFileValidation(t *testing.T) {
 	// Create a temporary manifest file
 	tempDir := t.TempDir()
-	manifestPath := filepath.Join(tempDir, "deps.yaml")
+	manifestPath := filepath.Join(tempDir, ".cascade.yaml")
 
 	if err := os.WriteFile(manifestPath, []byte("modules: []"), 0644); err != nil {
 		t.Fatalf("failed to create test manifest file: %v", err)

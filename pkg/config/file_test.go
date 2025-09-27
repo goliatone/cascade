@@ -18,7 +18,7 @@ func TestLoadFromFile_YAML(t *testing.T) {
 	yamlContent := `
 workspace:
   path: "/tmp/workspace"
-  manifest_path: "deps.yaml"
+  manifest_path: ".cascade.yaml"
 
 executor:
   timeout: "5m"
@@ -54,8 +54,8 @@ state:
 	if cfg.Workspace.Path != "/tmp/workspace" {
 		t.Errorf("Expected workspace path '/tmp/workspace', got '%s'", cfg.Workspace.Path)
 	}
-	if cfg.Workspace.ManifestPath != "deps.yaml" {
-		t.Errorf("Expected manifest path 'deps.yaml', got '%s'", cfg.Workspace.ManifestPath)
+	if cfg.Workspace.ManifestPath != ".cascade.yaml" {
+		t.Errorf("Expected manifest path '.cascade.yaml', got '%s'", cfg.Workspace.ManifestPath)
 	}
 
 	// Verify executor config
@@ -107,7 +107,7 @@ func TestLoadFromFile_JSON(t *testing.T) {
 	cfg := &config.Config{
 		Workspace: config.WorkspaceConfig{
 			Path:         "/tmp/workspace",
-			ManifestPath: "deps.yaml",
+			ManifestPath: ".cascade.yaml",
 		},
 		Executor: config.ExecutorConfig{
 			Timeout:         5 * time.Minute,

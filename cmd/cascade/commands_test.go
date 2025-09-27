@@ -579,8 +579,8 @@ func TestManifestGenerate_PathResolution(t *testing.T) {
 	}{
 		{
 			name:         "explicit output path",
-			outputPath:   "/custom/path/deps.yaml",
-			expectedPath: "/custom/path/deps.yaml",
+			outputPath:   "/custom/path/.cascade.yaml",
+			expectedPath: "/custom/path/.cascade.yaml",
 		},
 		{
 			name:           "config manifest path",
@@ -589,7 +589,7 @@ func TestManifestGenerate_PathResolution(t *testing.T) {
 		},
 		{
 			name:         "default to current directory",
-			expectedPath: "deps.yaml", // Will be made absolute in the function
+			expectedPath: ".cascade.yaml", // Will be made absolute in the function
 		},
 	}
 
@@ -604,10 +604,10 @@ func TestManifestGenerate_PathResolution(t *testing.T) {
 
 			result := resolveGenerateOutputPath(tt.outputPath, cfg)
 
-			// For "default to current directory" test, result should end with deps.yaml
-			if tt.expectedPath == "deps.yaml" {
-				if !strings.HasSuffix(result, "deps.yaml") {
-					t.Errorf("expected path to end with deps.yaml, got: %s", result)
+			// For "default to current directory" test, result should end with .cascade.yaml
+			if tt.expectedPath == ".cascade.yaml" {
+				if !strings.HasSuffix(result, ".cascade.yaml") {
+					t.Errorf("expected path to end with .cascade.yaml, got: %s", result)
 				}
 			} else {
 				if result != tt.expectedPath {
@@ -643,7 +643,7 @@ func TestManifestGenerate_OverwriteBehavior(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create temporary directory
 			tempDir := t.TempDir()
-			outputPath := tempDir + "/deps.yaml"
+			outputPath := tempDir + "/.cascade.yaml"
 
 			// Create existing file if needed
 			if tt.existingFile {
@@ -730,7 +730,7 @@ func TestManifestGenerate_WorkspaceHandling(t *testing.T) {
 	cfg := &config.Config{
 		Workspace: config.WorkspaceConfig{
 			Path:         tempDir,
-			ManifestPath: tempDir + "/custom-deps.yaml",
+			ManifestPath: tempDir + "/custom-.cascade.yaml",
 		},
 		Executor: config.ExecutorConfig{DryRun: false},
 	}

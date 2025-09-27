@@ -21,7 +21,7 @@ func TestConfigJSONMarshaling(t *testing.T) {
 		Workspace: config.WorkspaceConfig{
 			Path:         "/tmp/workspace",
 			TempDir:      "/tmp/cascade",
-			ManifestPath: "/path/to/deps.yaml",
+			ManifestPath: "/path/to/.cascade.yaml",
 		},
 		Executor: config.ExecutorConfig{
 			Timeout:         5 * time.Minute,
@@ -82,7 +82,7 @@ func TestConfigYAMLMarshaling(t *testing.T) {
 		Workspace: config.WorkspaceConfig{
 			Path:         "/tmp/workspace",
 			TempDir:      "/tmp/cascade",
-			ManifestPath: "/path/to/deps.yaml",
+			ManifestPath: "/path/to/.cascade.yaml",
 		},
 		Executor: config.ExecutorConfig{
 			Timeout:         5 * time.Minute,

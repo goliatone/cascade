@@ -109,7 +109,7 @@ func TestConfiguredContainer(t *testing.T) {
 			config: &Config{
 				Workspace: WorkspaceConfig{
 					Path:         "/tmp/cascade",
-					ManifestPath: "/tmp/deps.yaml",
+					ManifestPath: "/tmp/.cascade.yaml",
 				},
 				Executor: ExecutorConfig{
 					Timeout:         5 * time.Minute,
@@ -138,7 +138,7 @@ func TestConfiguredContainer(t *testing.T) {
 			config: &Config{
 				Workspace: WorkspaceConfig{
 					Path:         "/tmp/cascade",
-					ManifestPath: "/tmp/deps.yaml",
+					ManifestPath: "/tmp/.cascade.yaml",
 				},
 				Executor: ExecutorConfig{
 					Timeout:         5 * time.Minute,
@@ -439,7 +439,7 @@ func TestDIContainerConfigAccessors(t *testing.T) {
 	config := &Config{
 		Workspace: WorkspaceConfig{
 			Path:         "/tmp/cascade",
-			ManifestPath: "/tmp/deps.yaml",
+			ManifestPath: "/tmp/.cascade.yaml",
 		},
 		Executor: ExecutorConfig{
 			Timeout:         5 * time.Minute,
@@ -505,7 +505,7 @@ func TestDebugInfo(t *testing.T) {
 	config := &Config{
 		Workspace: WorkspaceConfig{
 			Path:         "/tmp/cascade",
-			ManifestPath: "/tmp/deps.yaml",
+			ManifestPath: "/tmp/.cascade.yaml",
 		},
 		Executor: ExecutorConfig{
 			Timeout:         5 * time.Minute,

@@ -33,7 +33,7 @@ func TestEnvParser_ParseEnv(t *testing.T) {
 			envVars: map[string]string{
 				"CASCADE_WORKSPACE": "/tmp/cascade",
 				"CASCADE_TEMP_DIR":  "/tmp",
-				"CASCADE_MANIFEST":  "/path/to/deps.yaml",
+				"CASCADE_MANIFEST":  "/path/to/.cascade.yaml",
 			},
 			wantErr: false,
 			check: func(t *testing.T, cfg *config.Config) {
@@ -43,8 +43,8 @@ func TestEnvParser_ParseEnv(t *testing.T) {
 				if cfg.Workspace.TempDir != "/tmp" {
 					t.Errorf("expected temp dir '/tmp', got %s", cfg.Workspace.TempDir)
 				}
-				if cfg.Workspace.ManifestPath != "/path/to/deps.yaml" {
-					t.Errorf("expected manifest path '/path/to/deps.yaml', got %s", cfg.Workspace.ManifestPath)
+				if cfg.Workspace.ManifestPath != "/path/to/.cascade.yaml" {
+					t.Errorf("expected manifest path '/path/to/.cascade.yaml', got %s", cfg.Workspace.ManifestPath)
 				}
 			},
 		},

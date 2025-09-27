@@ -82,7 +82,7 @@ func TestCLIHelp(t *testing.T) {
 				"--output string",
 				"--slack-channel string",
 				"Examples:",
-				"cascade manifest generate --module-path=github.com/example/lib --version=v1.2.3",
+				"cascade manifest generate --version=v1.2.3",
 			},
 		},
 		{

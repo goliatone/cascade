@@ -193,7 +193,7 @@ func TestFlagConfig_ToConfig(t *testing.T) {
 			name: "converts basic flags to config",
 			flagConfig: FlagConfig{
 				Workspace:   "/custom/workspace",
-				Manifest:    "/path/to/deps.yaml",
+				Manifest:    "/path/to/.cascade.yaml",
 				DryRun:      true,
 				Timeout:     10 * time.Minute,
 				Parallel:    8,
@@ -210,8 +210,8 @@ func TestFlagConfig_ToConfig(t *testing.T) {
 					t.Errorf("Expected workspace path %q, got %q", "/custom/workspace", config.Workspace.Path)
 				}
 
-				if config.Workspace.ManifestPath != "/path/to/deps.yaml" {
-					t.Errorf("Expected manifest path %q, got %q", "/path/to/deps.yaml", config.Workspace.ManifestPath)
+				if config.Workspace.ManifestPath != "/path/to/.cascade.yaml" {
+					t.Errorf("Expected manifest path %q, got %q", "/path/to/.cascade.yaml", config.Workspace.ManifestPath)
 				}
 
 				if !config.Executor.DryRun {
@@ -416,7 +416,7 @@ func TestExtractFlagConfig(t *testing.T) {
 				AddFlags(cmd)
 				cmd.SetOut(io.Discard)
 				cmd.SetErr(io.Discard)
-				cmd.SetArgs([]string{"--workspace", "/test/ws", "--manifest", "/test/deps.yaml"})
+				cmd.SetArgs([]string{"--workspace", "/test/ws", "--manifest", "/test/.cascade.yaml"})
 				cmd.Execute()
 				return cmd
 			},
@@ -424,8 +424,8 @@ func TestExtractFlagConfig(t *testing.T) {
 				if fc.Workspace != "/test/ws" {
 					t.Errorf("Expected workspace %q, got %q", "/test/ws", fc.Workspace)
 				}
-				if fc.Manifest != "/test/deps.yaml" {
-					t.Errorf("Expected manifest %q, got %q", "/test/deps.yaml", fc.Manifest)
+				if fc.Manifest != "/test/.cascade.yaml" {
+					t.Errorf("Expected manifest %q, got %q", "/test/.cascade.yaml", fc.Manifest)
 				}
 			},
 		},
