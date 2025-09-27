@@ -61,7 +61,7 @@ func AddFlags(cmd *cobra.Command) *FlagConfig {
 	cmd.PersistentFlags().StringVarP(&fc.Workspace, "workspace", "w", "",
 		"Workspace directory for operations (default: $XDG_CACHE_HOME/cascade)")
 	cmd.PersistentFlags().StringVarP(&fc.Manifest, "manifest", "m", "",
-		"Path to deps.yaml manifest file")
+		"Path to .cascade.yaml manifest file")
 	cmd.PersistentFlags().StringVar(&fc.Module, "module", "",
 		"Target module for operations")
 	cmd.PersistentFlags().StringVar(&fc.Version, "version", "",

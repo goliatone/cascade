@@ -107,21 +107,19 @@ func ApplyDefaults(cfg *Config) error {
 func validateWorkspace(ws *WorkspaceConfig) []ValidationError {
 	var errors []ValidationError
 
-	// Workspace path validation
+	// Workspace path is required
 	if ws.Path == "" {
 		errors = append(errors, ValidationError{
 			Field:   "workspace.path",
 			Value:   ws.Path,
 			Message: "workspace path is required",
 		})
-	} else {
-		if !filepath.IsAbs(ws.Path) {
-			errors = append(errors, ValidationError{
-				Field:   "workspace.path",
-				Value:   ws.Path,
-				Message: "workspace path must be absolute",
-			})
-		}
+	} else if !filepath.IsAbs(ws.Path) {
+		errors = append(errors, ValidationError{
+			Field:   "workspace.path",
+			Value:   ws.Path,
+			Message: "workspace path must be absolute",
+		})
 	}
 
 	// TempDir validation (if provided)

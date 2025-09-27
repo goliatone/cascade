@@ -50,7 +50,7 @@ type WorkspaceConfig struct {
 	// If empty, uses system default temporary directory.
 	TempDir string `json:"temp_dir,omitempty" yaml:"temp_dir,omitempty"`
 
-	// ManifestPath is the path to the deps.yaml manifest file.
+	// ManifestPath is the path to the .cascade.yaml manifest file.
 	// Required for most operations unless specified via command-line flags.
 	ManifestPath string `json:"manifest_path,omitempty" yaml:"manifest_path,omitempty"`
 }
