@@ -281,3 +281,222 @@ func TestGenerator_Generate_DefaultsApplication(t *testing.T) {
 		t.Errorf("default test command mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestGenerator_Generate_ConfigDrivenDefaults(t *testing.T) {
+	// Create generator with config defaults
+	config := &manifest.GeneratorConfig{
+		DefaultBranch: "cascade/update-deps",
+		Tests: manifest.TestsConfig{
+			Command:          "go test -race ./...",
+			Timeout:          10 * time.Minute,
+			WorkingDirectory: ".",
+		},
+		Notifications: manifest.NotificationsConfig{
+			Enabled:   true,
+			Channels:  []string{"#engineering", "#updates"},
+			OnSuccess: false,
+			OnFailure: true,
+		},
+		Discovery: manifest.DiscoveryConfig{
+			Enabled:         true,
+			MaxDepth:        3,
+			IncludePatterns: []string{"*.go", "go.mod"},
+			ExcludePatterns: []string{"vendor/*", ".git/*"},
+			Interactive:     true,
+		},
+	}
+
+	generator := manifest.NewGeneratorWithConfig(config)
+	ctx := context.Background()
+
+	// Test with minimal options - should use config defaults
+	options := manifest.GenerateOptions{
+		ModuleName: "go-errors",
+		ModulePath: "github.com/goliatone/go-errors",
+		Repository: "goliatone/go-errors",
+		Dependents: []manifest.DependentOptions{
+			{
+				Repository: "goliatone/go-logger",
+				ModulePath: "github.com/goliatone/go-logger",
+				// No branch or tests specified - should use config defaults
+			},
+		},
+		// No default branch specified - should use config default
+	}
+
+	got, err := generator.Generate(ctx, options)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	// Verify config defaults are applied
+	if got.Defaults.Branch != "cascade/update-deps" {
+		t.Errorf("expected config default branch 'cascade/update-deps', got %q", got.Defaults.Branch)
+	}
+
+	// Verify config test command is applied
+	if len(got.Defaults.Tests) != 1 {
+		t.Fatalf("expected 1 default test from config, got %d", len(got.Defaults.Tests))
+	}
+
+	expectedTest := manifest.Command{
+		Cmd: []string{"sh", "-c", "go test -race ./..."},
+		Dir: ".",
+	}
+	if diff := cmp.Diff(expectedTest, got.Defaults.Tests[0]); diff != "" {
+		t.Errorf("config test command mismatch (-want +got):\n%s", diff)
+	}
+
+	// Verify dependent inherits config defaults
+	if len(got.Modules) != 1 {
+		t.Fatalf("expected 1 module, got %d", len(got.Modules))
+	}
+
+	module := got.Modules[0]
+	if len(module.Dependents) != 1 {
+		t.Fatalf("expected 1 dependent, got %d", len(module.Dependents))
+	}
+
+	dependent := module.Dependents[0]
+	if dependent.Branch != "cascade/update-deps" {
+		t.Errorf("expected dependent to inherit config default branch 'cascade/update-deps', got %q", dependent.Branch)
+	}
+}
+
+func TestGenerator_Generate_ConfigDefaultsOverridePrecedence(t *testing.T) {
+	// Create generator with config defaults
+	config := &manifest.GeneratorConfig{
+		DefaultBranch: "cascade/config-default",
+		Tests: manifest.TestsConfig{
+			Command: "go test -short ./...",
+		},
+	}
+
+	generator := manifest.NewGeneratorWithConfig(config)
+	ctx := context.Background()
+
+	// Test options override config defaults
+	options := manifest.GenerateOptions{
+		ModuleName:    "go-errors",
+		ModulePath:    "github.com/goliatone/go-errors",
+		Repository:    "goliatone/go-errors",
+		DefaultBranch: "options-override", // This should override config default
+		DefaultTests: []manifest.Command{
+			{Cmd: []string{"go", "test", "./...", "-v"}}, // This should override config test
+		},
+		Dependents: []manifest.DependentOptions{
+			{
+				Repository: "goliatone/go-logger",
+				ModulePath: "github.com/goliatone/go-logger",
+			},
+		},
+	}
+
+	got, err := generator.Generate(ctx, options)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	// Verify options override config defaults
+	if got.Defaults.Branch != "options-override" {
+		t.Errorf("expected options branch 'options-override' to override config, got %q", got.Defaults.Branch)
+	}
+
+	// Verify options test command overrides config
+	if len(got.Defaults.Tests) != 1 {
+		t.Fatalf("expected 1 test from options, got %d", len(got.Defaults.Tests))
+	}
+
+	expectedTest := manifest.Command{Cmd: []string{"go", "test", "./...", "-v"}}
+	if diff := cmp.Diff(expectedTest, got.Defaults.Tests[0]); diff != "" {
+		t.Errorf("options test command should override config (-want +got):\n%s", diff)
+	}
+
+	// Verify dependent uses overridden defaults
+	dependent := got.Modules[0].Dependents[0]
+	if dependent.Branch != "options-override" {
+		t.Errorf("expected dependent to use overridden branch 'options-override', got %q", dependent.Branch)
+	}
+}
+
+func TestGenerator_Generate_ConfigDrivenMinimalFlags(t *testing.T) {
+	// Create comprehensive config that provides all needed defaults
+	config := &manifest.GeneratorConfig{
+		DefaultWorkspace: "/workspace",
+		DefaultBranch:    "feature/automated-updates",
+		Tests: manifest.TestsConfig{
+			Command:          "task test",
+			Timeout:          15 * time.Minute,
+			WorkingDirectory: ".",
+		},
+		Notifications: manifest.NotificationsConfig{
+			Enabled:   true,
+			Channels:  []string{"#alerts"},
+			OnSuccess: true,
+			OnFailure: true,
+		},
+		Discovery: manifest.DiscoveryConfig{
+			Enabled:         true,
+			MaxDepth:        5,
+			IncludePatterns: []string{"**/*.go"},
+			ExcludePatterns: []string{"vendor/**", "testdata/**"},
+			Interactive:     false,
+		},
+	}
+
+	generator := manifest.NewGeneratorWithConfig(config)
+	ctx := context.Background()
+
+	// Minimal options - only module info provided, everything else from config
+	options := manifest.GenerateOptions{
+		ModuleName: "go-core",
+		ModulePath: "github.com/company/go-core",
+		Repository: "company/go-core",
+		// No defaults specified - should all come from config
+	}
+
+	got, err := generator.Generate(ctx, options)
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	// Verify all defaults come from config
+	if got.Defaults.Branch != "feature/automated-updates" {
+		t.Errorf("expected config branch 'feature/automated-updates', got %q", got.Defaults.Branch)
+	}
+
+	// Verify config test is used
+	if len(got.Defaults.Tests) != 1 {
+		t.Fatalf("expected 1 test from config, got %d", len(got.Defaults.Tests))
+	}
+
+	expectedTest := manifest.Command{
+		Cmd: []string{"sh", "-c", "task test"},
+		Dir: ".",
+	}
+	if diff := cmp.Diff(expectedTest, got.Defaults.Tests[0]); diff != "" {
+		t.Errorf("config test command mismatch (-want +got):\n%s", diff)
+	}
+
+	// Test that manifest is usable for cascade operations
+	if got.ManifestVersion != 1 {
+		t.Errorf("expected manifest version 1, got %d", got.ManifestVersion)
+	}
+
+	if len(got.Modules) != 1 {
+		t.Fatalf("expected 1 module, got %d", len(got.Modules))
+	}
+
+	module := got.Modules[0]
+	if module.Name != "go-core" {
+		t.Errorf("expected module name 'go-core', got %q", module.Name)
+	}
+
+	if module.Module != "github.com/company/go-core" {
+		t.Errorf("expected module path 'github.com/company/go-core', got %q", module.Module)
+	}
+
+	if module.Repo != "company/go-core" {
+		t.Errorf("expected repository 'company/go-core', got %q", module.Repo)
+	}
+}
