@@ -40,11 +40,17 @@ func (e *executor) Apply(ctx context.Context, input WorkItemContext) (*Result, e
 	}
 
 	// Clone/prepare repository using GitOperations
-	if input.Logger != nil {
-		input.Logger.Info("cloning repository", "repo", input.Item.Repo, "workspace", input.Workspace)
+	// Use CloneURL if available, otherwise fall back to Repo
+	cloneURL := input.Item.Repo
+	if input.Item.CloneURL != "" {
+		cloneURL = input.Item.CloneURL
 	}
 
-	repoPath, err := input.Git.EnsureClone(ctx, input.Item.Repo, input.Workspace)
+	if input.Logger != nil {
+		input.Logger.Info("cloning repository", "repo", input.Item.Repo, "clone_url", cloneURL, "workspace", input.Workspace)
+	}
+
+	repoPath, err := input.Git.EnsureClone(ctx, cloneURL, input.Workspace)
 	if err != nil {
 		e.handleExecutionError(result, err, "git clone")
 		return result, err
