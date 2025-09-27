@@ -34,6 +34,8 @@ func (g *gitOperations) EnsureClone(ctx context.Context, repo, workspace string)
 	repoName := extractRepoName(repo)
 	repoPath := filepath.Join(workspace, repoName)
 
+	cloneURL := buildCloneURL(repo)
+
 	// Check if repository already exists
 	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err == nil {
 		// Verify it's the correct repository
@@ -44,10 +46,10 @@ func (g *gitOperations) EnsureClone(ctx context.Context, repo, workspace string)
 
 		output = cleanGitOutput(output)
 
-		if normalizeGitURL(output) != normalizeGitURL(repo) {
+		if normalizeGitURL(output) != normalizeGitURL(cloneURL) {
 			return "", &ErrInvalidRepo{
 				Path:     repoPath,
-				Expected: repo,
+				Expected: cloneURL,
 				Actual:   output,
 			}
 		}
@@ -62,7 +64,7 @@ func (g *gitOperations) EnsureClone(ctx context.Context, repo, workspace string)
 	}
 
 	// Clone the repository
-	_, err := g.runner.Run(ctx, "", "clone", repo, repoPath)
+	_, err := g.runner.Run(ctx, "", "clone", cloneURL, repoPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to clone repository %s to %s: %w", repo, repoPath, err)
 	}
@@ -214,6 +216,18 @@ func extractRepoName(repo string) string {
 		return parts[len(parts)-1]
 	}
 
+	return repo
+}
+
+// buildCloneURL ensures the repo string is a valid cloneable URL.
+func buildCloneURL(repo string) string {
+	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
+	if !strings.HasPrefix(repo, "https://") &&
+		!strings.HasPrefix(repo, "http://") &&
+		!strings.HasPrefix(repo, "git@") &&
+		strings.Count(repo, "/") == 1 {
+		return "https://github.com/" + repo
+	}
 	return repo
 }
 
