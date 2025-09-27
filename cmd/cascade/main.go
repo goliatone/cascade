@@ -24,6 +24,7 @@ import (
 	"github.com/goliatone/cascade/internal/state"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
+	"github.com/goliatone/cascade/pkg/version"
 	gh "github.com/google/go-github/v66/github"
 	oauth2 "golang.org/x/oauth2"
 )
@@ -129,11 +130,22 @@ func execute() error {
 	return rootCmd.Execute()
 }
 
+func newVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print Cascade version information",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return version.Print(cmd.OutOrStdout())
+		},
+	}
+}
+
 // newRootCommand creates the root cobra command with all subcommands
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cascade",
 		Short: "Cascade orchestrates automated dependency updates across Go repositories",
+		Version: version.GetVersion(),
 		Long: `Cascade is a CLI tool that orchestrates automated dependency updates across
 multiple Go repositories. It reads dependency manifests, plans updates,
 executes changes, and manages pull requests through GitHub integration.
@@ -195,6 +207,7 @@ Examples:
 		newReleaseCommand(),
 		newResumeCommand(),
 		newRevertCommand(),
+		newVersionCommand(),
 	)
 
 	return cmd
