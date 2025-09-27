@@ -59,6 +59,7 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 		// Create work item
 		item := WorkItem{
 			Repo:          expanded.Repo,
+			CloneURL:      expanded.CloneURL,
 			Module:        expanded.Module,
 			ModulePath:    expanded.ModulePath,
 			SourceModule:  target.Module,

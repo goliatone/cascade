@@ -32,6 +32,7 @@ type Module struct {
 // Dependent defines a repo that consumes a module.
 type Dependent struct {
 	Repo          string            `yaml:"repo"`
+	CloneURL      string            `yaml:"clone_url,omitempty"`
 	Module        string            `yaml:"module"`
 	ModulePath    string            `yaml:"module_path"`
 	Branch        string            `yaml:"branch"`

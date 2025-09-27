@@ -309,8 +309,9 @@ func (w *workspaceDiscovery) getModuleVersionFromPath(ctx context.Context, modul
 
 // findGoModules discovers all Go modules within the workspace directory.
 func (w *workspaceDiscovery) findGoModules(ctx context.Context, options DiscoveryOptions) ([]DiscoveredModule, error) {
-	var modules []DiscoveredModule
+	var allModules []DiscoveredModule
 
+	// First pass: find all go.mod files
 	err := filepath.Walk(options.WorkspaceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -333,26 +334,50 @@ func (w *workspaceDiscovery) findGoModules(ctx context.Context, options Discover
 
 		// Skip if not a go.mod file
 		if !info.IsDir() && info.Name() == "go.mod" {
+			moduleDir := filepath.Dir(path)
 			// Check include/exclude patterns
-			if w.shouldIncludeDirectory(filepath.Dir(path), options) {
+			if w.shouldIncludeDirectory(moduleDir, options) {
 				modulePath, err := w.extractModulePath(path)
 				if err != nil {
 					return nil // Skip modules with invalid go.mod files
 				}
 
 				module := DiscoveredModule{
-					Path:       filepath.Dir(path),
+					Path:       moduleDir,
 					ModulePath: modulePath,
 					Repository: w.inferRepository(modulePath),
 				}
-				modules = append(modules, module)
+				allModules = append(allModules, module)
 			}
 		}
 
 		return nil
 	})
 
-	return modules, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Second pass: filter out modules that are subdirectories of other modules
+	var filteredModules []DiscoveredModule
+	for _, module := range allModules {
+		isSubmodule := false
+		for _, other := range allModules {
+			if module.Path != other.Path {
+				// Check if module.Path is a subdirectory of other.Path
+				rel, err := filepath.Rel(other.Path, module.Path)
+				if err == nil && !strings.HasPrefix(rel, "..") && rel != "." {
+					isSubmodule = true
+					break
+				}
+			}
+		}
+		if !isSubmodule {
+			filteredModules = append(filteredModules, module)
+		}
+	}
+
+	return filteredModules, nil
 }
 
 // moduleHasDependency checks if a Go module depends on the target module.
