@@ -5,8 +5,8 @@
 workspace:
   # Primary workspace directory (required)
   path: "/home/user/.cache/cascade"
-  # Path to your deps.yaml manifest file
-  manifest_path: "/home/user/project/deps.yaml"
+  # Path to your .cascade.yaml manifest file
+  manifest_path: "/home/user/project/.cascade.yaml"
 
 # Executor configuration - controls operation behavior
 executor:

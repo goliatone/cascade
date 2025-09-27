@@ -9,7 +9,7 @@ workspace:
   # Use CI runner's temp directory
   temp_dir: "${RUNNER_TEMP}/cascade"
   # Manifest path relative to repository root
-  manifest_path: ".github/cascade/deps.yaml"
+  manifest_path: ".github/cascade/.cascade.yaml"
 
 # Executor configuration - CI-optimized settings
 executor:

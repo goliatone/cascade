@@ -2,7 +2,7 @@ package manifest
 
 import "time"
 
-// Manifest is the root structure parsed from deps.yaml.
+// Manifest is the root structure parsed from .cascade.yaml.
 type Manifest struct {
 	ManifestVersion int      `yaml:"manifest_version"`
 	Defaults        Defaults `yaml:"defaults"`

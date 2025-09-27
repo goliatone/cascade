@@ -8,7 +8,7 @@ workspace:
   # Custom temporary directory for intermediate files
   temp_dir: "/tmp/cascade"
   # Default manifest file path
-  manifest_path: "/var/cache/cascade/config/deps.yaml"
+  manifest_path: "/var/cache/cascade/config/.cascade.yaml"
 
 # Executor configuration - fine-tuned execution control
 executor:

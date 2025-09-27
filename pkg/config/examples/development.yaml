@@ -9,7 +9,7 @@ workspace:
   # Use system temp directory
   temp_dir: ""
   # Development manifest in project root
-  manifest_path: "/home/developer/project/deps.yaml"
+  manifest_path: "/home/developer/project/.cascade.yaml"
 
 # Executor configuration - development settings
 executor:
