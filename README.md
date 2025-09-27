@@ -57,17 +57,21 @@ TARGET_VERSION=v1.4.0
 
 cascade manifest generate \
   --module-path="$TARGET_MODULE" \
-  --module-name=go-errors \
   --version="$TARGET_VERSION" \
   --workspace="$WORKSPACE" \
-  --dependents=goliatone/go-logger:github.com/goliatone/go-logger,goliatone/go-router:github.com/goliatone/go-router \
-  --tests="go test ./...,task test" \
-  --extra-commands="task lint" \
-  --slack-channel="#releases" \
+  --github-org=goliatone \
+  --yes \
   --output=deps.yaml
 ```
 
-This writes `deps.yaml` (in the current directory unless you pass an absolute `--output`) with defaults aligned to TDD.md and dependents pointing at the `go-logger` and `go-router` repositories.
+Highlights:
+
+- **Workspace discovery** scans `$WORKSPACE` for Go modules that already depend on `go-errors` and pre-populates the manifest.
+- **GitHub discovery** (enabled by `--github-org` or config defaults) augments the workspace scan by hitting the GitHub API to find other dependents in the organization.
+- **Version resolution** understands `--version=latest` or an omitted version flag and resolves the latest published tag, falling back to local usage when offline.
+- **Config-driven defaults** for tests, notifications, branch naming, and discovery filters reduce the number of CLI flags you need.
+
+The generated `deps.yaml` lands in the current directory unless you pass an absolute `--output` path.
 
 #### 2. Inspect & Adjust
 
@@ -76,6 +80,7 @@ cat deps.yaml
 ```
 
 Confirm branch names, commands, labels, and notification targets before executing. Edit as needed.
+Cascade shows a discovery summary (workspace + GitHub results) and, unless `--yes`/`--non-interactive` is set, prompts for confirmation so you can deselect repositories before generation.
 
 #### 3. Plan the Rollout (Dry Run)
 
@@ -127,7 +132,7 @@ cascade revert go-errors@v1.4.0
 
 ```bash
 # Quick cheatsheet
-cascade manifest generate --module-path=$TARGET_MODULE --version=$TARGET_VERSION --output=deps.yaml --dry-run
+cascade manifest generate --module-path=$TARGET_MODULE --version=latest --github-org=goliatone --yes --dry-run
 cascade plan --manifest=deps.yaml --dry-run
 cascade release --manifest=deps.yaml
 cascade resume go-errors@v1.4.0
@@ -184,6 +189,44 @@ Cascade uses the following precedence (highest to lowest):
 2. Environment variables (`CASCADE_*`)
 3. Configuration files (`~/.config/cascade/config.yaml`)
 4. Built-in defaults
+
+### Manifest Generator Defaults
+
+Populate `manifest_generator` in `config.yaml` to predefine discovery behavior, test commands, and notifications:
+
+```yaml
+manifest_generator:
+  default_workspace: /Users/you/.cache/cascade
+  default_branch: main
+  tests:
+    command: go test ./... -race -count=1
+  notifications:
+    enabled: true
+    channels: ["#releases"]
+    on_success: false
+    on_failure: true
+  discovery:
+    enabled: true
+    max_depth: 3
+    include_patterns: ["services/*"]
+    exclude_patterns: ["vendor/*", ".git/*", "node_modules/*"]
+    github:
+      enabled: true
+      organization: goliatone
+      include_patterns: ["go-*", "lib-*"]
+
+integration:
+  github:
+    token: ${CASCADE_GITHUB_TOKEN}
+```
+
+With this configuration in place, manifest generation typically only needs the module path and desired version:
+
+```bash
+cascade manifest generate --module-path=$TARGET_MODULE --version=latest --yes
+```
+
+Cascade resolves the latest tag, discovers dependents in the workspace and GitHub org, applies the default test command, and writes the manifest to `deps.yaml`.
 
 ### Examples
 
