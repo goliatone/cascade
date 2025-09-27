@@ -351,6 +351,22 @@ func resolveManifestPath(manifestPath string, cfg *config.Config) string {
 	return ""
 }
 
+// resolvePlanManifestPath determines manifest path for plan command with flag and positional arg support
+func resolvePlanManifestPath(manifestFlag, manifestArg string, cfg *config.Config) string {
+	// Use explicit flag if provided
+	if manifestFlag != "" {
+		return resolveManifestPath(manifestFlag, cfg)
+	}
+
+	// Use positional argument if provided
+	if manifestArg != "" {
+		return resolveManifestPath(manifestArg, cfg)
+	}
+
+	// Use default resolution
+	return resolveManifestPath("", cfg)
+}
+
 // ensureWorkspace guarantees the workspace directory exists before execution.
 func ensureWorkspace(path string) error {
 	if strings.TrimSpace(path) == "" {
