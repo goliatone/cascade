@@ -2,10 +2,10 @@ package manifest
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -289,28 +289,22 @@ func (w *workspaceDiscovery) getModuleVersionFromPath(ctx context.Context, modul
 		return "", fmt.Errorf("failed to list modules: %w", err)
 	}
 
-	// Parse JSON output using decoder (go list outputs concatenated JSON objects)
-	decoder := json.NewDecoder(strings.NewReader(string(output)))
-	for {
+	decoder := json.NewDecoder(bytes.NewReader(output))
+	for decoder.More() {
 		var module moduleInfo
 		if err := decoder.Decode(&module); err != nil {
-			if err == io.EOF {
-				break
-			}
-			continue // Skip malformed JSON
+			return "", fmt.Errorf("failed to decode module info: %w", err)
 		}
 
-		// Check if this is our target module
 		if module.Path == targetModule {
-			if module.Replace != nil {
-				// If the module is replaced, use the replacement version
+			if module.Replace != nil && module.Replace.Version != "" {
 				return module.Replace.Version, nil
 			}
 			return module.Version, nil
 		}
 	}
 
-	return "", nil // Module not found
+	return "", nil // Module not found locally
 }
 
 // findGoModules discovers all Go modules within the workspace directory.
