@@ -7,8 +7,11 @@ fi
 
 export LGR_NO_TIMESTAMP=true
 
-BINAME=cascade
+BINNAME=cascade
+BINPATH=$(pwd)/"bin"
 VERSION_FILE="./.version"
+PROJECT="$(awk 'match($0, /module (.*)/) {print substr($2, RSTART, RLENGTH)}' go.mod)"
+ENTRYPOINT="cmd/${BINNAME}/main.go"
 
 # If we have a .taskenv file load it as source
 if [ -f .taskenv ]; then
@@ -126,31 +129,78 @@ function install {
     lgr I "Building version $version..."
 
     # Use command to avoid function/alias conflicts
-    command go build -ldflags "-X main.version=$version -X main.commit=$commit -X main.date=$date" -o ./${BINAME}_temp ./cmd/$BINAME
+    command go build -ldflags "-X main.version=$version -X main.commit=$commit -X main.date=$date" -o ./${BINNAME}_temp ./cmd/$BINNAME
 
     if [ $? -eq 0 ]; then
         # Manually install to GOPATH/bin
         GOPATH=$(go env GOPATH)
         mkdir -p "$GOPATH/bin"
-        mv ./${BINAME}_temp "$GOPATH/bin/$BINAME"
-        chmod +x "$GOPATH/bin/$BINAME"
-        lgr OK "${BINAME} installed to $GOPATH/bin"
+        mv ./${BINNAME}_temp "$GOPATH/bin/$BINNAME"
+        chmod +x "$GOPATH/bin/$BINNAME"
+        lgr OK "${BINNAME} installed to $GOPATH/bin"
 
         # Check if GOPATH/bin is in PATH
         if [[ ":$PATH:" != *":$(go env GOPATH)/bin:"* ]]; then
             lgr W "$(go env GOPATH)/bin is not in your PATH"
             lgr I "Add this to your shell profile: export PATH=\"\$PATH:$(go env GOPATH)/bin\""
         else
-            lgr I "You can now use '$BINAME' from any directory"
+            lgr I "You can now use '$BINNAME' from any directory"
         fi
 
         # Show where it's installed
-        which $BINAME 2>/dev/null && $BINAME --version 2>/dev/null || true
+        which $BINNAME 2>/dev/null && $BINNAME --version 2>/dev/null || true
     else
         lgr E "Installation failed"
         return 1
     fi
 }
+
+
+##
+## ########################################
+##                CI/CD
+## ########################################
+
+##
+## -----
+##
+## ci:build
+##
+## Get version from meta file.
+function ci:build {
+    VERSION=$(version:get)
+    BUILD_DATE=$(date -u +%Y%m%d.%H%M%S)
+
+    LDFLAGS="-X '${PROJECT}/pkg/version.Tag=${VERSION}' -X '${PROJECT}/pkg/version.Time=${BUILD_DATE}' -X '${PROJECT}/pkg/version.User=$(id -u -n)'"
+
+    echo "building version: ${VERSION}"
+    echo "go build -ldflags ${LDFLAGS}"
+
+    go build -ldflags "${LDFLAGS}" -o "${BINPATH}/${BINNAME}" "${ENTRYPOINT}"
+}
+
+##
+## -----
+##
+## ci:test
+##
+## Get version from meta file.
+function ci:test {
+    # go env # debug
+    go install ${ENTRYPOINT}
+    go test ./... -v
+}
+
+##
+## -----
+##
+## ci:clean
+##
+## Get version from meta file.
+function ci:clean {
+    rm -f "${BINPATH}/${BINNAME}" || true
+}
+
 
 
 ##
