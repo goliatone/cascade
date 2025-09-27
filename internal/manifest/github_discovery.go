@@ -65,11 +65,14 @@ type GitHubVersionResolutionOptions struct {
 type GitHubVersionResolutionStrategy string
 
 const (
-	// GitHubVersionResolutionTags resolves version from Git tags
+	// GitHubVersionResolutionTags resolves version from Git tags via GitHub API
 	GitHubVersionResolutionTags GitHubVersionResolutionStrategy = "tags"
 
 	// GitHubVersionResolutionProxy tries Go module proxy, then falls back to tags
 	GitHubVersionResolutionProxy GitHubVersionResolutionStrategy = "proxy"
+
+	// GitHubVersionResolutionGitRemote uses git ls-remote to query tags directly
+	GitHubVersionResolutionGitRemote GitHubVersionResolutionStrategy = "git-remote"
 )
 
 // RateLimitBackoffStrategy defines how to handle rate limiting.
@@ -402,11 +405,17 @@ func (g *gitHubDiscovery) ResolveVersion(ctx context.Context, options GitHubVers
 	case GitHubVersionResolutionProxy:
 		// Try proxy first if requested
 		if options.UseProxy {
-			// This would delegate to the existing workspace discovery proxy resolution
-			// For now, fall back to tags
-			resolution.Warnings = append(resolution.Warnings, "Proxy resolution not implemented, falling back to Git tags")
+			proxyResolution, err := g.resolveVersionFromProxy(ctx, options.TargetModule, resolution)
+			if err != nil {
+				// Proxy failed, fall back to tags
+				resolution.Warnings = append(resolution.Warnings, fmt.Sprintf("Go proxy resolution failed (%v), falling back to Git tags", err))
+				return g.resolveVersionFromTags(ctx, options.Repository, resolution)
+			}
+			return proxyResolution, nil
 		}
 		return g.resolveVersionFromTags(ctx, options.Repository, resolution)
+	case GitHubVersionResolutionGitRemote:
+		return g.resolveVersionFromGitRemote(ctx, options.Repository, resolution)
 	default:
 		return nil, fmt.Errorf("unsupported GitHub version resolution strategy: %s", options.Strategy)
 	}
@@ -592,6 +601,77 @@ func (g *gitHubDiscovery) inferLocalModulePath(modulePath string) string {
 	return "."
 }
 
+// resolveVersionFromProxy attempts to resolve the latest version using Go module proxy.
+func (g *gitHubDiscovery) resolveVersionFromProxy(ctx context.Context, targetModule string, resolution *VersionResolution) (*VersionResolution, error) {
+	// Use go list -m -versions to query the module proxy
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-versions", targetModule)
+
+	// Set environment to ensure we use the proxy
+	env := os.Environ()
+	// Ensure GOPROXY is set for proxy access
+	if goproxy := os.Getenv("GOPROXY"); goproxy == "" {
+		env = append(env, "GOPROXY=https://proxy.golang.org,direct")
+	}
+	cmd.Env = env
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query Go module proxy for %s: %w", targetModule, err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" {
+		return nil, fmt.Errorf("no versions found in Go module proxy for %s", targetModule)
+	}
+
+	// Parse the output: first line contains module path, then versions
+	lines := strings.Split(outputStr, "\n")
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("unexpected output format from go list -m -versions")
+	}
+
+	// If there's only one line, it might be just the module name with no versions
+	if len(lines) == 1 {
+		// Check if the line contains versions (space-separated after module name)
+		parts := strings.Fields(lines[0])
+		if len(parts) <= 1 {
+			return nil, fmt.Errorf("no versions found in Go module proxy for %s", targetModule)
+		}
+		// Extract versions (skip the first part which is the module name)
+		versions := parts[1:]
+		latestVersion := g.findLatestSemanticVersion(versions)
+		if latestVersion == "" {
+			return nil, fmt.Errorf("no semantic versions found in Go module proxy for %s", targetModule)
+		}
+		resolution.Version = latestVersion
+		resolution.Source = VersionSourceNetwork
+		return resolution, nil
+	}
+
+	// Multiple lines: first line is module name, subsequent lines contain versions
+	var allVersions []string
+	for i := 1; i < len(lines); i++ {
+		versionLine := strings.TrimSpace(lines[i])
+		if versionLine != "" {
+			versions := strings.Fields(versionLine)
+			allVersions = append(allVersions, versions...)
+		}
+	}
+
+	if len(allVersions) == 0 {
+		return nil, fmt.Errorf("no versions found in Go module proxy for %s", targetModule)
+	}
+
+	latestVersion := g.findLatestSemanticVersion(allVersions)
+	if latestVersion == "" {
+		return nil, fmt.Errorf("no semantic versions found in Go module proxy for %s", targetModule)
+	}
+
+	resolution.Version = latestVersion
+	resolution.Source = VersionSourceNetwork
+	return resolution, nil
+}
+
 // resolveVersionFromTags resolves the latest version by examining Git tags.
 func (g *gitHubDiscovery) resolveVersionFromTags(ctx context.Context, repository string, resolution *VersionResolution) (*VersionResolution, error) {
 	parts := strings.Split(repository, "/")
@@ -612,18 +692,14 @@ func (g *gitHubDiscovery) resolveVersionFromTags(ctx context.Context, repository
 		return nil, fmt.Errorf("no tags found for repository %s", repository)
 	}
 
-	// Find the latest semantic version tag
-	var latestVersion string
+	// Extract tag names
+	var tagNames []string
 	for _, tag := range tags {
-		tagName := tag.GetName()
-		// Simple semantic version detection (starts with 'v' followed by digits)
-		if strings.HasPrefix(tagName, "v") && len(tagName) > 1 {
-			if latestVersion == "" || g.isNewerVersion(tagName, latestVersion) {
-				latestVersion = tagName
-			}
-		}
+		tagNames = append(tagNames, tag.GetName())
 	}
 
+	// Find the latest semantic version tag
+	latestVersion := g.findLatestSemanticVersion(tagNames)
 	if latestVersion == "" {
 		return nil, fmt.Errorf("no semantic version tags found for repository %s", repository)
 	}
@@ -633,10 +709,86 @@ func (g *gitHubDiscovery) resolveVersionFromTags(ctx context.Context, repository
 	return resolution, nil
 }
 
-// isNewerVersion performs a simple version comparison.
-// This is a basic implementation - could be enhanced with proper semver comparison.
-func (g *gitHubDiscovery) isNewerVersion(version1, version2 string) bool {
-	// Simple string comparison for now
-	// In a production implementation, this should use proper semver comparison
-	return version1 > version2
+// resolveVersionFromGitRemote resolves the latest version using git ls-remote --tags.
+func (g *gitHubDiscovery) resolveVersionFromGitRemote(ctx context.Context, repository string, resolution *VersionResolution) (*VersionResolution, error) {
+	// Construct the git repository URL
+	repoURL := fmt.Sprintf("https://github.com/%s.git", repository)
+
+	// Run git ls-remote --tags to get all tags
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--tags", repoURL)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run git ls-remote --tags for %s: %w", repository, err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" {
+		return nil, fmt.Errorf("no tags found for repository %s", repository)
+	}
+
+	// Parse the output to extract tag names
+	lines := strings.Split(outputStr, "\n")
+	var tagNames []string
+
+	for _, line := range lines {
+		// Each line format: <commit-hash>\trefs/tags/<tag-name>
+		// Skip annotated tag references (ending with ^{})
+		if strings.Contains(line, "^{}") {
+			continue
+		}
+
+		parts := strings.Split(line, "\t")
+		if len(parts) == 2 {
+			ref := parts[1]
+			// Extract tag name from refs/tags/<tag-name>
+			if strings.HasPrefix(ref, "refs/tags/") {
+				tagName := strings.TrimPrefix(ref, "refs/tags/")
+				tagNames = append(tagNames, tagName)
+			}
+		}
+	}
+
+	if len(tagNames) == 0 {
+		return nil, fmt.Errorf("no valid tags found for repository %s", repository)
+	}
+
+	// Find the latest semantic version tag
+	latestVersion := g.findLatestSemanticVersion(tagNames)
+	if latestVersion == "" {
+		return nil, fmt.Errorf("no semantic version tags found for repository %s", repository)
+	}
+
+	resolution.Version = latestVersion
+	resolution.Source = VersionSourceNetwork
+	resolution.Warnings = append(resolution.Warnings, "Version resolved using git ls-remote (requires network access)")
+	return resolution, nil
+}
+
+// findLatestSemanticVersion finds the latest semantic version from a list of version strings.
+func (g *gitHubDiscovery) findLatestSemanticVersion(versions []string) string {
+	var validVersions []string
+
+	for _, version := range versions {
+		// Normalize version string - ensure it has 'v' prefix for semver
+		normalizedVersion := version
+		if !strings.HasPrefix(version, "v") && semver.IsValid("v"+version) {
+			normalizedVersion = "v" + version
+		}
+
+		// Check if it's a valid semantic version
+		if semver.IsValid(normalizedVersion) {
+			validVersions = append(validVersions, normalizedVersion)
+		}
+	}
+
+	if len(validVersions) == 0 {
+		return ""
+	}
+
+	// Sort versions in semantic version order
+	semver.Sort(validVersions)
+
+	// Return the latest (last in sorted order)
+	return validVersions[len(validVersions)-1]
 }

@@ -174,6 +174,15 @@ func TestGitHubDiscovery_ResolveVersion(t *testing.T) {
 			},
 			expectError: true, // Will fail without authentication in test
 		},
+		{
+			name: "valid options with git-remote strategy",
+			options: GitHubVersionResolutionOptions{
+				Repository:   "owner/repo",
+				TargetModule: "github.com/example/module",
+				Strategy:     GitHubVersionResolutionGitRemote,
+			},
+			expectError: true, // Will fail without network access in test
+		},
 	}
 
 	for _, tt := range tests {
@@ -385,40 +394,61 @@ func TestInferLocalModulePath(t *testing.T) {
 	}
 }
 
-func TestIsNewerVersion(t *testing.T) {
+func TestGitHubDiscovery_FindLatestSemanticVersion(t *testing.T) {
 	discovery := &gitHubDiscovery{}
 
 	tests := []struct {
 		name     string
-		version1 string
-		version2 string
-		expected bool
+		versions []string
+		expected string
 	}{
 		{
-			name:     "v2.0.0 is newer than v1.0.0",
-			version1: "v2.0.0",
-			version2: "v1.0.0",
-			expected: true,
+			name:     "empty list",
+			versions: []string{},
+			expected: "",
 		},
 		{
-			name:     "v1.0.0 is not newer than v2.0.0",
-			version1: "v1.0.0",
-			version2: "v2.0.0",
-			expected: false,
+			name:     "no semantic versions",
+			versions: []string{"branch-1", "feature-xyz", "release"},
+			expected: "",
 		},
 		{
-			name:     "equal versions",
-			version1: "v1.0.0",
-			version2: "v1.0.0",
-			expected: false,
+			name:     "single semantic version",
+			versions: []string{"v1.0.0"},
+			expected: "v1.0.0",
+		},
+		{
+			name:     "multiple semantic versions",
+			versions: []string{"v1.0.0", "v1.1.0", "v2.0.0", "v1.2.0"},
+			expected: "v2.0.0",
+		},
+		{
+			name:     "mixed valid and invalid versions",
+			versions: []string{"v1.0.0", "invalid", "v2.1.0", "branch", "v1.5.0"},
+			expected: "v2.1.0",
+		},
+		{
+			name:     "versions without v prefix",
+			versions: []string{"1.0.0", "1.1.0", "2.0.0"},
+			expected: "v2.0.0",
+		},
+		{
+			name:     "prerelease versions",
+			versions: []string{"v1.0.0", "v2.0.0-alpha", "v1.5.0", "v2.0.0-beta", "v2.0.0"},
+			expected: "v2.0.0",
+		},
+		{
+			name:     "only prerelease versions",
+			versions: []string{"v2.0.0-alpha", "v1.0.0-beta", "v1.5.0-rc1"},
+			expected: "v2.0.0-alpha",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := discovery.isNewerVersion(tt.version1, tt.version2)
+			result := discovery.findLatestSemanticVersion(tt.versions)
 			if result != tt.expected {
-				t.Errorf("expected %v, got %v", tt.expected, result)
+				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
 		})
 	}
