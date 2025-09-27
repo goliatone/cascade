@@ -172,7 +172,7 @@ Exit Codes:
 
 Examples:
   cascade plan --module=github.com/example/lib --version=v1.2.3
-  cascade release --manifest=deps.yaml --dry-run
+  cascade release --manifest=.cascade.yaml --dry-run
   CASCADE_GITHUB_TOKEN=token cascade release --module=github.com/example/lib --version=v1.2.3`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -433,7 +433,7 @@ Smart Defaults:
   - Version: Auto-detected from .version file, VERSION file, or latest git tag
   - Output file: .cascade.yaml (non-conflicting default)
   - GitHub org: Extracted from module path for GitHub.com modules
-  - Workspace: $HOME/.cache/cascade for dependency discovery
+  - Workspace: Intelligently detected from module location (parent dir, $GOPATH/src/org/, etc.)
 
 When --dependents is omitted, cascade will automatically discover dependent repositories
 by scanning the workspace for Go modules that import the target module.
@@ -444,7 +444,7 @@ before proceeding. Use --yes or --non-interactive to skip confirmation prompts.
 Examples:
   cascade manifest generate                                                    # Use all auto-detected defaults
   cascade manifest generate --version=v1.2.3                                 # Override just the version
-  cascade manifest generate --output=deps.yaml                               # Custom output file
+  cascade manifest generate --output=.cascade.yaml                               # Custom output file
   cascade manifest generate --dependents=owner/repo1,owner/repo2             # Explicit dependents
   cascade manifest generate --workspace=/path/to/workspace --max-depth=3     # Custom workspace discovery
   cascade manifest generate --yes --dry-run                                  # Non-interactive dry run`,
@@ -469,7 +469,7 @@ Examples:
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Run in non-interactive mode (same as --yes)")
 
 	// Workspace discovery flags
-	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace directory to scan for dependents (default: $HOME/.cache/cascade)")
+	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace directory to scan for dependents (default: auto-detected from module location)")
 	cmd.Flags().IntVar(&maxDepth, "max-depth", 0, "Maximum depth to scan in workspace directory (0 = no limit)")
 	cmd.Flags().StringSliceVar(&includePatterns, "include", []string{}, "Directory patterns to include during discovery")
 	cmd.Flags().StringSliceVar(&excludePatterns, "exclude", []string{}, "Directory patterns to exclude during discovery (e.g., vendor, .git)")
@@ -507,7 +507,7 @@ func runPlan(manifestPath string) error {
 		manifestPath = config.Workspace.ManifestPath
 	}
 	if manifestPath == "" {
-		manifestPath = "deps.yaml" // Default fallback
+		manifestPath = ".cascade.yaml" // Default fallback
 	}
 
 	logger.Info("Planning dependency updates", "manifest", manifestPath)
@@ -1289,11 +1289,11 @@ func resolveManifestPath(manifestPath string, cfg *config.Config) string {
 			return candidate
 		}
 		if base := strings.TrimSpace(cfg.Workspace.Path); base != "" {
-			return filepath.Join(base, "deps.yaml")
+			return filepath.Join(base, ".cascade.yaml")
 		}
 	}
 
-	if abs, err := filepath.Abs("deps.yaml"); err == nil {
+	if abs, err := filepath.Abs(".cascade.yaml"); err == nil {
 		return abs
 	}
 
@@ -1613,7 +1613,7 @@ func appendReason(existing, addition string) string {
 	return existing + "; " + addition
 }
 
-// resolveWorkspaceDir determines the workspace directory for discovery
+// resolveWorkspaceDir determines the workspace directory for discovery with intelligent defaults
 func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 	// Use explicit workspace if provided
 	if workspace != "" {
@@ -1635,7 +1635,13 @@ func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 		return cfg.ManifestGenerator.DefaultWorkspace
 	}
 
-	// Default to $HOME/.cache/cascade so manifests and clones stay isolated
+	// workspace detection based on current module location
+	if intelligentWorkspace := detectIntelligentWorkspace(); intelligentWorkspace != "" {
+		// TODO: Add logging here when logger is available
+		return intelligentWorkspace
+	}
+
+	// Fallback to $HOME/.cache/cascade for isolation
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, ".cache", "cascade")
 	}
@@ -1646,6 +1652,198 @@ func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 	}
 
 	return "."
+}
+
+// detectIntelligentWorkspace attempts to detect a sensible workspace directory based on
+// the current module's location and Go environment. It tries to find a directory that
+// likely contains other Go modules that might depend on the current module.
+func detectIntelligentWorkspace() string {
+	// Get current module information
+	modulePath, moduleDir, err := detectModuleInfo()
+	if err != nil {
+		return ""
+	}
+
+	// 1) use parent directory of current module if it contains multiple Go modules
+	// e.g., ~/Development/GO/src/github.com/goliatone/go-errors -> ~/Development/GO/src/github.com/goliatone/
+	if parentWorkspace := detectParentWorkspace(moduleDir, modulePath); parentWorkspace != "" {
+		return parentWorkspace
+	}
+
+	// 2) check GOPATH/src/{hosting}/{org}/ directory
+	// e.g., github.com/goliatone/go-errors -> $GOPATH/src/github.com/goliatone/
+	if gopathOrgWorkspace := detectGopathOrgWorkspace(modulePath); gopathOrgWorkspace != "" {
+		return gopathOrgWorkspace
+	}
+
+	// 3) check GOPATH/src/ directory for broader discovery
+	if gopathWorkspace := detectGopathWorkspace(); gopathWorkspace != "" {
+		return gopathWorkspace
+	}
+
+	return ""
+}
+
+// detectParentWorkspace checks if the parent directories of the current module
+// contain other Go modules, indicating this is a multi-module workspace
+func detectParentWorkspace(moduleDir, modulePath string) string {
+	if moduleDir == "" {
+		return ""
+	}
+
+	// Extract organization from module path (e.g., "goliatone" from "github.com/goliatone/go-errors")
+	org := extractOrgFromModulePath(modulePath)
+	if org == "" {
+		return ""
+	}
+
+	// Walk up the directory tree looking for a directory that contains multiple Go modules
+	current := moduleDir
+	for i := 0; i < 5; i++ { // Limit traversal to avoid going too far up
+		parent := filepath.Dir(current)
+		if parent == current || parent == "/" || parent == "." {
+			break
+		}
+
+		// Check if this directory name matches the organization
+		if filepath.Base(parent) == org {
+			// Validate this directory contains multiple Go modules
+			if isValidWorkspace(parent) {
+				return parent
+			}
+		}
+
+		// Also check if parent contains multiple modules (even if not named after org)
+		if isValidWorkspace(parent) && containsMultipleModules(parent) {
+			return parent
+		}
+
+		current = parent
+	}
+
+	return ""
+}
+
+// detectGopathOrgWorkspace checks $GOPATH/src/{hosting}/{org}/ for a workspace
+func detectGopathOrgWorkspace(modulePath string) string {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		// Try default GOPATH
+		if home, err := os.UserHomeDir(); err == nil {
+			gopath = filepath.Join(home, "go")
+		}
+	}
+	if gopath == "" {
+		return ""
+	}
+
+	// Parse module path to extract hosting and org
+	// e.g., github.com/goliatone/go-errors -> hosting=github.com, org=goliatone
+	parts := strings.Split(modulePath, "/")
+	if len(parts) < 3 {
+		return ""
+	}
+
+	hosting := parts[0]
+	org := parts[1]
+
+	// Check $GOPATH/src/{hosting}/{org}/
+	orgPath := filepath.Join(gopath, "src", hosting, org)
+	if isValidWorkspace(orgPath) {
+		return orgPath
+	}
+
+	return ""
+}
+
+// detectGopathWorkspace checks $GOPATH/src/ as a broader workspace
+func detectGopathWorkspace() string {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		// Try default GOPATH
+		if home, err := os.UserHomeDir(); err == nil {
+			gopath = filepath.Join(home, "go")
+		}
+	}
+	if gopath == "" {
+		return ""
+	}
+
+	srcPath := filepath.Join(gopath, "src")
+	if isValidWorkspace(srcPath) && containsMultipleModules(srcPath) {
+		return srcPath
+	}
+
+	return ""
+}
+
+// extractOrgFromModulePath extracts the organization from a module path
+func extractOrgFromModulePath(modulePath string) string {
+	parts := strings.Split(modulePath, "/")
+	if len(parts) >= 2 {
+		switch parts[0] {
+		case "github.com", "gitlab.com", "bitbucket.org":
+			return parts[1]
+		}
+	}
+	return ""
+}
+
+// isValidWorkspace checks if a directory exists and is readable
+func isValidWorkspace(dir string) bool {
+	if dir == "" {
+		return false
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		return false
+	}
+
+	return info.IsDir()
+}
+
+// containsMultipleModules checks if a directory contains multiple Go modules
+func containsMultipleModules(dir string) bool {
+	moduleCount := 0
+	maxCheck := 50 // Limit to avoid scanning huge directories
+
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue on errors
+		}
+
+		// Stop if we've checked too many entries
+		if moduleCount >= maxCheck {
+			return filepath.SkipDir
+		}
+
+		// Skip deep nested directories
+		if strings.Count(strings.TrimPrefix(path, dir), string(filepath.Separator)) > 3 {
+			return filepath.SkipDir
+		}
+
+		// Skip common non-module directories
+		base := filepath.Base(path)
+		if base == ".git" || base == "vendor" || base == "node_modules" || base == ".cache" {
+			return filepath.SkipDir
+		}
+
+		if info.Name() == "go.mod" {
+			moduleCount++
+			if moduleCount >= 2 {
+				return filepath.SkipAll // Found multiple modules, we can stop
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return false
+	}
+
+	return moduleCount >= 2
 }
 
 // discoverWorkspaceDependents uses the workspace discovery to find dependent modules
