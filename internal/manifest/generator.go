@@ -49,6 +49,7 @@ type DependentOptions struct {
 	Skip            bool              // Whether to skip this dependent
 	Env             map[string]string // Environment variables
 	Timeout         time.Duration     // Operation timeout
+	DiscoverySource string            // Source of discovery (workspace, github, workspace+github)
 }
 
 // GeneratorConfig defines configuration options for the manifest generator.

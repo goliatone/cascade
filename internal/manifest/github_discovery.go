@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v66/github"
+	"golang.org/x/mod/semver"
 	"golang.org/x/oauth2"
 )
 
@@ -67,6 +70,20 @@ const (
 
 	// GitHubVersionResolutionProxy tries Go module proxy, then falls back to tags
 	GitHubVersionResolutionProxy GitHubVersionResolutionStrategy = "proxy"
+)
+
+// RateLimitBackoffStrategy defines how to handle rate limiting.
+type RateLimitBackoffStrategy int
+
+const (
+	// RateLimitBackoffNone returns an error immediately when rate limited
+	RateLimitBackoffNone RateLimitBackoffStrategy = iota
+
+	// RateLimitBackoffWait waits for the rate limit to reset
+	RateLimitBackoffWait
+
+	// RateLimitBackoffExponential uses exponential backoff with retries
+	RateLimitBackoffExponential
 )
 
 // GitHubDiscoveredRepository represents a repository found during GitHub discovery.
@@ -223,21 +240,45 @@ func (g *gitHubDiscovery) ValidateAuthentication(ctx context.Context) error {
 }
 
 // CheckRateLimit checks the current GitHub API rate limit and returns a warning if it's low.
+// This function provides detailed information about rate limit status to help users
+// understand when they might encounter rate limiting issues.
 func (g *gitHubDiscovery) CheckRateLimit(ctx context.Context) error {
 	if g.client == nil {
 		return fmt.Errorf("GitHub client is nil")
 	}
 
-	rateLimits, _, err := g.client.RateLimits(ctx)
+	rateLimits, resp, err := g.client.RateLimits(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get GitHub API rate limits: %w", err)
+		// If we can't get rate limits, check if it's an authentication issue
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("GitHub authentication failed: unable to check rate limits due to invalid or expired token")
+		}
+		// For network or other errors, provide a helpful message
+		return fmt.Errorf("failed to get GitHub API rate limits (this may indicate network issues or GitHub service problems): %w", err)
 	}
 
-	if rateLimits.Core != nil && isRateLimitCritical(rateLimits.Core) {
-		return fmt.Errorf("GitHub API rate limit critically low: %d/%d remaining (resets at %v)",
-			rateLimits.Core.Remaining,
-			rateLimits.Core.Limit,
-			rateLimits.Core.Reset.Time)
+	if rateLimits == nil {
+		return fmt.Errorf("GitHub API returned nil rate limits")
+	}
+
+	if rateLimits.Core != nil {
+		if isRateLimitCritical(rateLimits.Core) {
+			resetDuration := time.Until(rateLimits.Core.Reset.Time)
+			return fmt.Errorf("GitHub API rate limit critically low: %d/%d remaining (%.1f%% used), resets in %v at %v",
+				rateLimits.Core.Remaining,
+				rateLimits.Core.Limit,
+				(float64(rateLimits.Core.Limit-rateLimits.Core.Remaining)/float64(rateLimits.Core.Limit))*100,
+				resetDuration.Round(time.Minute),
+				rateLimits.Core.Reset.Time.Format("15:04:05 MST"))
+		}
+
+		// Provide warning for moderate usage
+		if isRateLimitModerate(rateLimits.Core) {
+			usagePercent := (float64(rateLimits.Core.Limit-rateLimits.Core.Remaining) / float64(rateLimits.Core.Limit)) * 100
+			// This is a warning, not an error, but we'll log it for visibility
+			fmt.Printf("Warning: GitHub API rate limit at %.1f%% usage (%d/%d remaining)\n",
+				usagePercent, rateLimits.Core.Remaining, rateLimits.Core.Limit)
+		}
 	}
 
 	return nil
@@ -253,6 +294,48 @@ func isRateLimitCritical(rate *github.Rate) bool {
 	return float64(rate.Remaining) < threshold
 }
 
+// isRateLimitModerate checks if the rate limit is at moderate usage (< 50% remaining).
+func isRateLimitModerate(rate *github.Rate) bool {
+	if rate == nil {
+		return false
+	}
+
+	threshold := float64(rate.Limit) * 0.50 // 50% threshold
+	return float64(rate.Remaining) < threshold
+}
+
+// handleRateLimitError provides helpful error messages when rate limiting occurs.
+func (g *gitHubDiscovery) handleRateLimitError(ctx context.Context, err error) error {
+	// Check if this is a rate limit error
+	if strings.Contains(err.Error(), "rate limit") || strings.Contains(err.Error(), "403") {
+		// Try to get current rate limit info for better error message
+		if rateLimits, _, rateLimitErr := g.client.RateLimits(ctx); rateLimitErr == nil && rateLimits.Core != nil {
+			resetDuration := time.Until(rateLimits.Core.Reset.Time)
+			return fmt.Errorf("GitHub API rate limit exceeded: %d/%d requests used, resets in %v at %v. "+
+				"Consider using a personal access token for higher rate limits, or wait before retrying. Original error: %w",
+				rateLimits.Core.Limit-rateLimits.Core.Remaining,
+				rateLimits.Core.Limit,
+				resetDuration.Round(time.Minute),
+				rateLimits.Core.Reset.Time.Format("15:04:05 MST"),
+				err)
+		}
+		return fmt.Errorf("GitHub API rate limit exceeded. Consider using a personal access token for higher rate limits, or wait before retrying. Original error: %w", err)
+	}
+
+	// Check if this is an authentication error
+	if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "Bad credentials") {
+		return fmt.Errorf("GitHub authentication failed: invalid or expired token. Please check your GITHUB_TOKEN environment variable. Original error: %w", err)
+	}
+
+	// Check if this is a permission error
+	if strings.Contains(err.Error(), "403") && !strings.Contains(err.Error(), "rate limit") {
+		return fmt.Errorf("GitHub API access denied: insufficient permissions or repository not accessible. Please ensure your token has appropriate permissions. Original error: %w", err)
+	}
+
+	// Return original error for other cases
+	return err
+}
+
 // DiscoverDependents searches GitHub for repositories that depend on the target module.
 func (g *gitHubDiscovery) DiscoverDependents(ctx context.Context, options GitHubDiscoveryOptions) ([]DependentOptions, error) {
 	if options.Organization == "" {
@@ -260,6 +343,11 @@ func (g *gitHubDiscovery) DiscoverDependents(ctx context.Context, options GitHub
 	}
 	if options.TargetModule == "" {
 		return nil, fmt.Errorf("target module is required")
+	}
+
+	// Check rate limits before starting expensive operations
+	if err := g.CheckRateLimit(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit check failed: %w", err)
 	}
 
 	repos, err := g.searchRepositories(ctx, options)
@@ -297,6 +385,11 @@ func (g *gitHubDiscovery) ResolveVersion(ctx context.Context, options GitHubVers
 	}
 	if options.TargetModule == "" {
 		return nil, fmt.Errorf("target module is required")
+	}
+
+	// Check rate limits before starting expensive operations
+	if err := g.CheckRateLimit(ctx); err != nil {
+		return nil, fmt.Errorf("rate limit check failed: %w", err)
 	}
 
 	resolution := &VersionResolution{
@@ -338,7 +431,7 @@ func (g *gitHubDiscovery) searchRepositories(ctx context.Context, options GitHub
 	for {
 		result, resp, err := g.client.Search.Repositories(ctx, query, searchOpts)
 		if err != nil {
-			return nil, fmt.Errorf("GitHub repository search failed: %w", err)
+			return nil, g.handleRateLimitError(ctx, fmt.Errorf("GitHub repository search failed: %w", err))
 		}
 
 		for _, repo := range result.Repositories {
@@ -445,7 +538,7 @@ func (g *gitHubDiscovery) repositoryHasDependency(ctx context.Context, repo GitH
 
 	result, _, err := g.client.Search.Code(ctx, query, searchOpts)
 	if err != nil {
-		return false, fmt.Errorf("failed to search for go.mod files in %s: %w", repo.FullName, err)
+		return false, g.handleRateLimitError(ctx, fmt.Errorf("failed to search for go.mod files in %s: %w", repo.FullName, err))
 	}
 
 	// Check each go.mod file for the target dependency
@@ -512,7 +605,7 @@ func (g *gitHubDiscovery) resolveVersionFromTags(ctx context.Context, repository
 		PerPage: 100, // Get up to 100 tags
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list tags for %s: %w", repository, err)
+		return nil, g.handleRateLimitError(ctx, fmt.Errorf("failed to list tags for %s: %w", repository, err))
 	}
 
 	if len(tags) == 0 {
