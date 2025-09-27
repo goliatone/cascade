@@ -3,6 +3,7 @@ package manifest
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -77,10 +78,11 @@ type TestsConfig struct {
 
 // NotificationsConfig contains default notification settings.
 type NotificationsConfig struct {
-	Enabled   bool
-	Channels  []string
-	OnSuccess bool
-	OnFailure bool
+	Enabled    bool
+	Channels   []string
+	OnSuccess  bool
+	OnFailure  bool
+	WebhookURL string
 }
 
 // DiscoveryConfig contains settings for automatic dependent discovery.
@@ -179,12 +181,16 @@ func (g *generator) buildModule(options GenerateOptions) Module {
 func (g *generator) buildDependents(options GenerateOptions) []Dependent {
 	dependents := make([]Dependent, len(options.Dependents))
 
+	// Get the resolved default branch (includes config defaults)
+	defaultBranch := g.getConfigBranch(options.DefaultBranch)
+	resolvedDefaultBranch := g.getOrDefault(defaultBranch, "main")
+
 	for i, dep := range options.Dependents {
 		dependent := Dependent{
 			Repo:          dep.Repository,
 			Module:        dep.ModulePath,
 			ModulePath:    g.getOrDefault(dep.LocalModulePath, "."),
-			Branch:        g.getOrDefault(dep.Branch, options.DefaultBranch),
+			Branch:        g.getOrDefault(dep.Branch, resolvedDefaultBranch),
 			Tests:         dep.Tests,
 			ExtraCommands: dep.ExtraCommands,
 			Labels:        dep.Labels,
@@ -294,9 +300,22 @@ func (g *generator) mergeNotifications(optionsNotifications Notifications) Notif
 		return optionsNotifications
 	}
 
-	// The Notifications type has SlackChannel and Webhook fields
-	// For now, we'll return the options as-is since the config notification
-	// structure differs from the manifest notification structure
-	// TODO: Map config notification channels to manifest notification fields
-	return optionsNotifications
+	result := optionsNotifications
+
+	// Apply config notification defaults if not already set
+	if result.SlackChannel == "" && len(g.config.Notifications.Channels) > 0 {
+		// Use first channel as slack channel if it looks like a slack channel
+		for _, channel := range g.config.Notifications.Channels {
+			if strings.HasPrefix(channel, "#") || strings.HasPrefix(channel, "@") {
+				result.SlackChannel = channel
+				break
+			}
+		}
+	}
+
+	if result.Webhook == "" && g.config.Notifications.WebhookURL != "" {
+		result.Webhook = g.config.Notifications.WebhookURL
+	}
+
+	return result
 }
