@@ -243,6 +243,25 @@ type DiscoveryConfig struct {
 	// Interactive controls whether to prompt for confirmation of discovered dependents.
 	// Default: true (can be overridden by --yes or --non-interactive flags)
 	Interactive bool `json:"interactive" yaml:"interactive"`
+
+	// GitHub contains settings for GitHub organization discovery.
+	GitHub GitHubDiscoveryConfig `json:"github" yaml:"github"`
+}
+
+// GitHubDiscoveryConfig contains settings for GitHub organization discovery.
+type GitHubDiscoveryConfig struct {
+	// Organization is the default GitHub organization to search for dependent repositories.
+	Organization string `json:"organization,omitempty" yaml:"organization,omitempty"`
+
+	// IncludePatterns contains patterns for repository names to include during GitHub discovery.
+	IncludePatterns []string `json:"include_patterns,omitempty" yaml:"include_patterns,omitempty"`
+
+	// ExcludePatterns contains patterns for repository names to exclude during GitHub discovery.
+	ExcludePatterns []string `json:"exclude_patterns,omitempty" yaml:"exclude_patterns,omitempty"`
+
+	// Enabled controls whether GitHub discovery is enabled by default.
+	// Default: false (only when explicitly requested via --github-org flag)
+	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
 // Environment variable mapping constants for configuration parsing
@@ -287,6 +306,12 @@ const (
 	EnvManifestGeneratorDiscoveryEnabled     = "CASCADE_MANIFEST_GENERATOR_DISCOVERY_ENABLED"
 	EnvManifestGeneratorDiscoveryMaxDepth    = "CASCADE_MANIFEST_GENERATOR_DISCOVERY_MAX_DEPTH"
 	EnvManifestGeneratorDiscoveryInteractive = "CASCADE_MANIFEST_GENERATOR_DISCOVERY_INTERACTIVE"
+
+	// GitHub Discovery environment variables
+	EnvManifestGeneratorGitHubOrg             = "CASCADE_MANIFEST_GENERATOR_GITHUB_ORG"
+	EnvManifestGeneratorGitHubEnabled         = "CASCADE_MANIFEST_GENERATOR_GITHUB_ENABLED"
+	EnvManifestGeneratorGitHubIncludePatterns = "CASCADE_MANIFEST_GENERATOR_GITHUB_INCLUDE_PATTERNS"
+	EnvManifestGeneratorGitHubExcludePatterns = "CASCADE_MANIFEST_GENERATOR_GITHUB_EXCLUDE_PATTERNS"
 )
 
 // New returns a Config populated with safe zero values.

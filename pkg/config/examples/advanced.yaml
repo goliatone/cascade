@@ -58,3 +58,72 @@ state:
   retention_count: 25
   # State persistence enabled
   enabled: true
+
+# Manifest generator configuration - defaults for manifest generation operations
+manifest_generator:
+  # Default workspace for discovering dependent modules
+  default_workspace: "/var/lib/cascade/workspace"
+
+  # Default branch name for dependency updates
+  default_branch: "cascade/update-deps"
+
+  # Test configuration defaults
+  tests:
+    # Default test command for discovered dependents
+    command: "go test ./..."
+    # Default timeout for test execution
+    timeout: "10m"
+    # Default working directory (empty uses module root)
+    working_directory: ""
+
+  # Notification defaults
+  notifications:
+    # Enable notifications by default
+    enabled: true
+    # Default notification channels
+    channels: ["#engineering", "#cascade-updates"]
+    # Notify on successful operations
+    on_success: false
+    # Notify on failed operations
+    on_failure: true
+
+  # Discovery settings for automatic dependent detection
+  discovery:
+    # Enable automatic discovery by default
+    enabled: true
+    # Maximum depth for workspace scanning
+    max_depth: 5
+    # Include patterns for discovery
+    include_patterns: ["*.go", "go.mod", "go.sum"]
+    # Exclude patterns for discovery
+    exclude_patterns: ["vendor/*", ".git/*", "node_modules/*", "*_test.go"]
+    # Prompt for confirmation of discovered dependents
+    interactive: true
+
+  # Template profiles for different use cases
+  template_profiles:
+    # Production profile with conservative settings
+    production:
+      name: "production"
+      description: "Conservative settings for production dependencies"
+      tests:
+        command: "go test -race ./..."
+        timeout: "20m"
+      notifications:
+        enabled: true
+        on_success: true
+        on_failure: true
+      branch: "prod/update-deps"
+
+    # Development profile with faster iteration
+    development:
+      name: "development"
+      description: "Fast iteration settings for development dependencies"
+      tests:
+        command: "go test -short ./..."
+        timeout: "5m"
+      notifications:
+        enabled: false
+        on_success: false
+        on_failure: true
+      branch: "dev/update-deps"
