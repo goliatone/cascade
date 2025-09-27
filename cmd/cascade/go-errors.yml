@@ -1,0 +1,466 @@
+manifest_version: 1
+defaults:
+    branch: main
+    tests:
+        - cmd:
+            - go
+            - test
+            - ./...
+            - -race
+            - -count=1
+          dir: ""
+    extra_commands: []
+    labels:
+        - automation:cascade
+    commit_template: 'chore(deps): bump {{ .Module }} to {{ .Version }}'
+    notifications:
+        slack_channel: ""
+        webhook: ""
+    pr:
+        title: 'chore(deps): bump {{ .Module }} to {{ .Version }}'
+        body_template: Automated dependency update for {{ .Module }} to {{ .Version }}
+        reviewers: []
+        team_reviewers: []
+modules:
+    - name: go-errors
+      module: github.com/goliatone/go-errors
+      repo: goliatone/go-errors
+      release_artifact: ""
+      dependents:
+        - repo: goliatone/go-auth
+          module: github.com/goliatone/go-auth
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: onpreupgrade-demo
+          module: onpreupgrade-demo
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: ws-auth-example
+          module: ws-auth-example
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: ws-client
+          module: ws-client
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-uploader
+          module: github.com/goliatone/go-uploader
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/timeslice
+          module: github.com/goliatone/timeslice
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-gql-gen
+          module: github.com/goliatone/go-gql-gen
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-job
+          module: github.com/goliatone/go-job/examples
+          module_path: examples
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-persistence-bun
+          module: github.com/goliatone/go-persistence-bun
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-auth-examples
+          module: github.com/goliatone/go-auth-examples
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-command
+          module: github.com/goliatone/go-command
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-crud
+          module: github.com/goliatone/go-crud
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-errors
+          module: github.com/goliatone/go-errors
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-repository-cache
+          module: github.com/goliatone/go-repository-cache/examples/simple
+          module_path: examples/simple
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-repository-cache
+          module: github.com/goliatone/go-repository-cache
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-router
+          module: github.com/goliatone/go-router
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-uploader
+          module: github.com/goliatone/go-uploader/examples/router
+          module_path: examples/router
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-config
+          module: github.com/goliatone/go-config
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-job
+          module: github.com/goliatone/go-job
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-logger
+          module: github.com/goliatone/go-logger/examples
+          module_path: examples
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/go-repository-bun
+          module: github.com/goliatone/go-repository-bun
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/mh
+          module: github.com/goliatone/mh
+          module_path: .
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s
+        - repo: goliatone/timeslice
+          module: github.com/goliatone/timeslice/mocks
+          module_path: mocks
+          branch: main
+          tests: []
+          extra_commands: []
+          labels: []
+          notifications:
+            slack_channel: ""
+            webhook: ""
+          pr:
+            title: ""
+            body_template: ""
+            reviewers: []
+            team_reviewers: []
+          canary: false
+          skip: false
+          env: {}
+          timeout: 0s

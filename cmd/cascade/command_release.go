@@ -13,23 +13,47 @@ import (
 
 // newReleaseCommand creates the release subcommand
 func newReleaseCommand() *cobra.Command {
-	return &cobra.Command{
+	var (
+		manifestPath string
+		modulePath   string
+		version      string
+	)
+
+	cmd := &cobra.Command{
 		Use:   "release [manifest]",
 		Short: "Execute planned dependency updates",
 		Long: `Release executes the dependency update plan, creating branches,
-making changes, and submitting pull requests as configured.`,
+making changes, and submitting pull requests as configured.
+
+Smart Defaults:
+  - Manifest path: Auto-detected as .cascade.yaml (non-conflicting default)
+  - Module path: Auto-detected from go.mod in current directory tree
+  - Version: Auto-detected from .version file, VERSION file, or latest git tag
+
+Examples:
+  cascade release                                    # Use all auto-detected defaults
+  cascade release --module=github.com/example/lib   # Override just the module
+  cascade release --version=v1.2.3                  # Override just the version
+  cascade release .cascade.yaml                     # Explicit manifest file`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			manifestPath := ""
+			manifestArg := ""
 			if len(args) > 0 {
-				manifestPath = args[0]
+				manifestArg = args[0]
 			}
-			return runRelease(manifestPath)
+			return runRelease(manifestPath, manifestArg, modulePath, version)
 		},
 	}
+
+	// Flags for overriding auto-detected defaults
+	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Path to dependency manifest file (default: .cascade.yaml)")
+	cmd.Flags().StringVar(&modulePath, "module", "", "Go module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
+	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3). Auto-detected from .version file or git tags if not provided")
+
+	return cmd
 }
 
-func runRelease(manifestPath string) error {
+func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
@@ -39,32 +63,62 @@ func runRelease(manifestPath string) error {
 		if logger != nil {
 			logger.Debug("Release command completed",
 				"duration_ms", time.Since(start).Milliseconds(),
-				"manifest", manifestPath,
+				"manifest", manifestFlag,
 				"dry_run", cfg.Executor.DryRun,
 			)
 		}
 	}()
 
-	manifestPath = resolveManifestPath(manifestPath, cfg)
-	if manifestPath == "" {
+	// Apply default discovery logic for manifest path
+	finalManifestPath := resolvePlanManifestPath(manifestFlag, manifestArg, cfg)
+	if finalManifestPath == "" {
 		return newValidationError("manifest path not provided and no default configured", nil)
+	}
+
+	// Apply default discovery logic for module path
+	finalModulePath := modulePath
+	if finalModulePath == "" && cfg != nil {
+		finalModulePath = cfg.Module // Use config as fallback
+	}
+
+	var moduleDir string
+	var err error
+	finalModulePath, moduleDir, err = applyModuleDefaults(finalModulePath)
+	if err != nil {
+		return err
+	}
+
+	// Apply default discovery logic for version
+	finalVersion := version
+	if finalVersion == "" && cfg != nil {
+		finalVersion = cfg.Version // Use config as fallback
+	}
+
+	var versionWarnings []string
+	finalVersion, versionWarnings, err = applyVersionDefaults(ctx, finalVersion, moduleDir, cfg)
+	if err != nil {
+		return err
+	}
+
+	// Log version warnings if any
+	if len(versionWarnings) > 0 && logger != nil {
+		for _, warning := range versionWarnings {
+			logger.Warn("Version resolution warning", "warning", warning)
+		}
 	}
 
 	if err := ensureWorkspace(cfg.Workspace.Path); err != nil {
 		return newExecutionError("failed to prepare workspace", err)
 	}
 
-	logger.Info("Executing dependency updates", "manifest", manifestPath)
+	logger.Info("Executing dependency updates",
+		"manifest", finalManifestPath,
+		"module", finalModulePath,
+		"version", finalVersion)
 
-	target := planner.Target{Module: cfg.Module, Version: cfg.Version}
-	if target.Module == "" {
-		return newValidationError("target module must be specified via --module flag or config", nil)
-	}
-	if target.Version == "" {
-		return newValidationError("target version must be specified via --version flag or config", nil)
-	}
+	target := planner.Target{Module: finalModulePath, Version: finalVersion}
 
-	manifestData, err := container.Manifest().Load(manifestPath)
+	manifestData, err := container.Manifest().Load(finalManifestPath)
 	if err != nil {
 		return newFileError("failed to load manifest", err)
 	}

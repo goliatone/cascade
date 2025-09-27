@@ -335,6 +335,11 @@ func resolveManifestPath(manifestPath string, cfg *config.Config) string {
 		return path
 	}
 
+	// Check for .cascade.yaml in current working directory first
+	if abs, err := filepath.Abs(".cascade.yaml"); err == nil {
+		return abs
+	}
+
 	if cfg != nil {
 		if candidate := strings.TrimSpace(cfg.Workspace.ManifestPath); candidate != "" {
 			return candidate
@@ -342,10 +347,6 @@ func resolveManifestPath(manifestPath string, cfg *config.Config) string {
 		if base := strings.TrimSpace(cfg.Workspace.Path); base != "" {
 			return filepath.Join(base, ".cascade.yaml")
 		}
-	}
-
-	if abs, err := filepath.Abs(".cascade.yaml"); err == nil {
-		return abs
 	}
 
 	return ""
