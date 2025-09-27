@@ -1,5 +1,15 @@
 # Changelog
 
+# [0.1.2](https://github.com/goliatone/cascade/compare/v0.1.1...v0.1.2) - (2025-09-27)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.2 ([21f3e4a](https://github.com/goliatone/cascade/commit/21f3e4a3cb421d318e36c5820ea1d112af1a34ee))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.1 ([f2b541a](https://github.com/goliatone/cascade/commit/f2b541a49351ff8faada5e8c2369682efad3ee9f))  - (goliatone)
+
 # [0.1.1](https://github.com/goliatone/cascade/compare/v0.1.0...v0.1.1) - (2025-09-27)
 
 ## <!-- 1 -->🐛 Bug Fixes
