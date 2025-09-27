@@ -249,6 +249,80 @@ func mergeConfig(dst, src *Config) {
 	if src.stateEnabledSet() {
 		dst.setStateEnabled(src.State.Enabled)
 	}
+
+	// ManifestGenerator config
+	if src.ManifestGenerator.DefaultWorkspace != "" {
+		dst.ManifestGenerator.DefaultWorkspace = src.ManifestGenerator.DefaultWorkspace
+	}
+	if src.ManifestGenerator.DefaultBranch != "" {
+		dst.ManifestGenerator.DefaultBranch = src.ManifestGenerator.DefaultBranch
+	}
+
+	// ManifestGenerator tests config
+	if src.ManifestGenerator.Tests.Command != "" {
+		dst.ManifestGenerator.Tests.Command = src.ManifestGenerator.Tests.Command
+	}
+	if src.ManifestGenerator.Tests.Timeout != 0 {
+		dst.ManifestGenerator.Tests.Timeout = src.ManifestGenerator.Tests.Timeout
+	}
+	if src.ManifestGenerator.Tests.WorkingDirectory != "" {
+		dst.ManifestGenerator.Tests.WorkingDirectory = src.ManifestGenerator.Tests.WorkingDirectory
+	}
+
+	// ManifestGenerator notifications config
+	if src.ManifestGenerator.Notifications.Enabled {
+		dst.ManifestGenerator.Notifications.Enabled = src.ManifestGenerator.Notifications.Enabled
+	}
+	if len(src.ManifestGenerator.Notifications.Channels) > 0 {
+		dst.ManifestGenerator.Notifications.Channels = src.ManifestGenerator.Notifications.Channels
+	}
+	if src.ManifestGenerator.Notifications.OnSuccess {
+		dst.ManifestGenerator.Notifications.OnSuccess = src.ManifestGenerator.Notifications.OnSuccess
+	}
+	if src.ManifestGenerator.Notifications.OnFailure {
+		dst.ManifestGenerator.Notifications.OnFailure = src.ManifestGenerator.Notifications.OnFailure
+	}
+
+	// ManifestGenerator discovery config
+	if src.ManifestGenerator.Discovery.Enabled {
+		dst.ManifestGenerator.Discovery.Enabled = src.ManifestGenerator.Discovery.Enabled
+	}
+	if src.ManifestGenerator.Discovery.MaxDepth != 0 {
+		dst.ManifestGenerator.Discovery.MaxDepth = src.ManifestGenerator.Discovery.MaxDepth
+	}
+	if len(src.ManifestGenerator.Discovery.IncludePatterns) > 0 {
+		dst.ManifestGenerator.Discovery.IncludePatterns = src.ManifestGenerator.Discovery.IncludePatterns
+	}
+	if len(src.ManifestGenerator.Discovery.ExcludePatterns) > 0 {
+		dst.ManifestGenerator.Discovery.ExcludePatterns = src.ManifestGenerator.Discovery.ExcludePatterns
+	}
+	if src.ManifestGenerator.Discovery.Interactive {
+		dst.ManifestGenerator.Discovery.Interactive = src.ManifestGenerator.Discovery.Interactive
+	}
+
+	// ManifestGenerator GitHub discovery config
+	if src.ManifestGenerator.Discovery.GitHub.Enabled {
+		dst.ManifestGenerator.Discovery.GitHub.Enabled = src.ManifestGenerator.Discovery.GitHub.Enabled
+	}
+	if src.ManifestGenerator.Discovery.GitHub.Organization != "" {
+		dst.ManifestGenerator.Discovery.GitHub.Organization = src.ManifestGenerator.Discovery.GitHub.Organization
+	}
+	if len(src.ManifestGenerator.Discovery.GitHub.IncludePatterns) > 0 {
+		dst.ManifestGenerator.Discovery.GitHub.IncludePatterns = src.ManifestGenerator.Discovery.GitHub.IncludePatterns
+	}
+	if len(src.ManifestGenerator.Discovery.GitHub.ExcludePatterns) > 0 {
+		dst.ManifestGenerator.Discovery.GitHub.ExcludePatterns = src.ManifestGenerator.Discovery.GitHub.ExcludePatterns
+	}
+
+	// ManifestGenerator template profiles
+	if len(src.ManifestGenerator.TemplateProfiles) > 0 {
+		if dst.ManifestGenerator.TemplateProfiles == nil {
+			dst.ManifestGenerator.TemplateProfiles = make(map[string]TemplateProfileConfig)
+		}
+		for name, profile := range src.ManifestGenerator.TemplateProfiles {
+			dst.ManifestGenerator.TemplateProfiles[name] = profile
+		}
+	}
 }
 
 // validateConfigFile performs basic validation on configuration loaded from files.

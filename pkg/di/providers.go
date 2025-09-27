@@ -33,6 +33,47 @@ func provideManifestGenerator() manifest.Generator {
 	return manifest.NewGenerator()
 }
 
+// provideManifestGeneratorWithConfig creates a manifest generator with configuration-driven defaults.
+// Maps from pkg/config types to manifest generator config types.
+func provideManifestGeneratorWithConfig(cfg *config.Config, logger Logger) manifest.Generator {
+	if cfg == nil {
+		logger.Warn("No configuration provided, using default manifest generator")
+		return manifest.NewGenerator()
+	}
+
+	manifestConfig := &manifest.GeneratorConfig{
+		DefaultWorkspace: cfg.ManifestGenerator.DefaultWorkspace,
+		DefaultBranch:    cfg.ManifestGenerator.DefaultBranch,
+		Tests: manifest.TestsConfig{
+			Command:          cfg.ManifestGenerator.Tests.Command,
+			Timeout:          cfg.ManifestGenerator.Tests.Timeout,
+			WorkingDirectory: cfg.ManifestGenerator.Tests.WorkingDirectory,
+		},
+		Notifications: manifest.NotificationsConfig{
+			Enabled:   cfg.ManifestGenerator.Notifications.Enabled,
+			Channels:  cfg.ManifestGenerator.Notifications.Channels,
+			OnSuccess: cfg.ManifestGenerator.Notifications.OnSuccess,
+			OnFailure: cfg.ManifestGenerator.Notifications.OnFailure,
+		},
+		Discovery: manifest.DiscoveryConfig{
+			Enabled:         cfg.ManifestGenerator.Discovery.Enabled,
+			MaxDepth:        cfg.ManifestGenerator.Discovery.MaxDepth,
+			IncludePatterns: cfg.ManifestGenerator.Discovery.IncludePatterns,
+			ExcludePatterns: cfg.ManifestGenerator.Discovery.ExcludePatterns,
+			Interactive:     cfg.ManifestGenerator.Discovery.Interactive,
+		},
+	}
+
+	logger.Debug("Created manifest generator with config",
+		"default_workspace", manifestConfig.DefaultWorkspace,
+		"default_branch", manifestConfig.DefaultBranch,
+		"test_command", manifestConfig.Tests.Command,
+		"discovery_enabled", manifestConfig.Discovery.Enabled,
+	)
+
+	return manifest.NewGeneratorWithConfig(manifestConfig)
+}
+
 // providePlanner creates a default planner implementation.
 // The planner computes cascade plans from manifests and targets.
 func providePlanner() planner.Planner {
