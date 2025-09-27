@@ -703,6 +703,9 @@ func TestManifestGenerate_OverwriteBehavior(t *testing.T) {
 				0,          // maxDepth
 				[]string{}, // includePatterns
 				[]string{}, // excludePatterns
+				"",         // githubOrg
+				[]string{}, // githubIncludePatterns
+				[]string{}, // githubExcludePatterns
 			)
 
 			// Check that no error occurred for valid cases
@@ -779,6 +782,9 @@ func TestManifestGenerate_WorkspaceHandling(t *testing.T) {
 		0,          // maxDepth
 		[]string{}, // includePatterns
 		[]string{}, // excludePatterns
+		"",         // githubOrg
+		[]string{}, // githubIncludePatterns
+		[]string{}, // githubExcludePatterns
 	)
 
 	// Check that no error occurred
