@@ -155,16 +155,20 @@ func TestRunPlanWithMockDependencies(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:         "missing module",
+			name:         "auto-detected module and version",
 			manifestPath: "test.yaml",
-			config:       &config.Config{}, // No module specified
+			config:       &config.Config{}, // No module specified, should auto-detect
 			manifestLoader: &mockManifestLoader{
 				loadFunc: func(path string) (*manifest.Manifest, error) {
 					return &manifest.Manifest{}, nil
 				},
 			},
-			expectError: true,
-			errorType:   "validation",
+			planner: &mockPlanner{
+				planFunc: func(ctx context.Context, m *manifest.Manifest, target planner.Target) (*planner.Plan, error) {
+					return &planner.Plan{Target: target, Items: []planner.WorkItem{}}, nil
+				},
+			},
+			expectError: false, // Should succeed with auto-detection
 		},
 		{
 			name:         "manifest load error",
@@ -223,7 +227,7 @@ func TestRunPlanWithMockDependencies(t *testing.T) {
 			defer func() { container = originalContainer }()
 
 			// Call the function under test
-			err = runPlan(tt.manifestPath)
+			err = runPlan("", tt.manifestPath, "", "")
 
 			// Check results
 			if tt.expectError && err == nil {

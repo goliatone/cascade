@@ -144,19 +144,18 @@ func TestCLISmokeTests(t *testing.T) {
 			contains:     []string{"failed to load manifest", "no such file or directory"},
 		},
 		{
-			name:         "plan command missing module args",
+			name:         "plan command with auto-detected module",
 			args:         []string{"plan", "testdata/minimal_manifest.yaml"},
 			expectError:  true,
-			expectedExit: 1, // Current implementation shows exit code 1
-			contains:     []string{"target module must be specified"},
+			expectedExit: 1, // Planning fails because module not found in manifest
+			contains:     []string{"target module not found", "github.com/goliatone/cascade"},
 		},
 		{
 			name:         "plan command with dry-run and manifest",
 			args:         []string{"plan", "testdata/minimal_manifest.yaml", "--module", "github.com/example/lib", "--version", "v1.2.3", "--dry-run"},
-			expectError:  true,
-			expectedExit: 1,
-			contains:     []string{"target module must be specified"},
-			notContains:  []string{"DRY RUN", "Planning updates"}, // TODO: Fix flag parsing for persistent flags
+			expectError:  false, // Should succeed with explicit flags
+			expectedExit: 0,
+			contains:     []string{"DRY RUN", "Planning updates", "github.com/example/lib@v1.2.3"},
 		},
 		{
 			name:         "release command missing arguments",
