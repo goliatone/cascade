@@ -33,10 +33,12 @@ type Config struct {
 }
 
 type boolFlags struct {
-	executorDryRun bool
-	loggingVerbose bool
-	loggingQuiet   bool
-	stateEnabled   bool
+	executorDryRun       bool
+	executorSkipUpToDate bool
+	executorForceAll     bool
+	loggingVerbose       bool
+	loggingQuiet         bool
+	stateEnabled         bool
 }
 
 // WorkspaceConfig manages workspace and temporary directory settings.
@@ -69,6 +71,18 @@ type ExecutorConfig struct {
 	// DryRun enables preview mode without making actual changes.
 	// Can be overridden by command-line flags.
 	DryRun bool `json:"dry_run" yaml:"dry_run"`
+
+	// SkipUpToDate controls whether to skip work items for up-to-date dependents.
+	// When enabled, the planner checks if each dependent already has the target
+	// dependency version and skips it if no update is needed.
+	// Default: true
+	SkipUpToDate bool `json:"skip_up_to_date" yaml:"skip_up_to_date"`
+
+	// ForceAll bypasses dependency checking and processes all dependents.
+	// When enabled, all dependents are processed regardless of their current
+	// dependency versions. This flag overrides SkipUpToDate.
+	// Default: false
+	ForceAll bool `json:"force_all" yaml:"force_all"`
 }
 
 // IntegrationConfig manages settings for external service integrations
@@ -275,6 +289,8 @@ const (
 	EnvTimeout         = "CASCADE_TIMEOUT"
 	EnvConcurrentLimit = "CASCADE_CONCURRENT_LIMIT"
 	EnvDryRun          = "CASCADE_DRY_RUN"
+	EnvSkipUpToDate    = "CASCADE_SKIP_UP_TO_DATE"
+	EnvForceAll        = "CASCADE_FORCE_ALL"
 
 	// GitHub integration environment variables
 	EnvGitHubToken    = "CASCADE_GITHUB_TOKEN"
