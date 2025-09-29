@@ -17,6 +17,22 @@ type Target struct {
 type Plan struct {
 	Target Target
 	Items  []WorkItem
+	Stats  PlanStats
+}
+
+// PlanStats captures statistics about the planning process.
+type PlanStats struct {
+	// TotalDependents is the total number of dependents considered
+	TotalDependents int
+
+	// WorkItemsCreated is the number of work items that were created
+	WorkItemsCreated int
+
+	// SkippedUpToDate is the number of dependents skipped because they're already up-to-date
+	SkippedUpToDate int
+
+	// CheckErrors is the number of errors encountered during dependency checking
+	CheckErrors int
 }
 
 // WorkItem represents the actions required to update a dependent repository.
