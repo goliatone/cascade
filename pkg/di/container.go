@@ -198,7 +198,7 @@ func (b *builder) build() (Container, error) {
 	}
 
 	if b.planner == nil {
-		b.planner = providePlanner()
+		b.planner = providePlannerWithConfig(b.cfg, b.logger)
 	}
 
 	// Executor can use config for timeout settings
