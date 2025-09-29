@@ -290,12 +290,26 @@ func buildDependentOptions(dependents []string) []manifest.DependentOptions {
 
 		options[i] = manifest.DependentOptions{
 			Repository:      repo,
+			CloneURL:        buildCloneURL(repo),
 			ModulePath:      modulePath,
 			LocalModulePath: deriveLocalModulePath(modulePath),
 		}
 	}
 
 	return options
+}
+
+// buildCloneURL ensures the repo string is a valid cloneable URL.
+// This mirrors the logic from internal/executor/git.go to maintain consistency.
+func buildCloneURL(repo string) string {
+	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
+	if !strings.HasPrefix(repo, "https://") &&
+		!strings.HasPrefix(repo, "http://") &&
+		!strings.HasPrefix(repo, "git@") &&
+		strings.Count(repo, "/") == 1 {
+		return "https://github.com/" + repo
+	}
+	return repo
 }
 
 // resolveGenerateOutputPath determines where to write the generated manifest
@@ -483,61 +497,6 @@ func appendReason(existing, addition string) string {
 		return addition
 	}
 	return existing + "; " + addition
-}
-
-// extractOrgFromModulePath extracts the organization from a module path
-func extractOrgFromModulePath(modulePath string) string {
-	parts := strings.Split(modulePath, "/")
-	if len(parts) >= 2 {
-		switch parts[0] {
-		case "github.com", "gitlab.com", "bitbucket.org":
-			return parts[1]
-		}
-	}
-	return ""
-}
-
-// containsMultipleModules checks if a directory contains multiple Go modules
-func containsMultipleModules(dir string) bool {
-	moduleCount := 0
-	maxCheck := 50 // Limit to avoid scanning huge directories
-
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Continue on errors
-		}
-
-		// Stop if we've checked too many entries
-		if moduleCount >= maxCheck {
-			return filepath.SkipDir
-		}
-
-		// Skip deep nested directories
-		if strings.Count(strings.TrimPrefix(path, dir), string(filepath.Separator)) > 3 {
-			return filepath.SkipDir
-		}
-
-		// Skip common non-module directories
-		base := filepath.Base(path)
-		if base == ".git" || base == "vendor" || base == "node_modules" || base == ".cache" {
-			return filepath.SkipDir
-		}
-
-		if info.Name() == "go.mod" {
-			moduleCount++
-			if moduleCount >= 2 {
-				return filepath.SkipAll // Found multiple modules, we can stop
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return false
-	}
-
-	return moduleCount >= 2
 }
 
 // discoverWorkspaceDependents uses the workspace discovery to find dependent modules
@@ -998,7 +957,8 @@ func performMultiSourceDiscovery(ctx context.Context, targetModule, githubOrg, w
 	}
 
 	// Step 2: Attempt workspace discovery
-	workspaceDir := resolveWorkspaceDir(workspace, cfg)
+	// Use the workspace parameter directly (already resolved by caller with intelligent detection)
+	workspaceDir := workspace
 	if workspaceDir != "" {
 		if logger != nil {
 			logger.Info("Attempting workspace discovery", "workspace", workspaceDir)
