@@ -80,6 +80,40 @@ func providePlanner() planner.Planner {
 	return planner.New()
 }
 
+// providePlannerWithConfig creates a planner with configuration-driven dependency checking.
+// When SkipUpToDate is enabled (and ForceAll is false), the planner checks if dependents
+// already have the target dependency version and skips them if no update is needed.
+func providePlannerWithConfig(cfg *config.Config, logger Logger) planner.Planner {
+	if cfg == nil {
+		logger.Warn("No configuration provided, using default planner")
+		return planner.New()
+	}
+
+	opts := []planner.Option{}
+
+	// Only enable dependency checking if SkipUpToDate is true and ForceAll is false
+	if cfg.Executor.SkipUpToDate && !cfg.Executor.ForceAll {
+		// Validate workspace path is configured
+		if cfg.Workspace.Path == "" {
+			logger.Warn("SkipUpToDate enabled but workspace path not configured, dependency checking disabled")
+		} else {
+			logger.Debug("Enabling dependency checking",
+				"workspace", cfg.Workspace.Path,
+				"skip_up_to_date", cfg.Executor.SkipUpToDate,
+				"force_all", cfg.Executor.ForceAll)
+			opts = append(opts,
+				planner.WithDependencyChecker(planner.NewDependencyChecker(logger)),
+				planner.WithWorkspace(cfg.Workspace.Path))
+		}
+	} else if cfg.Executor.ForceAll {
+		logger.Debug("ForceAll enabled, processing all dependents without version checking")
+	} else {
+		logger.Debug("SkipUpToDate disabled, processing all dependents")
+	}
+
+	return planner.New(opts...)
+}
+
 // provideExecutor creates a default executor implementation.
 // The executor orchestrates git operations, dependency updates, and command execution.
 func provideExecutor() executor.Executor {
