@@ -151,8 +151,10 @@ func (w *workspaceDiscovery) DiscoverDependents(ctx context.Context, options Dis
 		}
 
 		if depends {
+			repository := w.inferRepository(module.ModulePath)
 			dependent := DependentOptions{
-				Repository:      w.inferRepository(module.ModulePath),
+				Repository:      repository,
+				CloneURL:        w.buildCloneURL(repository),
 				ModulePath:      module.ModulePath,
 				LocalModulePath: w.inferLocalModulePath(module.ModulePath),
 			}
@@ -545,4 +547,17 @@ func (w *workspaceDiscovery) shouldIncludeDirectory(dirPath string, options Disc
 	}
 
 	return false
+}
+
+// buildCloneURL ensures the repo string is a valid cloneable URL.
+// This mirrors the logic from internal/executor/git.go to maintain consistency.
+func (w *workspaceDiscovery) buildCloneURL(repo string) string {
+	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
+	if !strings.HasPrefix(repo, "https://") &&
+		!strings.HasPrefix(repo, "http://") &&
+		!strings.HasPrefix(repo, "git@") &&
+		strings.Count(repo, "/") == 1 {
+		return "https://github.com/" + repo
+	}
+	return repo
 }
