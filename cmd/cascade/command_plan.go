@@ -158,6 +158,21 @@ func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string, skipUpTo
 		fmt.Printf("Planning updates for %s@%s\n", target.Module, target.Version)
 	}
 
+	// Show planning statistics if dependency checking was enabled
+	if config.Executor.SkipUpToDate && plan.Stats.TotalDependents > 0 {
+		fmt.Printf("\nChecked %d potential dependents:\n", plan.Stats.TotalDependents)
+		if plan.Stats.SkippedUpToDate > 0 {
+			fmt.Printf("  - %d repositories already up-to-date, skipped\n", plan.Stats.SkippedUpToDate)
+		}
+		if plan.Stats.WorkItemsCreated > 0 {
+			fmt.Printf("  - %d require updates\n", plan.Stats.WorkItemsCreated)
+		}
+		if plan.Stats.CheckErrors > 0 {
+			fmt.Printf("  - %d check errors (included for safety)\n", plan.Stats.CheckErrors)
+		}
+		fmt.Println()
+	}
+
 	fmt.Printf("Found %d work items:\n", len(plan.Items))
 	for i, item := range plan.Items {
 		fmt.Printf("  %d. %s (%s) -> %s\n", i+1, item.Repo, item.Module, item.BranchName)

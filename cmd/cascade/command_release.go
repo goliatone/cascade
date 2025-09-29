@@ -141,6 +141,20 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string, skipUpToD
 		return newPlanningError("failed to generate plan", err)
 	}
 
+	// Show planning statistics if dependency checking was enabled
+	if cfg.Executor.SkipUpToDate && plan.Stats.TotalDependents > 0 {
+		fmt.Printf("Checked %d potential dependents:\n", plan.Stats.TotalDependents)
+		if plan.Stats.SkippedUpToDate > 0 {
+			fmt.Printf("  - %d repositories already up-to-date, skipped\n", plan.Stats.SkippedUpToDate)
+		}
+		if plan.Stats.WorkItemsCreated > 0 {
+			fmt.Printf("  - %d require updates\n", plan.Stats.WorkItemsCreated)
+		}
+		if plan.Stats.CheckErrors > 0 {
+			fmt.Printf("  - %d check errors (included for safety)\n", plan.Stats.CheckErrors)
+		}
+	}
+
 	if len(plan.Items) == 0 {
 		fmt.Printf("No work items produced for %s@%s\n", target.Module, target.Version)
 		return nil
