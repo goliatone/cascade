@@ -61,5 +61,11 @@
       "Canary": true,
       "Skip": false
     }
-  ]
+  ],
+  "Stats": {
+    "TotalDependents": 1,
+    "WorkItemsCreated": 1,
+    "SkippedUpToDate": 0,
+    "CheckErrors": 0
+  }
 }
