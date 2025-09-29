@@ -24,6 +24,13 @@ func isValidWorkspace(dir string) bool {
 
 // resolveWorkspaceDir determines the workspace directory for discovery with intelligent defaults
 func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
+	return resolveWorkspaceDirWithTarget(workspace, cfg, "", "")
+}
+
+// resolveWorkspaceDirWithTarget determines the workspace directory for discovery with intelligent defaults
+// using the provided target module information for smarter detection
+func resolveWorkspaceDirWithTarget(workspace string, cfg *config.Config, targetModulePath, targetModuleDir string) string {
+	// Debug output removed - function working correctly
 	// Use explicit workspace if provided
 	if workspace != "" {
 		if !filepath.IsAbs(workspace) {
@@ -34,6 +41,12 @@ func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 		return workspace
 	}
 
+	// workspace detection based on target module location if available, otherwise current module location
+	if intelligentWorkspace := detectDefaultWorkspaceWithTarget(targetModulePath, targetModuleDir); intelligentWorkspace != "" {
+		// TODO: Add logging here when logger is available
+		return intelligentWorkspace
+	}
+
 	// Use config workspace path
 	if cfg != nil && cfg.Workspace.Path != "" {
 		return cfg.Workspace.Path
@@ -42,12 +55,6 @@ func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 	// Use manifest generator default workspace
 	if cfg != nil && cfg.ManifestGenerator.DefaultWorkspace != "" {
 		return cfg.ManifestGenerator.DefaultWorkspace
-	}
-
-	// workspace detection based on current module location
-	if intelligentWorkspace := detectDefaultWorkspace(); intelligentWorkspace != "" {
-		// TODO: Add logging here when logger is available
-		return intelligentWorkspace
 	}
 
 	// Fallback to $HOME/.cache/cascade for isolation
@@ -67,13 +74,28 @@ func resolveWorkspaceDir(workspace string, cfg *config.Config) string {
 // the current module's location and Go environment. It tries to find a directory that
 // likely contains other Go modules that might depend on the current module.
 func detectDefaultWorkspace() string {
-	// Get current module information
-	modulePath, moduleDir, err := detectModuleInfo()
-	if err != nil {
-		return ""
+	return detectDefaultWorkspaceWithTarget("", "")
+}
+
+// detectDefaultWorkspaceWithTarget attempts to detect a sensible workspace directory based on
+// the target module's location and Go environment. If target module info is not provided,
+// it falls back to the current module's location.
+func detectDefaultWorkspaceWithTarget(targetModulePath, targetModuleDir string) string {
+	// Use target module information if provided, otherwise detect current module
+	modulePath := targetModulePath
+	moduleDir := targetModuleDir
+
+	if modulePath == "" || moduleDir == "" {
+		// Get current module information as fallback
+		detectedPath, detectedDir, err := detectModuleInfo()
+		if err != nil {
+			return ""
+		}
+		modulePath = detectedPath
+		moduleDir = detectedDir
 	}
 
-	// 1) use parent directory of current module if it contains multiple Go modules
+	// 1) use parent directory of module if it contains multiple Go modules
 	// e.g., ~/Development/GO/src/github.com/goliatone/go-errors -> ~/Development/GO/src/github.com/goliatone/
 	if parentWorkspace := detectParentWorkspace(moduleDir, modulePath); parentWorkspace != "" {
 		return parentWorkspace
@@ -91,6 +113,59 @@ func detectDefaultWorkspace() string {
 	}
 
 	return ""
+}
+
+// deriveModuleDirFromPath attempts to derive the local directory path for a given module path
+// by checking GOPATH conventions and common workspace layouts
+func deriveModuleDirFromPath(modulePath string) string {
+	if modulePath == "" {
+		return ""
+	}
+
+	// Try GOPATH/src/{module-path} structure
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		// Try default GOPATH
+		if home, err := os.UserHomeDir(); err == nil {
+			gopath = filepath.Join(home, "go")
+		}
+	}
+	if gopath != "" {
+		moduleDir := filepath.Join(gopath, "src", modulePath)
+		if isValidWorkspace(moduleDir) {
+			if goModPath := filepath.Join(moduleDir, "go.mod"); isValidModuleDir(goModPath) {
+				return moduleDir
+			}
+		}
+	}
+
+	// Try common development patterns: ~/Development/GO/src/{module-path}
+	if home, err := os.UserHomeDir(); err == nil {
+		commonPaths := []string{
+			filepath.Join(home, "Development", "GO", "src", modulePath),
+			filepath.Join(home, "dev", "go", "src", modulePath),
+			filepath.Join(home, "src", modulePath),
+		}
+
+		for _, moduleDir := range commonPaths {
+			if isValidWorkspace(moduleDir) {
+				if goModPath := filepath.Join(moduleDir, "go.mod"); isValidModuleDir(goModPath) {
+					return moduleDir
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// isValidModuleDir checks if a directory contains a go.mod file
+func isValidModuleDir(goModPath string) bool {
+	info, err := os.Stat(goModPath)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
 
 // detectParentWorkspace checks if the parent directories of the current module
@@ -127,11 +202,65 @@ func detectParentWorkspace(moduleDir, modulePath string) string {
 				potentialWorkspace = parent
 			}
 		}
-
 		current = parent
 	}
 
 	return potentialWorkspace
+}
+
+// extractOrgFromModulePath extracts the organization from a module path
+func extractOrgFromModulePath(modulePath string) string {
+	parts := strings.Split(modulePath, "/")
+	if len(parts) >= 2 {
+		switch parts[0] {
+		case "github.com", "gitlab.com", "bitbucket.org":
+			return parts[1]
+		}
+	}
+	return ""
+}
+
+// containsMultipleModules checks if a directory contains multiple Go modules
+func containsMultipleModules(dir string) bool {
+	moduleCount := 0
+	maxCheck := 50 // Limit to avoid scanning huge directories
+
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue on errors
+		}
+
+		// Stop if we've checked too many entries
+		if moduleCount >= maxCheck {
+			return filepath.SkipDir
+		}
+
+		// Skip deep nested directories
+		if strings.Count(strings.TrimPrefix(path, dir), string(filepath.Separator)) > 3 {
+			return filepath.SkipDir
+		}
+
+		// Skip common non-module directories
+		base := filepath.Base(path)
+		if base == ".git" || base == "vendor" || base == "node_modules" || base == ".cache" {
+			return filepath.SkipDir
+		}
+
+		if info.Name() == "go.mod" {
+			moduleCount++
+			if moduleCount >= 2 {
+				return filepath.SkipAll // Found multiple modules, we can stop
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return false
+	}
+
+	return moduleCount >= 2
 }
 
 // detectGopathOrgWorkspace checks $GOPATH/src/{hosting}/{org}/ for a workspace
