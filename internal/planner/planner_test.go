@@ -529,3 +529,130 @@ func TestPlanner_WithDependencyChecker_NoWorkspace(t *testing.T) {
 		t.Fatalf("expected %d work items (no workspace), got %d", len(want.Items), len(plan.Items))
 	}
 }
+
+func TestPlanner_PlanStatistics(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	t.Run("no checker configured", func(t *testing.T) {
+		p := planner.New()
+		plan, err := p.Plan(context.Background(), m, target)
+		if err != nil {
+			t.Fatalf("Plan returned error: %v", err)
+		}
+
+		// Without checker, stats should still be populated with basic counts
+		if plan.Stats.TotalDependents == 0 {
+			t.Error("expected TotalDependents > 0")
+		}
+		if plan.Stats.WorkItemsCreated != len(plan.Items) {
+			t.Errorf("expected WorkItemsCreated=%d, got %d", len(plan.Items), plan.Stats.WorkItemsCreated)
+		}
+		if plan.Stats.SkippedUpToDate != 0 {
+			t.Errorf("expected SkippedUpToDate=0 without checker, got %d", plan.Stats.SkippedUpToDate)
+		}
+	})
+
+	t.Run("with checker - all up to date", func(t *testing.T) {
+		checker := &mockDependencyChecker{
+			needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+				return false, nil // all up to date
+			},
+		}
+
+		p := planner.New(
+			planner.WithDependencyChecker(checker),
+			planner.WithWorkspace("/test/workspace"),
+		)
+
+		plan, err := p.Plan(context.Background(), m, target)
+		if err != nil {
+			t.Fatalf("Plan returned error: %v", err)
+		}
+
+		if plan.Stats.WorkItemsCreated != 0 {
+			t.Errorf("expected WorkItemsCreated=0, got %d", plan.Stats.WorkItemsCreated)
+		}
+		if plan.Stats.SkippedUpToDate == 0 {
+			t.Error("expected SkippedUpToDate > 0")
+		}
+		if plan.Stats.TotalDependents != plan.Stats.SkippedUpToDate {
+			t.Errorf("expected all dependents skipped: total=%d, skipped=%d",
+				plan.Stats.TotalDependents, plan.Stats.SkippedUpToDate)
+		}
+	})
+
+	t.Run("with checker - mixed results", func(t *testing.T) {
+		callCount := 0
+		checker := &mockDependencyChecker{
+			needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+				callCount++
+				// First one needs update, rest are up to date
+				return callCount == 1, nil
+			},
+		}
+
+		p := planner.New(
+			planner.WithDependencyChecker(checker),
+			planner.WithWorkspace("/test/workspace"),
+		)
+
+		plan, err := p.Plan(context.Background(), m, target)
+		if err != nil {
+			t.Fatalf("Plan returned error: %v", err)
+		}
+
+		if plan.Stats.WorkItemsCreated != 1 {
+			t.Errorf("expected WorkItemsCreated=1, got %d", plan.Stats.WorkItemsCreated)
+		}
+		if plan.Stats.SkippedUpToDate == 0 {
+			t.Error("expected some skipped dependents")
+		}
+		totalProcessed := plan.Stats.WorkItemsCreated + plan.Stats.SkippedUpToDate
+		if totalProcessed != plan.Stats.TotalDependents {
+			t.Errorf("expected total=%d, got created=%d + skipped=%d = %d",
+				plan.Stats.TotalDependents, plan.Stats.WorkItemsCreated,
+				plan.Stats.SkippedUpToDate, totalProcessed)
+		}
+	})
+
+	t.Run("with checker - errors counted", func(t *testing.T) {
+		callCount := 0
+		checker := &mockDependencyChecker{
+			needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+				callCount++
+				if callCount == 1 {
+					return false, &planner.DependencyCheckError{
+						Dependent: dependent.Repo,
+						Target:    target,
+						Err:       os.ErrNotExist,
+					}
+				}
+				return true, nil
+			},
+		}
+
+		p := planner.New(
+			planner.WithDependencyChecker(checker),
+			planner.WithWorkspace("/test/workspace"),
+		)
+
+		plan, err := p.Plan(context.Background(), m, target)
+		if err != nil {
+			t.Fatalf("Plan returned error: %v", err)
+		}
+
+		if plan.Stats.CheckErrors != 1 {
+			t.Errorf("expected CheckErrors=1, got %d", plan.Stats.CheckErrors)
+		}
+		// Error should fail open - work item should be created
+		if plan.Stats.WorkItemsCreated < 1 {
+			t.Error("expected at least 1 work item created (fail-open on error)")
+		}
+	})
+}
