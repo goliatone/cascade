@@ -16,6 +16,8 @@ func newPlanCommand() *cobra.Command {
 		manifestPath string
 		modulePath   string
 		version      string
+		skipUpToDate bool
+		forceAll     bool
 	)
 
 	cmd := &cobra.Command{
@@ -40,7 +42,7 @@ Examples:
 			if len(args) > 0 {
 				manifestArg = args[0]
 			}
-			return runPlan(manifestPath, manifestArg, modulePath, version)
+			return runPlan(manifestPath, manifestArg, modulePath, version, skipUpToDate, forceAll)
 		},
 	}
 
@@ -48,15 +50,26 @@ Examples:
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Manifest file path (default: .cascade.yaml)")
 	cmd.Flags().StringVar(&modulePath, "module", "", "Target module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
 	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3). Auto-detected from .version file or git tags if not provided")
+	cmd.Flags().BoolVar(&skipUpToDate, "skip-up-to-date", true, "Skip dependents that are already up-to-date (default: true)")
+	cmd.Flags().BoolVar(&forceAll, "force-all", false, "Process all dependents regardless of current version")
 
 	return cmd
 }
 
-func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string) error {
+func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string, skipUpToDate, forceAll bool) error {
 	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
 	config := container.Config()
+
+	// Apply flag values to configuration
+	config.Executor.SkipUpToDate = skipUpToDate
+	config.Executor.ForceAll = forceAll
+
+	// ForceAll overrides SkipUpToDate
+	if config.Executor.ForceAll {
+		config.Executor.SkipUpToDate = false
+	}
 
 	// Resolve manifest path using same logic as manifest generate
 	manifestPath := resolvePlanManifestPath(manifestFlag, manifestArg, config)
