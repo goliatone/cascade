@@ -66,6 +66,21 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 	// Process each dependent to create work items
 	var items []WorkItem
 	for _, dependent := range sorted {
+		// Check if dependency update is needed (if checker is configured)
+		if p.checker != nil && p.workspace != "" {
+			needsUpdate, err := p.checker.NeedsUpdate(ctx, dependent, target, p.workspace)
+			if err != nil {
+				// Log error but continue (fail-open for robustness)
+				// In production, use proper logger injection
+				// For now, we fail-open by assuming update is needed
+				needsUpdate = true
+			}
+
+			if !needsUpdate {
+				// Skip this dependent - already up-to-date
+				continue
+			}
+		}
 
 		// Apply defaults to the dependent, with metadata about original PR config
 		expanded, hadOriginalPR := manifest.ExpandDefaultsWithMetadata(dependent, m.Defaults)
