@@ -371,6 +371,7 @@ func (g *gitHubDiscovery) DiscoverDependents(ctx context.Context, options GitHub
 		if hasDependency {
 			dependent := DependentOptions{
 				Repository:      repo.FullName,
+				CloneURL:        g.buildCloneURL(repo.FullName),
 				ModulePath:      repo.ModulePath,
 				LocalModulePath: g.inferLocalModulePath(repo.ModulePath),
 			}
@@ -791,4 +792,17 @@ func (g *gitHubDiscovery) findLatestSemanticVersion(versions []string) string {
 
 	// Return the latest (last in sorted order)
 	return validVersions[len(validVersions)-1]
+}
+
+// buildCloneURL ensures the repo string is a valid cloneable URL.
+// This mirrors the logic from internal/executor/git.go to maintain consistency.
+func (g *gitHubDiscovery) buildCloneURL(repo string) string {
+	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
+	if !strings.HasPrefix(repo, "https://") &&
+		!strings.HasPrefix(repo, "http://") &&
+		!strings.HasPrefix(repo, "git@") &&
+		strings.Count(repo, "/") == 1 {
+		return "https://github.com/" + repo
+	}
+	return repo
 }
