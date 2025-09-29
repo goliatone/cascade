@@ -12,12 +12,36 @@ type Planner interface {
 	Plan(ctx context.Context, m *manifest.Manifest, target Target) (*Plan, error)
 }
 
-// New returns a planner stub.
-func New() Planner {
-	return &planner{}
+// Option configures the planner.
+type Option func(*planner)
+
+// WithDependencyChecker sets the dependency checker to use for version checking.
+func WithDependencyChecker(checker DependencyChecker) Option {
+	return func(p *planner) {
+		p.checker = checker
+	}
 }
 
-type planner struct{}
+// WithWorkspace sets the workspace path for locating repositories.
+func WithWorkspace(workspace string) Option {
+	return func(p *planner) {
+		p.workspace = workspace
+	}
+}
+
+// New returns a planner with optional configuration.
+func New(opts ...Option) Planner {
+	p := &planner{}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
+}
+
+type planner struct {
+	checker   DependencyChecker
+	workspace string
+}
 
 func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target) (*Plan, error) {
 	// Validate target fields
