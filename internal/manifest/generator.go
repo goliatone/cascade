@@ -37,6 +37,7 @@ type GenerateOptions struct {
 // DependentOptions defines configuration for a dependent repository.
 type DependentOptions struct {
 	Repository      string            // GitHub repository (e.g., "goliatone/go-logger")
+	CloneURL        string            // Git clone URL (optional, falls back to Repository if empty)
 	ModulePath      string            // Go module path within the repo
 	LocalModulePath string            // Local path within the repo (defaults to ".")
 	Branch          string            // Target branch (inherits from default if empty)
@@ -189,6 +190,7 @@ func (g *generator) buildDependents(options GenerateOptions) []Dependent {
 	for i, dep := range options.Dependents {
 		dependent := Dependent{
 			Repo:          dep.Repository,
+			CloneURL:      dep.CloneURL,
 			Module:        dep.ModulePath,
 			ModulePath:    g.getOrDefault(dep.LocalModulePath, "."),
 			Branch:        g.getOrDefault(dep.Branch, resolvedDefaultBranch),
