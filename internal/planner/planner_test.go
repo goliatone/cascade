@@ -349,3 +349,183 @@ func TestPlanner_InvalidTargetFromManifest(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || strings.Contains(s, substr)))
 }
+
+// mockDependencyChecker is a test double for dependency checking
+type mockDependencyChecker struct {
+	needsUpdateFunc func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error)
+}
+
+func (m *mockDependencyChecker) NeedsUpdate(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+	if m.needsUpdateFunc != nil {
+		return m.needsUpdateFunc(ctx, dependent, target, workspace)
+	}
+	return true, nil // default: needs update
+}
+
+func TestPlanner_WithDependencyChecker_SkipsUpToDateDependents(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	// Mock checker that says all dependents are up-to-date
+	checker := &mockDependencyChecker{
+		needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+			return false, nil // all up-to-date
+		},
+	}
+
+	p := planner.New(
+		planner.WithDependencyChecker(checker),
+		planner.WithWorkspace("/tmp/workspace"),
+	)
+
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	// Should have zero work items since all dependents are up-to-date
+	if len(plan.Items) != 0 {
+		t.Fatalf("expected 0 work items (all up-to-date), got %d", len(plan.Items))
+	}
+}
+
+func TestPlanner_WithDependencyChecker_IncludesOutdatedDependents(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	// Mock checker that says first dependent needs update, rest are up-to-date
+	callCount := 0
+	checker := &mockDependencyChecker{
+		needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+			callCount++
+			return callCount == 1, nil // only first one needs update
+		},
+	}
+
+	p := planner.New(
+		planner.WithDependencyChecker(checker),
+		planner.WithWorkspace("/tmp/workspace"),
+	)
+
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	// Should have exactly 1 work item
+	if len(plan.Items) != 1 {
+		t.Fatalf("expected 1 work item, got %d", len(plan.Items))
+	}
+}
+
+func TestPlanner_WithDependencyChecker_FailsOpenOnError(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	// Mock checker that returns an error
+	checker := &mockDependencyChecker{
+		needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+			return false, os.ErrNotExist
+		},
+	}
+
+	p := planner.New(
+		planner.WithDependencyChecker(checker),
+		planner.WithWorkspace("/tmp/workspace"),
+	)
+
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	// Should still include work items despite checker errors (fail-open behavior)
+	// Load the expected plan to know how many items should be there
+	var want planner.Plan
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "basic_plan.json"), &want); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	if len(plan.Items) != len(want.Items) {
+		t.Fatalf("expected %d work items (fail-open), got %d", len(want.Items), len(plan.Items))
+	}
+}
+
+func TestPlanner_WithoutDependencyChecker_ProcessesAllDependents(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	// No checker configured - should process all dependents
+	p := planner.New()
+
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	var want planner.Plan
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "basic_plan.json"), &want); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	if len(plan.Items) != len(want.Items) {
+		t.Fatalf("expected %d work items (no checker), got %d", len(want.Items), len(plan.Items))
+	}
+}
+
+func TestPlanner_WithDependencyChecker_NoWorkspace(t *testing.T) {
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	// Checker configured but no workspace - should process all dependents
+	checker := &mockDependencyChecker{
+		needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target planner.Target, workspace string) (bool, error) {
+			return false, nil // would skip if workspace was set
+		},
+	}
+
+	p := planner.New(
+		planner.WithDependencyChecker(checker),
+		// No WithWorkspace call
+	)
+
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	var want planner.Plan
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "basic_plan.json"), &want); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	// Should process all since workspace is not configured
+	if len(plan.Items) != len(want.Items) {
+		t.Fatalf("expected %d work items (no workspace), got %d", len(want.Items), len(plan.Items))
+	}
+}
