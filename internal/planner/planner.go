@@ -63,6 +63,11 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 	canaries := SelectCanaries(filtered)
 	sorted := SortDependents(canaries)
 
+	// Initialize statistics
+	stats := PlanStats{
+		TotalDependents: len(sorted),
+	}
+
 	// Process each dependent to create work items
 	var items []WorkItem
 	for _, dependent := range sorted {
@@ -73,11 +78,13 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 				// Log error but continue (fail-open for robustness)
 				// In production, use proper logger injection
 				// For now, we fail-open by assuming update is needed
+				stats.CheckErrors++
 				needsUpdate = true
 			}
 
 			if !needsUpdate {
 				// Skip this dependent - already up-to-date
+				stats.SkippedUpToDate++
 				continue
 			}
 		}
@@ -146,9 +153,13 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 		items = []WorkItem{}
 	}
 
+	// Update statistics
+	stats.WorkItemsCreated = len(items)
+
 	return &Plan{
 		Target: target,
 		Items:  items,
+		Stats:  stats,
 	}, nil
 }
 
