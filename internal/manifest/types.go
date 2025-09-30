@@ -64,5 +64,7 @@ type PRConfig struct {
 // Notifications holds optional notification targets.
 type Notifications struct {
 	SlackChannel string `yaml:"slack_channel"`
+	OnFailure    bool   `yaml:"on_failure"`
+	OnSuccess    bool   `yaml:"on_success"`
 	Webhook      string `yaml:"webhook"`
 }
