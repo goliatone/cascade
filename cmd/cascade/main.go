@@ -19,6 +19,7 @@ import (
 	"github.com/goliatone/cascade/internal/state"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
+	"github.com/goliatone/cascade/pkg/util/modpath"
 	gh "github.com/google/go-github/v66/github"
 	oauth2 "golang.org/x/oauth2"
 )
@@ -225,24 +226,7 @@ func deriveModuleName(modulePath string) string {
 }
 
 // deriveRepository converts module path to repository format for known hosts
-func deriveRepository(modulePath string) string {
-	if modulePath == "" {
-		return ""
-	}
-
-	// For common hosting providers, extract the repository part (owner/repo)
-	parts := strings.Split(modulePath, "/")
-	if len(parts) >= 3 {
-		switch parts[0] {
-		case "github.com", "gitlab.com", "bitbucket.org":
-			return strings.Join(parts[1:3], "/")
-		}
-	}
-
-	// For non-hosted URLs or unknown hosts, preserve the original module path
-	// This prevents breaking URLs like go.uber.org/zap into invalid repository names
-	return modulePath
-}
+func deriveRepository(modulePath string) string { return modpath.DeriveRepository(modulePath) }
 
 // deriveGitHubOrgFromModule extracts the GitHub organization from a module path when available.
 func deriveGitHubOrgFromModule(modulePath string) string {
@@ -255,17 +239,7 @@ func deriveGitHubOrgFromModule(modulePath string) string {
 
 // deriveLocalModulePath calculates the relative path from repository root to module
 func deriveLocalModulePath(modulePath string) string {
-	parts := strings.Split(modulePath, "/")
-	if len(parts) >= 4 {
-		switch parts[0] {
-		case "github.com", "gitlab.com", "bitbucket.org":
-			// For hosted repos, everything after org/repo is the local path
-			return strings.Join(parts[3:], "/")
-		}
-	}
-	// For non-hosted URLs or short paths, default to root
-	// This handles cases like go.uber.org/zap where the entire URL is the "repository"
-	return "."
+	return modpath.DeriveLocalModulePath(modulePath)
 }
 
 // buildDependentOptions converts string list to DependentOptions slice
@@ -302,14 +276,7 @@ func buildDependentOptions(dependents []string) []manifest.DependentOptions {
 // buildCloneURL ensures the repo string is a valid cloneable URL.
 // This mirrors the logic from internal/executor/git.go to maintain consistency.
 func buildCloneURL(repo string) string {
-	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
-	if !strings.HasPrefix(repo, "https://") &&
-		!strings.HasPrefix(repo, "http://") &&
-		!strings.HasPrefix(repo, "git@") &&
-		strings.Count(repo, "/") == 1 {
-		return "https://github.com/" + repo
-	}
-	return repo
+	return modpath.BuildCloneURL(repo)
 }
 
 // resolveGenerateOutputPath determines where to write the generated manifest
@@ -504,9 +471,22 @@ func discoverWorkspaceDependents(ctx context.Context, targetModule, targetVersio
 	discovery := manifest.NewWorkspaceDiscovery()
 
 	// Apply config defaults for discovery options
-	finalMaxDepth := getDiscoveryMaxDepth(maxDepth, cfg)
-	finalIncludePatterns := getDiscoveryIncludePatterns(includePatterns, cfg)
-	finalExcludePatterns := getDiscoveryExcludePatterns(excludePatterns, cfg)
+	finalMaxDepth := maxDepth
+	if finalMaxDepth <= 0 {
+		finalMaxDepth = config.DiscoveryMaxDepth(cfg)
+	}
+
+	finalIncludePatterns := includePatterns
+	if len(finalIncludePatterns) == 0 {
+		if patterns := config.DiscoveryIncludePatterns(cfg); len(patterns) > 0 {
+			finalIncludePatterns = patterns
+		}
+	}
+
+	finalExcludePatterns := excludePatterns
+	if len(finalExcludePatterns) == 0 {
+		finalExcludePatterns = config.DiscoveryExcludePatterns(cfg)
+	}
 
 	options := manifest.DiscoveryOptions{
 		WorkspaceDir:    workspaceDir,
@@ -933,8 +913,18 @@ func performMultiSourceDiscovery(ctx context.Context, targetModule, targetVersio
 		shouldRunGitHub = false
 	}
 	if shouldRunGitHub {
-		finalGitHubInclude := getGitHubIncludePatterns(githubIncludePatterns, cfg)
-		finalGitHubExclude := getGitHubExcludePatterns(githubExcludePatterns, cfg)
+		finalGitHubInclude := githubIncludePatterns
+		if len(finalGitHubInclude) == 0 {
+			if patterns := config.GitHubDiscoveryIncludePatterns(cfg); len(patterns) > 0 {
+				finalGitHubInclude = patterns
+			}
+		}
+		finalGitHubExclude := githubExcludePatterns
+		if len(finalGitHubExclude) == 0 {
+			if patterns := config.GitHubDiscoveryExcludePatterns(cfg); len(patterns) > 0 {
+				finalGitHubExclude = patterns
+			}
+		}
 
 		if logger != nil {
 			logger.Info("Attempting GitHub discovery", "organization", finalGitHubOrg)
