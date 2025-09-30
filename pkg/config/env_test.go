@@ -146,6 +146,32 @@ func TestEnvParser_ParseEnv(t *testing.T) {
 			},
 		},
 		{
+			name: "dependency checking configuration",
+			envVars: map[string]string{
+				"CASCADE_CHECK_STRATEGY":  "remote",
+				"CASCADE_CHECK_CACHE_TTL": "10m",
+				"CASCADE_CHECK_PARALLEL":  "4",
+				"CASCADE_CHECK_TIMEOUT":   "45s",
+			},
+			wantErr: false,
+			check: func(t *testing.T, cfg *config.Config) {
+				if cfg.Executor.CheckStrategy != "remote" {
+					t.Errorf("expected check strategy 'remote', got %s", cfg.Executor.CheckStrategy)
+				}
+				expectedCacheTTL := 10 * time.Minute
+				if cfg.Executor.CheckCacheTTL != expectedCacheTTL {
+					t.Errorf("expected check cache TTL %v, got %v", expectedCacheTTL, cfg.Executor.CheckCacheTTL)
+				}
+				if cfg.Executor.CheckParallel != 4 {
+					t.Errorf("expected check parallel 4, got %d", cfg.Executor.CheckParallel)
+				}
+				expectedCheckTimeout := 45 * time.Second
+				if cfg.Executor.CheckTimeout != expectedCheckTimeout {
+					t.Errorf("expected check timeout %v, got %v", expectedCheckTimeout, cfg.Executor.CheckTimeout)
+				}
+			},
+		},
+		{
 			name: "invalid timeout",
 			envVars: map[string]string{
 				"CASCADE_TIMEOUT": "invalid-duration",

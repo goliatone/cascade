@@ -116,10 +116,10 @@ func TestRemoteDependencyChecker_LogCacheStats_WithoutLogger(t *testing.T) {
 
 func TestRemoteDependencyChecker_LogCacheStats_HitRate(t *testing.T) {
 	tests := []struct {
-		name      string
-		hits      int
-		misses    int
-		wantRate  string
+		name     string
+		hits     int
+		misses   int
+		wantRate string
 	}{
 		{
 			name:     "100% hit rate",

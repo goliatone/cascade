@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/goliatone/cascade/internal/manifest"
+	"github.com/goliatone/cascade/pkg/gitutil"
 )
 
 func TestParseCloneURL(t *testing.T) {
@@ -94,9 +95,8 @@ func TestParseCloneURL(t *testing.T) {
 }
 
 func TestGetGitHubToken(t *testing.T) {
-	g := newGitOperations(30 * time.Second)
-	impl := g.(*gitOperationsImpl)
-
+	// This functionality is now tested in pkg/gitutil/auth_test.go
+	// Keep this test as a simple integration check
 	tests := []struct {
 		name     string
 		envVars  map[string]string
@@ -113,31 +113,12 @@ func TestGetGitHubToken(t *testing.T) {
 				"GITHUB_TOKEN": "token123",
 			},
 		},
-		{
-			name: "GH_TOKEN is read",
-			envVars: map[string]string{
-				"GH_TOKEN": "token456",
-			},
-		},
-		{
-			name: "CASCADE_GITHUB_TOKEN is read",
-			envVars: map[string]string{
-				"CASCADE_GITHUB_TOKEN": "token789",
-			},
-		},
-		{
-			name: "GITHUB_TOKEN takes precedence",
-			envVars: map[string]string{
-				"GITHUB_TOKEN": "token1",
-				"GH_TOKEN":     "token2",
-			},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear all token environment variables first
-			for _, envVar := range []string{"GITHUB_TOKEN", "GH_TOKEN", "CASCADE_GITHUB_TOKEN"} {
+			for _, envVar := range []string{"GITHUB_TOKEN", "GH_TOKEN", "CASCADE_GITHUB_TOKEN", "GITHUB_ACCESS_TOKEN"} {
 				os.Unsetenv(envVar)
 			}
 
@@ -147,12 +128,12 @@ func TestGetGitHubToken(t *testing.T) {
 				defer os.Unsetenv(k)
 			}
 
-			got := impl.getGitHubToken()
+			got := gitutil.GetGitHubToken()
 			if tt.wantNone && got != "" {
-				t.Errorf("getGitHubToken() = %v, want empty", got)
+				t.Errorf("GetGitHubToken() = %v, want empty", got)
 			}
 			if !tt.wantNone && got == "" {
-				t.Errorf("getGitHubToken() = empty, want non-empty")
+				t.Errorf("GetGitHubToken() = empty, want non-empty")
 			}
 		})
 	}
@@ -400,4 +381,184 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func TestFetchGoModWithAuthentication(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// This test demonstrates authentication with GitHub tokens
+	// It will be skipped if no token is available
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		token = os.Getenv("GH_TOKEN")
+	}
+	if token == "" {
+		token = os.Getenv("CASCADE_GITHUB_TOKEN")
+	}
+
+	if token == "" {
+		t.Skip("skipping authentication test: no GitHub token found in environment")
+	}
+
+	g := newGitOperations(60 * time.Second)
+	impl := g.(*gitOperationsImpl)
+
+	tests := []struct {
+		name     string
+		cloneURL string
+		ref      string
+		wantErr  bool
+	}{
+		{
+			name:     "public repo with authentication",
+			cloneURL: "https://github.com/goliatone/go-errors.git",
+			ref:      "main",
+			wantErr:  false,
+		},
+		// Note: To test private repositories, replace the URL below with a private repo
+		// you have access to via your token. We can't include a real private repo URL
+		// in the test since it would be repository-specific.
+		// {
+		// 	name:     "private repo with authentication",
+		// 	cloneURL: "https://github.com/your-org/private-repo.git",
+		// 	ref:      "main",
+		// 	wantErr:  false,
+		// },
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			content, err := impl.fetchGoMod(ctx, tt.cloneURL, tt.ref)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("fetchGoMod() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if content == "" {
+					t.Errorf("fetchGoMod() returned empty content")
+				}
+				// Verify it looks like a go.mod file
+				if !containsGoModMarkers(content) {
+					t.Errorf("fetchGoMod() content doesn't look like go.mod")
+				}
+			}
+		})
+	}
+}
+
+func TestAuthMethodSelection(t *testing.T) {
+	g := newGitOperations(30 * time.Second)
+	impl := g.(*gitOperationsImpl)
+
+	tests := []struct {
+		name        string
+		cloneURL    string
+		envToken    string
+		sshKeyPath  string
+		wantAuthNil bool
+		wantErr     bool
+	}{
+		{
+			name:        "HTTPS with GitHub token",
+			cloneURL:    "https://github.com/user/repo.git",
+			envToken:    "test-token-123",
+			wantAuthNil: false,
+			wantErr:     false,
+		},
+		{
+			name:        "HTTPS without token (public repo)",
+			cloneURL:    "https://github.com/user/repo.git",
+			envToken:    "",
+			wantAuthNil: true,
+			wantErr:     false,
+		},
+		{
+			name:        "SSH URL without key file",
+			cloneURL:    "git@github.com:user/repo.git",
+			envToken:    "",
+			sshKeyPath:  "/nonexistent/path/to/key",
+			wantAuthNil: false,
+			wantErr:     true, // Should error when SSH key not found
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear environment variables
+			os.Unsetenv("GITHUB_TOKEN")
+			os.Unsetenv("GH_TOKEN")
+			os.Unsetenv("CASCADE_GITHUB_TOKEN")
+			os.Unsetenv("SSH_KEY_PATH")
+
+			// Set test environment
+			if tt.envToken != "" {
+				os.Setenv("GITHUB_TOKEN", tt.envToken)
+				defer os.Unsetenv("GITHUB_TOKEN")
+			}
+			if tt.sshKeyPath != "" {
+				os.Setenv("SSH_KEY_PATH", tt.sshKeyPath)
+				defer os.Unsetenv("SSH_KEY_PATH")
+			}
+
+			auth, err := impl.authMethod(tt.cloneURL)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("authMethod() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if tt.wantAuthNil && auth != nil {
+					t.Errorf("authMethod() = %v, want nil", auth)
+				}
+				if !tt.wantAuthNil && auth == nil {
+					t.Errorf("authMethod() = nil, want non-nil")
+				}
+			}
+		})
+	}
+}
+
+func TestSSHKeyPathConfiguration(t *testing.T) {
+	// This functionality is now tested in pkg/gitutil/auth_test.go
+	// Keep this test as a simple integration check
+	tests := []struct {
+		name       string
+		sshKeyPath string
+		wantErr    bool
+	}{
+		{
+			name:       "custom SSH key path (nonexistent)",
+			sshKeyPath: "/custom/path/to/key",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Unsetenv("SSH_KEY_PATH")
+			if tt.sshKeyPath != "" {
+				os.Setenv("SSH_KEY_PATH", tt.sshKeyPath)
+				defer os.Unsetenv("SSH_KEY_PATH")
+			}
+
+			_, err := gitutil.GetSSHKeyPathOrError()
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetSSHKeyPathOrError() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if err != nil && tt.sshKeyPath != "" {
+				// Verify error message mentions the custom path
+				if !contains(err.Error(), tt.sshKeyPath) {
+					t.Errorf("GetSSHKeyPathOrError() error should mention SSH key path %s, got: %v", tt.sshKeyPath, err)
+				}
+			}
+		})
+	}
 }
