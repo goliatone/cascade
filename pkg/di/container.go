@@ -179,6 +179,10 @@ func (b *builder) build() (Container, error) {
 		}
 	}
 
+	if err := config.ApplyDefaults(b.cfg); err != nil {
+		return nil, err
+	}
+
 	// Logger depends on config for level/format settings
 	if b.logger == nil {
 		b.logger = provideLoggerWithConfig(b.cfg)
