@@ -277,3 +277,133 @@ func TestSlogAdapter(t *testing.T) {
 	logger.Warn("test warn message", "key", "value")
 	logger.Error("test error message", "key", "value")
 }
+
+func TestProvideStateWithConfig_EnabledByDefault(t *testing.T) {
+	logger := testLogger{}
+	cfg := &config.Config{}
+	cfg.State.Dir = t.TempDir()
+
+	// State.Enabled is false (zero value) but ExplicitlySetStateEnabled() is false
+	// This means user didn't set it, so it should be enabled by default
+	mgr := provideStateWithConfig(cfg, logger)
+
+	if mgr == nil {
+		t.Fatal("expected non-nil state manager when enabled by default")
+	}
+
+	// Verify it's not a nop manager by checking if it has storage
+	if isNopStateManager(mgr) {
+		t.Fatal("expected real state manager when enabled by default, got nop manager")
+	}
+}
+
+func TestProvideStateWithConfig_ExplicitlyDisabled(t *testing.T) {
+	logger := testLogger{}
+	cfg := &config.Config{}
+	cfg.State.Dir = t.TempDir()
+
+	// Explicitly disable state persistence
+	cfg.State.Enabled = false
+	// Simulate explicit setting via the setter method
+	cfg.SetStateEnabledForTest(false)
+
+	mgr := provideStateWithConfig(cfg, logger)
+
+	if mgr == nil {
+		t.Fatal("expected non-nil state manager even when explicitly disabled")
+	}
+
+	// Should be a nop manager since explicitly disabled
+	if !isNopStateManager(mgr) {
+		t.Fatal("expected nop state manager when explicitly disabled")
+	}
+}
+
+func TestProvideStateWithConfig_ExplicitlyEnabled(t *testing.T) {
+	logger := testLogger{}
+	cfg := &config.Config{}
+	cfg.State.Dir = t.TempDir()
+
+	// Explicitly enable state persistence
+	cfg.State.Enabled = true
+	cfg.SetStateEnabledForTest(true)
+
+	mgr := provideStateWithConfig(cfg, logger)
+
+	if mgr == nil {
+		t.Fatal("expected non-nil state manager when explicitly enabled")
+	}
+
+	// Should be a real manager since explicitly enabled
+	if isNopStateManager(mgr) {
+		t.Fatal("expected real state manager when explicitly enabled, got nop manager")
+	}
+}
+
+func TestProvideStateWithConfig_NilConfig(t *testing.T) {
+	logger := testLogger{}
+
+	mgr := provideStateWithConfig(nil, logger)
+
+	if mgr == nil {
+		t.Fatal("expected non-nil state manager even with nil config")
+	}
+
+	// Should return nop manager for nil config
+	if !isNopStateManager(mgr) {
+		t.Fatal("expected nop state manager for nil config")
+	}
+}
+
+func TestProvideStateWithConfig_DefaultStateDir(t *testing.T) {
+	logger := testLogger{}
+	cfg := &config.Config{}
+	// Don't set State.Dir, let it use defaults
+
+	mgr := provideStateWithConfig(cfg, logger)
+
+	if mgr == nil {
+		t.Fatal("expected non-nil state manager")
+	}
+
+	// Should be enabled by default and use default directory
+	if isNopStateManager(mgr) {
+		t.Fatal("expected real state manager with default directory, got nop manager")
+	}
+}
+
+// isNopStateManager checks if a state manager is the nop implementation
+func isNopStateManager(mgr state.Manager) bool {
+	if mgr == nil {
+		return true
+	}
+
+	// Try to detect nop manager by checking if it has nopStorage
+	// The nop manager is created with state.NewManager() without options
+	value := reflect.ValueOf(mgr)
+	if value.Kind() == reflect.Interface {
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		return true
+	}
+	value = value.Elem()
+
+	// Check for storage field
+	storageField := value.FieldByName("storage")
+	if !storageField.IsValid() {
+		return false
+	}
+
+	// Check if storage is nopStorage by checking its type name
+	if storageField.Kind() == reflect.Interface {
+		storageField = storageField.Elem()
+	}
+	if storageField.Kind() == reflect.Pointer {
+		storageField = storageField.Elem()
+	}
+
+	// nopStorage is the indicator of a nop manager
+	typeName := storageField.Type().String()
+	return typeName == "state.nopStorage"
+}
