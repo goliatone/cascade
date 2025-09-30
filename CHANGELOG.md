@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.1.16](https://github.com/goliatone/cascade/compare/v0.1.15...v0.1.16) - (2025-09-30)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Enable slack config ([4852cd5](https://github.com/goliatone/cascade/commit/4852cd5037f76ad969f35b81ee35e76fb681cd3f))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.16 ([54365be](https://github.com/goliatone/cascade/commit/54365be48dd124cdf2f9e5eb991c15edccf2879d))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update tests ([a5e3e3c](https://github.com/goliatone/cascade/commit/a5e3e3c6627b2a6cc183fab3bd3b6d7c7de11c21))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.15 ([cb77d33](https://github.com/goliatone/cascade/commit/cb77d33a4c02e0ce78cf122049874a2cbfaa557d))  - (goliatone)
+
 # [0.1.15](https://github.com/goliatone/cascade/compare/v0.1.14...v0.1.15) - (2025-09-30)
 
 ## <!-- 13 -->📦 Bumps
