@@ -127,6 +127,47 @@ func (p *EnvParser) parseExecutor(config *Config) error {
 		}
 	}
 
+	// Parse check strategy
+	if strategy := p.getEnv(EnvCheckStrategy); strategy != "" {
+		if !p.isValidCheckStrategy(strategy) {
+			errs = append(errs, fmt.Sprintf("invalid %s: must be one of [local, remote, auto], got %q", EnvCheckStrategy, strategy))
+		} else {
+			config.Executor.CheckStrategy = strategy
+		}
+	}
+
+	// Parse check cache TTL
+	if cacheTTLStr := p.getEnv(EnvCheckCacheTTL); cacheTTLStr != "" {
+		cacheTTL, err := time.ParseDuration(cacheTTLStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvCheckCacheTTL, err))
+		} else {
+			config.Executor.CheckCacheTTL = cacheTTL
+		}
+	}
+
+	// Parse check parallel
+	if parallelStr := p.getEnv(EnvCheckParallel); parallelStr != "" {
+		parallel, err := strconv.Atoi(parallelStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: must be a positive integer", EnvCheckParallel))
+		} else if parallel <= 0 {
+			errs = append(errs, fmt.Sprintf("invalid %s: must be greater than 0, got %d", EnvCheckParallel, parallel))
+		} else {
+			config.Executor.CheckParallel = parallel
+		}
+	}
+
+	// Parse check timeout
+	if timeoutStr := p.getEnv(EnvCheckTimeout); timeoutStr != "" {
+		timeout, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("invalid %s: %v", EnvCheckTimeout, err))
+		} else {
+			config.Executor.CheckTimeout = timeout
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("executor configuration errors: %s", strings.Join(errs, "; "))
 	}
@@ -377,6 +418,16 @@ func (p *EnvParser) isValidLogLevel(level string) bool {
 func (p *EnvParser) isValidLogFormat(format string) bool {
 	switch strings.ToLower(format) {
 	case "text", "json":
+		return true
+	default:
+		return false
+	}
+}
+
+// isValidCheckStrategy checks if the given check strategy is valid
+func (p *EnvParser) isValidCheckStrategy(strategy string) bool {
+	switch strings.ToLower(strategy) {
+	case "local", "remote", "auto":
 		return true
 	default:
 		return false
