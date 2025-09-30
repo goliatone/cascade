@@ -840,3 +840,180 @@ func TestWorkspaceDiscovery_NestedModuleDependentGeneration(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkspaceDiscovery_ExcludesSelfModule(t *testing.T) {
+	// Create a temporary workspace with a target module and dependent
+	tmpDir := t.TempDir()
+
+	// Create target module (should be excluded from results)
+	targetDir := filepath.Join(tmpDir, "target-module")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	targetGoMod := `module github.com/example/target
+go 1.21
+`
+	if err := os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte(targetGoMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create dependent module
+	dependentDir := filepath.Join(tmpDir, "dependent-module")
+	if err := os.MkdirAll(dependentDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	dependentGoMod := `module github.com/example/dependent
+go 1.21
+
+require github.com/example/target v1.0.0
+`
+	if err := os.WriteFile(filepath.Join(dependentDir, "go.mod"), []byte(dependentGoMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run discovery
+	discovery := NewWorkspaceDiscovery()
+	options := DiscoveryOptions{
+		WorkspaceDir: tmpDir,
+		TargetModule: "github.com/example/target",
+	}
+
+	dependents, err := discovery.DiscoverDependents(context.Background(), options)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify target module is not included in results
+	for _, dep := range dependents {
+		if dep.ModulePath == "github.com/example/target" {
+			t.Error("target module should not be included in its own dependents list")
+		}
+	}
+
+	// Verify dependent is included
+	if len(dependents) != 1 {
+		t.Errorf("expected 1 dependent, got %d", len(dependents))
+	}
+	if len(dependents) > 0 && dependents[0].ModulePath != "github.com/example/dependent" {
+		t.Errorf("expected dependent module, got %s", dependents[0].ModulePath)
+	}
+}
+
+func TestWorkspaceDiscovery_VersionFiltering(t *testing.T) {
+	// Create a temporary workspace with multiple dependents at different versions
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name             string
+		moduleName       string
+		version          string
+		shouldBeIncluded bool
+	}{
+		{
+			name:             "old-version-module",
+			moduleName:       "github.com/example/old",
+			version:          "v0.8.0",
+			shouldBeIncluded: true, // Should be included (needs update)
+		},
+		{
+			name:             "current-version-module",
+			moduleName:       "github.com/example/current",
+			version:          "v0.9.0",
+			shouldBeIncluded: false, // Should be excluded (already at target)
+		},
+		{
+			name:             "newer-version-module",
+			moduleName:       "github.com/example/newer",
+			version:          "v0.10.0",
+			shouldBeIncluded: false, // Should be excluded (already newer)
+		},
+	}
+
+	// Create modules
+	for _, tt := range tests {
+		moduleDir := filepath.Join(tmpDir, tt.name)
+		if err := os.MkdirAll(moduleDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		goMod := "module " + tt.moduleName + "\ngo 1.21\n\nrequire github.com/example/target " + tt.version + "\n"
+		if err := os.WriteFile(filepath.Join(moduleDir, "go.mod"), []byte(goMod), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Run discovery with version filtering
+	discovery := NewWorkspaceDiscovery()
+	options := DiscoveryOptions{
+		WorkspaceDir:  tmpDir,
+		TargetModule:  "github.com/example/target",
+		TargetVersion: "v0.9.0",
+	}
+
+	dependents, err := discovery.DiscoverDependents(context.Background(), options)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Build map of found modules
+	foundModules := make(map[string]bool)
+	for _, dep := range dependents {
+		foundModules[dep.ModulePath] = true
+	}
+
+	// Verify filtering worked correctly
+	for _, tt := range tests {
+		included := foundModules[tt.moduleName]
+		if included != tt.shouldBeIncluded {
+			t.Errorf("module %s: expected included=%v, got included=%v", tt.moduleName, tt.shouldBeIncluded, included)
+		}
+	}
+}
+
+func TestWorkspaceDiscovery_getDependencyVersion(t *testing.T) {
+	// Create a temporary module with a specific dependency version
+	tmpDir := t.TempDir()
+	goMod := `module github.com/example/test
+go 1.21
+
+require (
+	github.com/example/dep1 v1.2.3
+	github.com/example/dep2 v2.0.0
+)
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte(goMod), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	discovery := NewWorkspaceDiscovery().(*workspaceDiscovery)
+
+	tests := []struct {
+		name            string
+		targetModule    string
+		expectedVersion string
+	}{
+		{
+			name:            "finds existing dependency version",
+			targetModule:    "github.com/example/dep1",
+			expectedVersion: "v1.2.3",
+		},
+		{
+			name:            "finds another dependency version",
+			targetModule:    "github.com/example/dep2",
+			expectedVersion: "v2.0.0",
+		},
+		{
+			name:            "returns empty for non-existent dependency",
+			targetModule:    "github.com/example/nonexistent",
+			expectedVersion: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			version := discovery.getDependencyVersion(context.Background(), tmpDir, tt.targetModule)
+			if version != tt.expectedVersion {
+				t.Errorf("expected version %s, got %s", tt.expectedVersion, version)
+			}
+		})
+	}
+}

@@ -510,7 +510,7 @@ require github.com/target/module v1.0.0
 go 1.21
 
 require (
-	github.com/target/module v2.0.0
+	github.com/target/module v1.0.0
 	github.com/other/dep v1.5.0
 )
 `,
