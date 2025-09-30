@@ -188,41 +188,63 @@ func (g *generator) buildDependents(options GenerateOptions) []Dependent {
 	resolvedDefaultBranch := g.getOrDefault(defaultBranch, "main")
 
 	for i, dep := range options.Dependents {
-		dependent := Dependent{
-			Repo:          dep.Repository,
-			CloneURL:      dep.CloneURL,
-			Module:        dep.ModulePath,
-			ModulePath:    g.getOrDefault(dep.LocalModulePath, "."),
-			Branch:        g.getOrDefault(dep.Branch, resolvedDefaultBranch),
-			Tests:         dep.Tests,
-			ExtraCommands: dep.ExtraCommands,
-			Labels:        dep.Labels,
-			Notifications: dep.Notifications,
-			PR:            dep.PRConfig,
-			Canary:        dep.Canary,
-			Skip:          dep.Skip,
-			Env:           dep.Env,
-			Timeout:       dep.Timeout,
+		modulePath := dep.LocalModulePath
+		if modulePath == "" {
+			modulePath = "."
 		}
 
-		// Ensure non-nil slices
-		if dependent.Tests == nil {
-			dependent.Tests = []Command{}
+		dependent := Dependent{
+			Repo:       dep.Repository,
+			Module:     dep.ModulePath,
+			ModulePath: modulePath,
+			Canary:     dep.Canary,
+			Skip:       dep.Skip,
+			Timeout:    dep.Timeout,
 		}
-		if dependent.ExtraCommands == nil {
-			dependent.ExtraCommands = []Command{}
+
+		if dep.CloneURL != "" {
+			dependent.CloneURL = dep.CloneURL
 		}
-		if dependent.Labels == nil {
-			dependent.Labels = []string{}
+
+		branch := strings.TrimSpace(dep.Branch)
+		if branch != "" && branch != resolvedDefaultBranch {
+			dependent.Branch = branch
 		}
-		if dependent.Env == nil {
-			dependent.Env = map[string]string{}
+
+		if len(dep.Tests) > 0 {
+			dependent.Tests = dep.Tests
+		}
+		if len(dep.ExtraCommands) > 0 {
+			dependent.ExtraCommands = dep.ExtraCommands
+		}
+		if len(dep.Labels) > 0 {
+			dependent.Labels = dep.Labels
+		}
+
+		if !isNotificationsEmpty(dep.Notifications) {
+			dependent.Notifications = dep.Notifications
+		}
+
+		if !isPRConfigEmpty(dep.PRConfig) {
+			dependent.PR = dep.PRConfig
+		}
+
+		if len(dep.Env) > 0 {
+			dependent.Env = dep.Env
 		}
 
 		dependents[i] = dependent
 	}
 
 	return dependents
+}
+
+func isNotificationsEmpty(notifications Notifications) bool {
+	return notifications.SlackChannel == "" && !notifications.OnFailure && !notifications.OnSuccess && notifications.Webhook == ""
+}
+
+func isPRConfigEmpty(pr PRConfig) bool {
+	return pr.TitleTemplate == "" && pr.BodyTemplate == "" && len(pr.Reviewers) == 0 && len(pr.TeamReviewers) == 0
 }
 
 // Helper functions for defaults
