@@ -6,9 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
 
+	"github.com/goliatone/cascade/pkg/gitutil"
 	"github.com/google/go-github/v66/github"
 	"golang.org/x/oauth2"
 )
@@ -26,21 +25,10 @@ type AuthConfig struct {
 }
 
 // LoadGitHubToken loads a GitHub token from environment variables or configuration.
-// It checks multiple environment variables in order of precedence:
-// 1. GITHUB_TOKEN
-// 2. GITHUB_ACCESS_TOKEN
-// 3. GH_TOKEN
+// Deprecated: Use gitutil.GetGitHubTokenOrError() instead.
 func LoadGitHubToken() (string, error) {
-	// Check environment variables in order of precedence
-	envVars := []string{"GITHUB_TOKEN", "GITHUB_ACCESS_TOKEN", "GH_TOKEN"}
-
-	for _, envVar := range envVars {
-		if token := os.Getenv(envVar); token != "" {
-			return strings.TrimSpace(token), nil
-		}
-	}
-
-	return "", fmt.Errorf("GitHub token not found: set one of %v environment variables", envVars)
+	// Delegate to gitutil for consistent token loading
+	return gitutil.GetGitHubTokenOrError()
 }
 
 // CreateAuthenticatedClient creates a GitHub client with the given token and configuration.
