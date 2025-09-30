@@ -63,3 +63,35 @@ func (c *Config) stateEnabledSet() bool {
 	}
 	return c.setFlags.stateEnabled
 }
+
+// setExecutorSkipUpToDate records an explicit skip-up-to-date value originating from a configuration source.
+func (c *Config) setExecutorSkipUpToDate(value bool) {
+	if c == nil {
+		return
+	}
+	c.Executor.SkipUpToDate = value
+	c.setFlags.executorSkipUpToDate = true
+}
+
+func (c *Config) executorSkipUpToDateSet() bool {
+	if c == nil {
+		return false
+	}
+	return c.setFlags.executorSkipUpToDate
+}
+
+// setExecutorForceAll records an explicit force-all value originating from a configuration source.
+func (c *Config) setExecutorForceAll(value bool) {
+	if c == nil {
+		return
+	}
+	c.Executor.ForceAll = value
+	c.setFlags.executorForceAll = true
+}
+
+func (c *Config) executorForceAllSet() bool {
+	if c == nil {
+		return false
+	}
+	return c.setFlags.executorForceAll
+}
