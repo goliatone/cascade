@@ -230,6 +230,13 @@ func provideBroker() broker.Broker {
 // For dry-run operations, returns a stub broker with clear warnings.
 // For production operations (release/resume/revert), fails fast if GitHub credentials are missing.
 func provideBrokerWithConfig(cfg *config.Config, httpClient *http.Client, logger Logger) broker.Broker {
+	return provideBrokerWithConfigAndManifest(cfg, nil, httpClient, logger)
+}
+
+// provideBrokerWithConfigAndManifest creates a broker with optional manifest notification settings.
+// If manifestNotifications is provided, it will be used as a fallback for notification configuration
+// when global config doesn't specify notification targets.
+func provideBrokerWithConfigAndManifest(cfg *config.Config, manifestNotifications *ManifestNotifications, httpClient *http.Client, logger Logger) broker.Broker {
 	if cfg == nil {
 		logger.Warn("No configuration provided, using stub broker")
 		return broker.NewStub()
@@ -246,7 +253,7 @@ func provideBrokerWithConfig(cfg *config.Config, httpClient *http.Client, logger
 		return broker.NewStub()
 	}
 
-	notifier := newNotifierFromConfig(cfg, httpClient, logger)
+	notifier := newNotifierFromConfigWithManifest(cfg, manifestNotifications, httpClient, logger)
 
 	brokerCfg := broker.DefaultConfig()
 	brokerCfg.DryRun = cfg.Executor.DryRun
@@ -259,6 +266,13 @@ func provideBrokerWithConfig(cfg *config.Config, httpClient *http.Client, logger
 // are missing and dry-run is not enabled, preventing production commands from running
 // with a stub broker.
 func provideBrokerForProduction(cfg *config.Config, httpClient *http.Client, logger Logger) (broker.Broker, error) {
+	return provideBrokerForProductionWithManifest(cfg, nil, httpClient, logger)
+}
+
+// provideBrokerForProductionWithManifest creates a production broker with optional manifest notification settings.
+// If manifestNotifications is provided, it will be used as a fallback for notification configuration
+// when global config doesn't specify notification targets.
+func provideBrokerForProductionWithManifest(cfg *config.Config, manifestNotifications *ManifestNotifications, httpClient *http.Client, logger Logger) (broker.Broker, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("configuration is required for production broker")
 	}
@@ -273,7 +287,7 @@ func provideBrokerForProduction(cfg *config.Config, httpClient *http.Client, log
 		return nil, fmt.Errorf("production commands require GitHub credentials: %w\n\nTo fix this issue:\n  1. Set CASCADE_GITHUB_TOKEN environment variable, or\n  2. Configure integration.github.token in your config file, or\n  3. Use --dry-run flag to test without GitHub integration", err)
 	}
 
-	notifier := newNotifierFromConfig(cfg, httpClient, logger)
+	notifier := newNotifierFromConfigWithManifest(cfg, manifestNotifications, httpClient, logger)
 
 	brokerCfg := broker.DefaultConfig()
 	brokerCfg.DryRun = cfg.Executor.DryRun
@@ -361,11 +375,25 @@ func normalizeEnterpriseEndpoints(endpoint string) (string, string) {
 }
 
 func newNotifierFromConfig(cfg *config.Config, baseClient *http.Client, logger Logger) broker.Notifier {
+	return newNotifierFromConfigWithManifest(cfg, nil, baseClient, logger)
+}
+
+func newNotifierFromConfigWithManifest(cfg *config.Config, manifestNotifications *ManifestNotifications, baseClient *http.Client, logger Logger) broker.Notifier {
 	notifyCfg := broker.DefaultNotificationConfig()
 	var notifiers []broker.Notifier
 
+	// Determine Slack configuration, preferring manifest settings over global config
 	slackToken := strings.TrimSpace(cfg.Integration.Slack.Token)
 	slackChannel := strings.TrimSpace(cfg.Integration.Slack.Channel)
+
+	// If manifest provides notification settings, use them as fallback for channel
+	if manifestNotifications != nil && slackChannel == "" {
+		slackChannel = strings.TrimSpace(manifestNotifications.SlackChannel)
+		if slackChannel != "" {
+			logger.Debug("Using Slack channel from manifest", "channel", slackChannel)
+		}
+	}
+
 	if slackToken != "" && slackChannel != "" {
 		client := cloneHTTPClient(baseClient, notifyCfg.Timeout)
 		notifiers = append(notifiers, broker.NewSlackNotifier(slackToken, slackChannel, client, notifyCfg))
@@ -373,7 +401,16 @@ func newNotifierFromConfig(cfg *config.Config, baseClient *http.Client, logger L
 		logger.Warn("Slack integration requires both token and channel; skipping Slack notifier")
 	}
 
-	if webhook := strings.TrimSpace(cfg.Integration.Slack.WebhookURL); webhook != "" {
+	// Determine webhook configuration, preferring manifest settings over global config
+	webhook := strings.TrimSpace(cfg.Integration.Slack.WebhookURL)
+	if manifestNotifications != nil && webhook == "" {
+		webhook = strings.TrimSpace(manifestNotifications.Webhook)
+		if webhook != "" {
+			logger.Debug("Using webhook URL from manifest", "webhook", webhook)
+		}
+	}
+
+	if webhook != "" {
 		client := cloneHTTPClient(baseClient, notifyCfg.Timeout)
 		notifiers = append(notifiers, broker.NewWebhookNotifier(webhook, client, notifyCfg))
 	}
@@ -387,6 +424,14 @@ func newNotifierFromConfig(cfg *config.Config, baseClient *http.Client, logger L
 	default:
 		return broker.NewMultiNotifier(notifiers...)
 	}
+}
+
+// ManifestNotifications holds notification settings from manifest defaults.
+// This allows manifest-level notification configuration to be used when
+// global config doesn't specify notification targets.
+type ManifestNotifications struct {
+	SlackChannel string
+	Webhook      string
 }
 
 func cloneHTTPClient(base *http.Client, timeout time.Duration) *http.Client {

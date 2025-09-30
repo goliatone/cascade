@@ -30,6 +30,7 @@ type Container interface {
 	Planner() planner.Planner
 	Executor() executor.Executor
 	Broker() broker.Broker
+	BrokerWithManifestNotifications(notifications *ManifestNotifications) (broker.Broker, error)
 	State() state.Manager
 
 	// Configuration and infrastructure
@@ -103,7 +104,20 @@ func (c *container) ManifestGenerator() manifest.Generator { return c.manifestGe
 func (c *container) Planner() planner.Planner              { return c.planner }
 func (c *container) Executor() executor.Executor           { return c.executor }
 func (c *container) Broker() broker.Broker                 { return c.broker }
-func (c *container) State() state.Manager                  { return c.stateManager }
+
+// BrokerWithManifestNotifications creates a new broker configured with manifest notification settings.
+// This allows commands to use manifest-specific notification configuration when available,
+// falling back to global config for settings not specified in the manifest.
+func (c *container) BrokerWithManifestNotifications(notifications *ManifestNotifications) (broker.Broker, error) {
+	if c.cfg.Executor.DryRun {
+		c.logger.Info("Dry-run mode enabled, using stub broker")
+		return broker.NewStub(), nil
+	}
+
+	return provideBrokerForProductionWithManifest(c.cfg, notifications, c.httpClient, c.logger)
+}
+
+func (c *container) State() state.Manager { return c.stateManager }
 
 // Configuration and infrastructure accessors
 func (c *container) Config() *config.Config   { return c.cfg }

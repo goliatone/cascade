@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/goliatone/cascade/internal/broker"
 	execpkg "github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/planner"
 	"github.com/goliatone/cascade/internal/state"
+	"github.com/goliatone/cascade/pkg/di"
 	"github.com/spf13/cobra"
 )
 
@@ -160,6 +162,18 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 		return newPlanningError("failed to generate plan", err)
 	}
 
+	// Extract notification settings from manifest defaults
+	var manifestNotifications *di.ManifestNotifications
+	if manifestData.Defaults.Notifications.SlackChannel != "" || manifestData.Defaults.Notifications.Webhook != "" {
+		manifestNotifications = &di.ManifestNotifications{
+			SlackChannel: manifestData.Defaults.Notifications.SlackChannel,
+			Webhook:      manifestData.Defaults.Notifications.Webhook,
+		}
+		logger.Debug("Found notification settings in manifest",
+			"slack_channel", manifestNotifications.SlackChannel,
+			"webhook", manifestNotifications.Webhook)
+	}
+
 	// Show planning statistics if dependency checking was enabled
 	if cfg.Executor.SkipUpToDate && plan.Stats.TotalDependents > 0 {
 		// Display strategy-specific header
@@ -231,7 +245,17 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 	tracker := newStateTracker(target.Module, target.Version, summary, stateManager, logger, nil)
 
 	executor := container.Executor()
-	brokerSvc := container.Broker()
+
+	// Get broker with manifest notification settings if available
+	var brokerSvc broker.Broker
+	if manifestNotifications != nil {
+		brokerSvc, err = container.BrokerWithManifestNotifications(manifestNotifications)
+		if err != nil {
+			return newExecutionError("failed to initialize broker with manifest notifications", err)
+		}
+	} else {
+		brokerSvc = container.Broker()
+	}
 
 	fmt.Printf("Executing updates for %s@%s\n", target.Module, target.Version)
 	for i, item := range plan.Items {
