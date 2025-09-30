@@ -165,10 +165,20 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 	// Extract notification settings from manifest defaults
 	var manifestNotifications *di.ManifestNotifications
 	if manifestData.Defaults.Notifications.SlackChannel != "" || manifestData.Defaults.Notifications.Webhook != "" {
+		// Default on_failure to true if not explicitly set
+		// This ensures failures are always notified unless explicitly disabled
+		onFailure := manifestData.Defaults.Notifications.OnFailure
+		onSuccess := manifestData.Defaults.Notifications.OnSuccess
+
+		// If neither flag is set, default on_failure to true
+		if !onFailure && !onSuccess {
+			onFailure = true
+		}
+
 		manifestNotifications = &di.ManifestNotifications{
 			SlackChannel: manifestData.Defaults.Notifications.SlackChannel,
-			OnFailure:    manifestData.Defaults.Notifications.OnFailure,
-			OnSuccess:    manifestData.Defaults.Notifications.OnSuccess,
+			OnFailure:    onFailure,
+			OnSuccess:    onSuccess,
 			Webhook:      manifestData.Defaults.Notifications.Webhook,
 		}
 		logger.Debug("Found notification settings in manifest",
