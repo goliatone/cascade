@@ -500,7 +500,7 @@ func appendReason(existing, addition string) string {
 }
 
 // discoverWorkspaceDependents uses the workspace discovery to find dependent modules
-func discoverWorkspaceDependents(ctx context.Context, targetModule, workspaceDir string, maxDepth int, includePatterns, excludePatterns []string, cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
+func discoverWorkspaceDependents(ctx context.Context, targetModule, targetVersion, workspaceDir string, maxDepth int, includePatterns, excludePatterns []string, cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
 	discovery := manifest.NewWorkspaceDiscovery()
 
 	// Apply config defaults for discovery options
@@ -511,6 +511,7 @@ func discoverWorkspaceDependents(ctx context.Context, targetModule, workspaceDir
 	options := manifest.DiscoveryOptions{
 		WorkspaceDir:    workspaceDir,
 		TargetModule:    targetModule,
+		TargetVersion:   targetVersion,
 		MaxDepth:        finalMaxDepth,
 		IncludePatterns: finalIncludePatterns,
 		ExcludePatterns: finalExcludePatterns,
@@ -917,7 +918,7 @@ func discoverGitHubDependentsWithClient(ctx context.Context, client *gh.Client, 
 
 // performMultiSourceDiscovery performs discovery from multiple sources and merges the results.
 // This implements Task 3.3: Result Merging & Conflict Resolution.
-func performMultiSourceDiscovery(ctx context.Context, targetModule, githubOrg, workspace string, maxDepth int,
+func performMultiSourceDiscovery(ctx context.Context, targetModule, targetVersion, githubOrg, workspace string, maxDepth int,
 	includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns []string,
 	cfg *config.Config, logger di.Logger) ([]manifest.DependentOptions, error) {
 
@@ -964,7 +965,7 @@ func performMultiSourceDiscovery(ctx context.Context, targetModule, githubOrg, w
 			logger.Info("Attempting workspace discovery", "workspace", workspaceDir)
 		}
 
-		wsDeps, err := discoverWorkspaceDependents(ctx, targetModule, workspaceDir, maxDepth,
+		wsDeps, err := discoverWorkspaceDependents(ctx, targetModule, targetVersion, workspaceDir, maxDepth,
 			includePatterns, excludePatterns, cfg, logger)
 		if err != nil {
 			discoveryErrors = append(discoveryErrors, fmt.Errorf("workspace discovery failed: %w", err))
