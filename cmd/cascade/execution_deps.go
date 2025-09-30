@@ -78,6 +78,7 @@ func processWorkItem(ctx context.Context, deps executionDeps, workspace string, 
 		errs = append(errs, execErr)
 	}
 
+	// Handle PR creation for successful or manual review statuses
 	if execErr == nil && result != nil {
 		switch result.Status {
 		case execpkg.StatusCompleted, execpkg.StatusManualReview:
@@ -88,11 +89,15 @@ func processWorkItem(ctx context.Context, deps executionDeps, workspace string, 
 			} else if pr != nil {
 				itemState.PRURL = pr.URL
 			}
+		}
+	}
 
-			if _, notifyErr := broker.Notify(ctx, item, result); notifyErr != nil {
-				errs = append(errs, fmt.Errorf("broker notify: %w", notifyErr))
-				itemState.Reason = appendReason(itemState.Reason, fmt.Sprintf("notification failed: %v", notifyErr))
-			}
+	// Send notifications for all results (success or failure)
+	// The notifier will handle on_success/on_failure flags from manifest
+	if result != nil {
+		if _, notifyErr := broker.Notify(ctx, item, result); notifyErr != nil {
+			errs = append(errs, fmt.Errorf("broker notify: %w", notifyErr))
+			itemState.Reason = appendReason(itemState.Reason, fmt.Sprintf("notification failed: %v", notifyErr))
 		}
 	}
 
