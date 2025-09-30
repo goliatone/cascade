@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goliatone/cascade/pkg/util/modpath"
 	"github.com/google/go-github/v66/github"
 	"golang.org/x/mod/semver"
 	"golang.org/x/oauth2"
@@ -369,11 +370,14 @@ func (g *gitHubDiscovery) DiscoverDependents(ctx context.Context, options GitHub
 		}
 
 		if hasDependency {
+			if repo.ModulePath == options.TargetModule {
+				continue
+			}
 			dependent := DependentOptions{
 				Repository:      repo.FullName,
-				CloneURL:        g.buildCloneURL(repo.FullName),
+				CloneURL:        modpath.BuildCloneURL(repo.FullName),
 				ModulePath:      repo.ModulePath,
-				LocalModulePath: g.inferLocalModulePath(repo.ModulePath),
+				LocalModulePath: modpath.DeriveLocalModulePath(repo.ModulePath),
 			}
 			dependents = append(dependents, dependent)
 		}
@@ -792,17 +796,4 @@ func (g *gitHubDiscovery) findLatestSemanticVersion(versions []string) string {
 
 	// Return the latest (last in sorted order)
 	return validVersions[len(validVersions)-1]
-}
-
-// buildCloneURL ensures the repo string is a valid cloneable URL.
-// This mirrors the logic from internal/executor/git.go to maintain consistency.
-func (g *gitHubDiscovery) buildCloneURL(repo string) string {
-	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
-	if !strings.HasPrefix(repo, "https://") &&
-		!strings.HasPrefix(repo, "http://") &&
-		!strings.HasPrefix(repo, "git@") &&
-		strings.Count(repo, "/") == 1 {
-		return "https://github.com/" + repo
-	}
-	return repo
 }
