@@ -267,8 +267,21 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		return newValidationError("failed to generate manifest", err)
 	}
 
+	manifestToWrite := generatedManifest
+
+	if _, err := os.Stat(finalOutputPath); err == nil {
+		loader := container.Manifest()
+		if loader != nil {
+			existingManifest, loadErr := loader.Load(finalOutputPath)
+			if loadErr != nil {
+				return newFileError("failed to load existing manifest", loadErr)
+			}
+			manifestToWrite = mergeManifestDependents(existingManifest, generatedManifest)
+		}
+	}
+
 	// Serialize to YAML
-	yamlData, err := yaml.Marshal(generatedManifest)
+	yamlData, err := yaml.Marshal(manifestToWrite)
 	if err != nil {
 		return newConfigError("failed to serialize manifest to YAML", err)
 	}
@@ -302,4 +315,32 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 
 	fmt.Printf("Manifest generated successfully: %s\n", finalOutputPath)
 	return nil
+}
+
+func mergeManifestDependents(existing, generated *manifest.Manifest) *manifest.Manifest {
+	if existing == nil {
+		return generated
+	}
+
+	if generated == nil || len(generated.Modules) == 0 {
+		return existing
+	}
+
+	newModule := generated.Modules[0]
+	replaced := false
+
+	for i := range existing.Modules {
+		module := &existing.Modules[i]
+		if module.Module == newModule.Module || module.Repo == newModule.Repo {
+			module.Dependents = newModule.Dependents
+			replaced = true
+			break
+		}
+	}
+
+	if !replaced {
+		existing.Modules = append(existing.Modules, newModule)
+	}
+
+	return existing
 }
