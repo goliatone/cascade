@@ -14,9 +14,13 @@ import (
 // newReleaseCommand creates the release subcommand
 func newReleaseCommand() *cobra.Command {
 	var (
-		manifestPath string
-		modulePath   string
-		version      string
+		manifestPath  string
+		modulePath    string
+		version       string
+		checkStrategy string
+		checkCacheTTL time.Duration
+		checkParallel int
+		checkTimeout  time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -34,13 +38,30 @@ Examples:
   cascade release                                    # Use all auto-detected defaults
   cascade release --module=github.com/example/lib   # Override just the module
   cascade release --version=v1.2.3                  # Override just the version
-  cascade release .cascade.yaml                     # Explicit manifest file`,
+  cascade release .cascade.yaml                     # Explicit manifest file
+  cascade release --check-strategy=remote           # Force remote checking for CI/CD`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			manifestArg := ""
 			if len(args) > 0 {
 				manifestArg = args[0]
 			}
+
+			// Apply CLI flag overrides to config
+			config := container.Config()
+			if cmd.Flags().Changed("check-strategy") {
+				config.Executor.CheckStrategy = checkStrategy
+			}
+			if cmd.Flags().Changed("check-cache-ttl") {
+				config.Executor.CheckCacheTTL = checkCacheTTL
+			}
+			if cmd.Flags().Changed("check-parallel") {
+				config.Executor.CheckParallel = checkParallel
+			}
+			if cmd.Flags().Changed("check-timeout") {
+				config.Executor.CheckTimeout = checkTimeout
+			}
+
 			return runRelease(manifestPath, manifestArg, modulePath, version)
 		},
 	}
@@ -49,6 +70,12 @@ Examples:
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Path to dependency manifest file (default: .cascade.yaml)")
 	cmd.Flags().StringVar(&modulePath, "module", "", "Go module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
 	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3). Auto-detected from .version file or git tags if not provided")
+
+	// Dependency checking flags
+	cmd.Flags().StringVar(&checkStrategy, "check-strategy", "auto", "Dependency checking mode: local, remote, or auto")
+	cmd.Flags().DurationVar(&checkCacheTTL, "check-cache-ttl", 5*time.Minute, "Cache expiration time for remote checks")
+	cmd.Flags().IntVar(&checkParallel, "check-parallel", 0, "Number of parallel checks (0 = auto-detect)")
+	cmd.Flags().DurationVar(&checkTimeout, "check-timeout", 30*time.Second, "Timeout for individual repository checks")
 
 	return cmd
 }
@@ -135,9 +162,29 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 
 	// Show planning statistics if dependency checking was enabled
 	if cfg.Executor.SkipUpToDate && plan.Stats.TotalDependents > 0 {
-		fmt.Printf("Checked %d potential dependents:\n", plan.Stats.TotalDependents)
+		// Display strategy-specific header
+		strategyLabel := plan.Stats.CheckStrategy
+		if strategyLabel == "" {
+			strategyLabel = "local"
+		}
+
+		fmt.Printf("\nDependency Checking (%s mode):\n", strategyLabel)
+
+		// Show cache statistics for remote/auto modes
+		if plan.Stats.CheckStrategy == "remote" || plan.Stats.CheckStrategy == "auto" {
+			totalChecked := plan.Stats.CacheHits + plan.Stats.CacheMisses
+			if totalChecked > 0 {
+				fmt.Printf("  - Checked %d repositories (%d cached, %d fetched)\n",
+					plan.Stats.TotalDependents,
+					plan.Stats.CacheHits,
+					plan.Stats.CacheMisses)
+			}
+		} else {
+			fmt.Printf("  - Checked %d repositories\n", plan.Stats.TotalDependents)
+		}
+
 		if plan.Stats.SkippedUpToDate > 0 {
-			fmt.Printf("  - %d repositories already up-to-date, skipped\n", plan.Stats.SkippedUpToDate)
+			fmt.Printf("  - %d repositories up-to-date, skipped\n", plan.Stats.SkippedUpToDate)
 		}
 		if plan.Stats.WorkItemsCreated > 0 {
 			fmt.Printf("  - %d require updates\n", plan.Stats.WorkItemsCreated)
@@ -145,6 +192,23 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 		if plan.Stats.CheckErrors > 0 {
 			fmt.Printf("  - %d check errors (included for safety)\n", plan.Stats.CheckErrors)
 		}
+
+		// Show performance metrics
+		if plan.Stats.CheckDuration > 0 {
+			durationSec := plan.Stats.CheckDuration.Seconds()
+			if plan.Stats.ParallelChecks {
+				fmt.Printf("  - Check duration: %.1fs (parallel: %d)\n",
+					durationSec,
+					cfg.Executor.CheckParallel)
+			} else {
+				fmt.Printf("  - Check duration: %.1fs\n", durationSec)
+			}
+		}
+
+		// Add performance warnings
+		showPerformanceWarnings(&plan.Stats, cfg.Executor.CheckParallel)
+
+		fmt.Println()
 	}
 
 	if len(plan.Items) == 0 {
