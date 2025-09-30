@@ -167,10 +167,14 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 	if manifestData.Defaults.Notifications.SlackChannel != "" || manifestData.Defaults.Notifications.Webhook != "" {
 		manifestNotifications = &di.ManifestNotifications{
 			SlackChannel: manifestData.Defaults.Notifications.SlackChannel,
+			OnFailure:    manifestData.Defaults.Notifications.OnFailure,
+			OnSuccess:    manifestData.Defaults.Notifications.OnSuccess,
 			Webhook:      manifestData.Defaults.Notifications.Webhook,
 		}
 		logger.Debug("Found notification settings in manifest",
 			"slack_channel", manifestNotifications.SlackChannel,
+			"on_failure", manifestNotifications.OnFailure,
+			"on_success", manifestNotifications.OnSuccess,
 			"webhook", manifestNotifications.Webhook)
 	}
 
