@@ -33,6 +33,28 @@ type PlanStats struct {
 
 	// CheckErrors is the number of errors encountered during dependency checking
 	CheckErrors int
+
+	// CI/CD mode metrics
+	// CheckStrategy is the strategy used for dependency checking
+	CheckStrategy string
+
+	// CacheHits is the number of cache hits during dependency checking
+	CacheHits int
+
+	// CacheMisses is the number of cache misses during dependency checking
+	CacheMisses int
+
+	// RemoteChecks is the number of remote dependency checks performed
+	RemoteChecks int
+
+	// LocalChecks is the number of local dependency checks performed
+	LocalChecks int
+
+	// ParallelChecks indicates whether parallel checking was enabled
+	ParallelChecks bool
+
+	// CheckDuration is the total time spent checking dependencies
+	CheckDuration time.Duration
 }
 
 // WorkItem represents the actions required to update a dependent repository.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/goliatone/cascade/internal/manifest"
 	"golang.org/x/mod/modfile"
@@ -115,23 +116,35 @@ func (r *remoteDependencyChecker) NeedsUpdate(
 
 	// 4. Cache miss - fetch go.mod from remote
 	if r.logger != nil {
-		r.logger.Debug("cache miss, fetching go.mod from remote",
+		r.logger.Info("remote dependency check started",
 			"repo", dependent.Repo,
 			"clone_url", cloneURL,
-			"ref", ref)
+			"ref", ref,
+			"cached", false)
 	}
 
+	startTime := time.Now()
 	goModContent, err := r.gitOps.fetchGoMod(ctx, cloneURL, ref)
+	duration := time.Since(startTime)
+
 	if err != nil {
 		if r.logger != nil {
 			r.logger.Debug("failed to fetch go.mod, assuming update needed",
 				"repo", dependent.Repo,
 				"clone_url", cloneURL,
 				"ref", ref,
+				"duration_ms", duration.Milliseconds(),
 				"error", err.Error())
 		}
 		// Fail-open: if we can't fetch go.mod, assume update is needed
 		return true, err
+	}
+
+	if r.logger != nil {
+		r.logger.Info("shallow clone completed",
+			"repo", dependent.Repo,
+			"duration_ms", duration.Milliseconds(),
+			"go_mod_size", len(goModContent))
 	}
 
 	// 5. Parse go.mod and cache all dependencies
@@ -283,6 +296,32 @@ func (r *remoteDependencyChecker) ClearCache() error {
 		r.logger.Debug("dependency cache cleared")
 	}
 	return nil
+}
+
+// GetCacheStats returns current cache statistics.
+// This is useful for observability and performance monitoring in CI/CD environments.
+func (r *remoteDependencyChecker) GetCacheStats() CacheStats {
+	return r.cache.Stats()
+}
+
+// LogCacheStats logs current cache statistics with calculated hit rate.
+func (r *remoteDependencyChecker) LogCacheStats() {
+	if r.logger == nil {
+		return
+	}
+
+	stats := r.cache.Stats()
+	total := stats.Hits + stats.Misses
+	hitRate := 0.0
+	if total > 0 {
+		hitRate = float64(stats.Hits) / float64(total)
+	}
+
+	r.logger.Debug("cache statistics",
+		"hits", stats.Hits,
+		"misses", stats.Misses,
+		"size", stats.Size,
+		"hit_rate", hitRate)
 }
 
 // parseGoModContentAndExtractDeps parses go.mod content and extracts all dependencies.
