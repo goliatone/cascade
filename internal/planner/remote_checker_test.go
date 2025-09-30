@@ -3,6 +3,7 @@ package planner
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -632,11 +633,14 @@ require (
 }
 
 func TestRemoteDependencyChecker_Warm_Success(t *testing.T) {
+	var mu sync.Mutex
 	fetchedRepos := make(map[string]bool)
 	mockGit := &mockGitOperations{
 		parseCloneURLFunc: defaultParseCloneURL,
 		fetchGoModFunc: func(ctx context.Context, cloneURL, ref string) (string, error) {
+			mu.Lock()
 			fetchedRepos[cloneURL] = true
+			mu.Unlock()
 			return `module ` + cloneURL + `
 
 go 1.21
@@ -673,8 +677,11 @@ require (
 	}
 
 	// Verify all repos were fetched
-	if len(fetchedRepos) != 3 {
-		t.Errorf("expected 3 repos fetched, got %d", len(fetchedRepos))
+	mu.Lock()
+	numFetched := len(fetchedRepos)
+	mu.Unlock()
+	if numFetched != 3 {
+		t.Errorf("expected 3 repos fetched, got %d", numFetched)
 	}
 
 	// Verify cache was populated

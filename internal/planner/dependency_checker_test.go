@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/goliatone/cascade/internal/manifest"
@@ -178,6 +179,7 @@ func (m *mockChecker) NeedsUpdate(ctx context.Context, dependent manifest.Depend
 
 // mockLogger captures log messages for testing.
 type mockLogger struct {
+	mu        sync.Mutex
 	debugMsgs []string
 	infoMsgs  []string
 	warnMsgs  []string
@@ -185,18 +187,26 @@ type mockLogger struct {
 }
 
 func (m *mockLogger) Debug(msg string, args ...any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.debugMsgs = append(m.debugMsgs, msg)
 }
 
 func (m *mockLogger) Info(msg string, args ...any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.infoMsgs = append(m.infoMsgs, msg)
 }
 
 func (m *mockLogger) Warn(msg string, args ...any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.warnMsgs = append(m.warnMsgs, msg)
 }
 
 func (m *mockLogger) Error(msg string, args ...any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.errorMsgs = append(m.errorMsgs, msg)
 }
 
