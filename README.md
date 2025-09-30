@@ -139,6 +139,76 @@ cascade resume go-errors@v1.4.0
 cascade revert go-errors@v1.4.0
 ```
 
+## CI/CD Mode
+
+Cascade supports running in CI/CD environments without requiring a local workspace. This enables dependency checking and PR automation directly from your CI pipeline.
+
+### Dependency Checking Strategies
+
+Cascade uses intelligent dependency checking to avoid unnecessary updates:
+
+- **`local`** - Check dependencies using local workspace repositories (fastest, requires workspace)
+- **`remote`** - Clone repositories remotely via shallow git clones (works without workspace)
+- **`auto`** - Try local first, fall back to remote if unavailable (recommended)
+
+### CI/CD Configuration
+
+Use the following flags to optimize for CI/CD environments:
+
+```bash
+cascade release \
+  --manifest=.cascade.yaml \
+  --check-strategy=remote \
+  --check-parallel=8 \
+  --check-cache-ttl=10m \
+  --skip-up-to-date
+```
+
+**Flags:**
+- `--check-strategy` - Dependency checking mode (`local`, `remote`, `auto`)
+- `--check-parallel` - Number of parallel dependency checks (default: CPU count)
+- `--check-cache-ttl` - Cache expiration time (default: 5m)
+- `--check-timeout` - Per-repository check timeout (default: 30s)
+- `--skip-up-to-date` - Skip repositories already at target version
+
+### Authentication
+
+For private repositories, configure authentication via environment variables:
+
+```bash
+# GitHub token (required for private repos)
+export CASCADE_GITHUB_TOKEN=ghp_example123
+# or
+export GITHUB_TOKEN=ghp_example123
+# or
+export GH_TOKEN=ghp_example123
+
+# SSH key path (optional, defaults to ~/.ssh/id_rsa)
+export SSH_KEY_PATH=~/.ssh/cascade_deploy_key
+```
+
+### Performance Optimization
+
+**Cache Hit Rate**: Cascade caches dependency information to avoid redundant git operations. Monitor cache performance:
+
+```
+Dependency Checking (remote mode):
+- Checked 14 repositories (5 cached, 9 fetched)
+- 11 repositories up-to-date, skipped
+- 3 require updates
+- Check duration: 12.3s (parallel: 4)
+```
+
+**Tuning Tips:**
+- Increase `--check-parallel` for large dependency graphs
+- Use `--check-strategy=remote` in CI environments without workspace
+- Set `--check-cache-ttl=10m` for repeated CI runs
+- Monitor warnings for slow checks (>30s) and low cache hit rates (<50%)
+
+### Example: GitHub Actions Workflow
+
+See the "CI/CD Pipeline Examples" section below for complete workflow configurations.
+
 ## Configuration
 
 ### Manifest File
@@ -234,6 +304,131 @@ See the `examples/` directory for complete manifests:
 - `basic-manifest.yaml` – minimal configuration
 - `full-featured-manifest.yaml` – multiple dependents and notifications
 - `custom-templates-manifest.yaml` – advanced templating and workflows
+
+## CI/CD Pipeline Examples
+
+### GitHub Actions
+
+Create `.github/workflows/cascade-release.yml`:
+
+```yaml
+name: Cascade Dependency Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to update (e.g., github.com/goliatone/go-errors)'
+        required: true
+      version:
+        description: 'Target version (e.g., v1.4.0)'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Install Cascade
+        run: go install github.com/goliatone/cascade@latest
+
+      - name: Generate Manifest
+        run: |
+          cascade manifest generate \
+            --module-path="${{ inputs.module }}" \
+            --version="${{ inputs.version }}" \
+            --github-org=${{ github.repository_owner }} \
+            --yes \
+            --output=.cascade.yaml
+        env:
+          CASCADE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Plan Release
+        run: |
+          cascade plan \
+            --manifest=.cascade.yaml \
+            --check-strategy=remote \
+            --check-parallel=8 \
+            --skip-up-to-date \
+            --quiet
+        env:
+          CASCADE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Execute Release
+        run: |
+          cascade release \
+            --manifest=.cascade.yaml \
+            --check-strategy=remote \
+            --check-parallel=8 \
+            --check-cache-ttl=10m \
+            --skip-up-to-date \
+            --parallel=4 \
+            --timeout=20m \
+            --verbose
+        env:
+          CASCADE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CASCADE_SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+
+      - name: Upload State
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cascade-state
+          path: .cascade/state/
+```
+
+### GitLab CI
+
+Create `.gitlab-ci.yml`:
+
+```yaml
+cascade:release:
+  stage: deploy
+  image: golang:1.21
+  script:
+    - go install github.com/goliatone/cascade@latest
+    - |
+      cascade manifest generate \
+        --module-path="${MODULE}" \
+        --version="${VERSION}" \
+        --github-org="${CI_PROJECT_NAMESPACE}" \
+        --yes \
+        --output=.cascade.yaml
+    - |
+      cascade release \
+        --manifest=.cascade.yaml \
+        --check-strategy=remote \
+        --check-parallel=8 \
+        --check-cache-ttl=10m \
+        --skip-up-to-date \
+        --parallel=4 \
+        --timeout=20m \
+        --verbose
+  variables:
+    MODULE: "github.com/example/module"
+    VERSION: "v1.0.0"
+  artifacts:
+    paths:
+      - .cascade/state/
+    when: always
+  only:
+    - web
+```
+
+### Environment Variables for CI
+
+Configure these secrets in your CI environment:
+
+- `CASCADE_GITHUB_TOKEN` or `GITHUB_TOKEN` - GitHub API access
+- `CASCADE_SLACK_TOKEN` - Slack notifications (optional)
+- `SSH_KEY_PATH` - Custom SSH key path (optional)
 
 ## Development
 
