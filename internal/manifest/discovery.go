@@ -34,6 +34,9 @@ type DiscoveryOptions struct {
 	// TargetModule is the module path we're looking for dependents of
 	TargetModule string
 
+	// TargetVersion is the version we're updating to (optional - if set, filters out modules already at this version)
+	TargetVersion string
+
 	// MaxDepth limits how deep to scan in the directory tree (0 = no limit)
 	MaxDepth int
 
@@ -144,6 +147,11 @@ func (w *workspaceDiscovery) DiscoverDependents(ctx context.Context, options Dis
 
 	// Check each module for dependencies on the target
 	for _, module := range modules {
+		// Skip if this module IS the target module (prevent self-inclusion)
+		if module.ModulePath == options.TargetModule {
+			continue
+		}
+
 		depends, err := w.moduleHasDependency(ctx, module.Path, options.TargetModule)
 		if err != nil {
 			// Log warning but continue with other modules
@@ -151,6 +159,29 @@ func (w *workspaceDiscovery) DiscoverDependents(ctx context.Context, options Dis
 		}
 
 		if depends {
+			// If target version is specified, check if module needs update
+			if options.TargetVersion != "" {
+				currentVersion := w.getDependencyVersion(ctx, module.Path, options.TargetModule)
+				if currentVersion != "" {
+					// Normalize versions for comparison
+					normalizedCurrent := currentVersion
+					normalizedTarget := options.TargetVersion
+
+					// Ensure versions have 'v' prefix for semver comparison
+					if !strings.HasPrefix(normalizedCurrent, "v") {
+						normalizedCurrent = "v" + normalizedCurrent
+					}
+					if !strings.HasPrefix(normalizedTarget, "v") {
+						normalizedTarget = "v" + normalizedTarget
+					}
+
+					// Skip if already at target version or newer
+					if semver.Compare(normalizedCurrent, normalizedTarget) >= 0 {
+						continue
+					}
+				}
+			}
+
 			repository := w.inferRepository(module.ModulePath)
 			dependent := DependentOptions{
 				Repository:      repository,
@@ -446,6 +477,62 @@ func (w *workspaceDiscovery) parseGoModForDependency(modulePath, targetModule st
 	}
 
 	return false, scanner.Err()
+}
+
+// getDependencyVersion retrieves the version of a specific dependency from a module's go.mod.
+// Returns empty string if the dependency is not found or on error.
+func (w *workspaceDiscovery) getDependencyVersion(ctx context.Context, modulePath, targetModule string) string {
+	// Try using go list first for accurate version info (handles replace directives)
+	cmd := exec.CommandContext(ctx, "go", "list", "-m", "-f", "{{.Version}}", targetModule)
+	cmd.Dir = modulePath
+
+	output, err := cmd.Output()
+	if err == nil {
+		version := strings.TrimSpace(string(output))
+		if version != "" && version != "<nil>" {
+			return version
+		}
+	}
+
+	// Fall back to parsing go.mod directly
+	goModPath := filepath.Join(modulePath, "go.mod")
+	file, err := os.Open(goModPath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	inRequireBlock := false
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Handle single-line require statements
+		if strings.HasPrefix(line, "require ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 && parts[1] == targetModule {
+				return parts[2]
+			}
+			if strings.HasSuffix(line, "(") {
+				inRequireBlock = true
+				continue
+			}
+		}
+
+		// Handle multi-line require blocks
+		if inRequireBlock {
+			if strings.Contains(line, ")") {
+				inRequireBlock = false
+			}
+			parts := strings.Fields(line)
+			if len(parts) >= 2 && parts[0] == targetModule {
+				return parts[1]
+			}
+		}
+	}
+
+	return ""
 }
 
 // extractModulePath reads the module path from a go.mod file.
