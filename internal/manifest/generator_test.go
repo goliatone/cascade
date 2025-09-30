@@ -258,8 +258,8 @@ func TestGenerator_Generate_DefaultsApplication(t *testing.T) {
 	}
 
 	dependent := module.Dependents[0]
-	if dependent.Branch != "develop" {
-		t.Errorf("expected dependent branch to inherit default 'develop', got %q", dependent.Branch)
+	if dependent.Branch != "" {
+		t.Errorf("expected dependent branch to defer to defaults, got %q", dependent.Branch)
 	}
 
 	if dependent.ModulePath != "." {
@@ -358,8 +358,8 @@ func TestGenerator_Generate_ConfigDrivenDefaults(t *testing.T) {
 	}
 
 	dependent := module.Dependents[0]
-	if dependent.Branch != "cascade/update-deps" {
-		t.Errorf("expected dependent to inherit config default branch 'cascade/update-deps', got %q", dependent.Branch)
+	if dependent.Branch != "" {
+		t.Errorf("expected dependent branch to defer to defaults, got %q", dependent.Branch)
 	}
 }
 
@@ -414,8 +414,8 @@ func TestGenerator_Generate_ConfigDefaultsOverridePrecedence(t *testing.T) {
 
 	// Verify dependent uses overridden defaults
 	dependent := got.Modules[0].Dependents[0]
-	if dependent.Branch != "options-override" {
-		t.Errorf("expected dependent to use overridden branch 'options-override', got %q", dependent.Branch)
+	if dependent.Branch != "" {
+		t.Errorf("expected dependent branch to defer to defaults, got %q", dependent.Branch)
 	}
 }
 
