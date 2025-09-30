@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.1.17](https://github.com/goliatone/cascade/compare/v0.1.16...v0.1.17) - (2025-09-30)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Notifier implementation ([1bf99ed](https://github.com/goliatone/cascade/commit/1bf99ed8c977432286aec9050e14a2f3308d6cc4))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.17 ([eafca98](https://github.com/goliatone/cascade/commit/eafca9836317cd1cd53c433ad08b7e38a0dff995))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.16 ([842fa38](https://github.com/goliatone/cascade/commit/842fa38e31344c5f5c5a40798e51b0a8f86cb533))  - (goliatone)
+
 # [0.1.16](https://github.com/goliatone/cascade/compare/v0.1.15...v0.1.16) - (2025-09-30)
 
 ## <!-- 1 -->🐛 Bug Fixes
