@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/goliatone/cascade/pkg/gitutil"
 )
 
 // gitOperations implements GitOperations interface using a command runner.
@@ -208,41 +210,23 @@ func (g *gitOperations) getDefaultBranch(ctx context.Context, repoPath string) (
 
 // extractRepoName extracts the repository name from a git URL.
 func extractRepoName(repo string) string {
-	// Handle various URL formats
-	repo = strings.TrimSuffix(repo, ".git")
-
-	if strings.Contains(repo, "/") {
-		parts := strings.Split(repo, "/")
-		return parts[len(parts)-1]
-	}
-
-	return repo
+	return gitutil.ExtractRepoName(repo)
 }
 
 // buildCloneURL ensures the repo string is a valid cloneable URL.
 func buildCloneURL(repo string) string {
-	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
-	if !strings.HasPrefix(repo, "https://") &&
-		!strings.HasPrefix(repo, "http://") &&
-		!strings.HasPrefix(repo, "git@") &&
-		strings.Count(repo, "/") == 1 {
-		return "https://github.com/" + repo
+	// Try to build a clone URL, fallback to original if it fails
+	cloneURL, err := gitutil.BuildCloneURL(repo, gitutil.ProtocolHTTPS)
+	if err != nil {
+		// If gitutil fails, return the original repo string
+		return repo
 	}
-	return repo
+	return cloneURL
 }
 
 // normalizeGitURL normalizes git URLs for comparison.
 func normalizeGitURL(url string) string {
-	url = cleanGitOutput(url)
-	// Remove .git suffix
-	url = strings.TrimSuffix(url, ".git")
-
-	// Convert SSH to HTTPS format for comparison
-	if strings.HasPrefix(url, "git@github.com:") {
-		url = strings.Replace(url, "git@github.com:", "https://github.com/", 1)
-	}
-
-	return strings.ToLower(url)
+	return gitutil.NormalizeURL(url)
 }
 
 // cleanGitOutput trims whitespace from git command output to make comparisons robust.
