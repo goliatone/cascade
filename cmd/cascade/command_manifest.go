@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/goliatone/cascade/internal/manifest"
+	"github.com/goliatone/cascade/internal/planner"
+	"github.com/goliatone/cascade/pkg/config"
+	"github.com/goliatone/cascade/pkg/di"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -206,6 +211,13 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 			logger.Warn("Discovery failed, proceeding with empty dependents list", "error", err)
 		} else {
 			discoveredDependents = mergedDependents
+
+			filteredDependents, skippedDependents := filterDiscoveredDependents(discoveredDependents, modulePath, finalVersion, workspaceDir, logger)
+			if len(skippedDependents) > 0 && logger != nil {
+				logger.Info("Filtered discovered dependents",
+					"skipped", dependentsOptionsToStrings(skippedDependents))
+			}
+			discoveredDependents = filteredDependents
 			finalDependentOptions = append(finalDependentOptions, discoveredDependents...)
 
 			if len(discoveredDependents) > 0 {
@@ -240,19 +252,30 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		"output", finalOutputPath)
 
 	// Build generate options with config defaults merged
+	defaultBranch := config.ManifestDefaultBranch(cfg)
+	defaultTests := buildManifestDefaultTests(cfg)
+	slackDefault := slackChannel
+	if slackDefault == "" {
+		slackDefault = config.ManifestDefaultSlackChannel(cfg)
+	}
+	webhookDefault := webhook
+	if webhookDefault == "" {
+		webhookDefault = config.ManifestDefaultWebhook(cfg)
+	}
+
 	options := manifest.GenerateOptions{
 		ModuleName:        moduleName,
 		ModulePath:        modulePath,
 		Repository:        repository,
 		Version:           finalVersion,
 		Dependents:        finalDependentOptions,
-		DefaultBranch:     getDefaultBranch(cfg),
+		DefaultBranch:     defaultBranch,
 		DefaultLabels:     []string{"automation:cascade"},
 		DefaultCommitTmpl: "chore(deps): bump {{ .Module }} to {{ .Version }}",
-		DefaultTests:      getDefaultTests(cfg),
+		DefaultTests:      defaultTests,
 		DefaultNotifications: manifest.Notifications{
-			SlackChannel: getDefaultSlackChannel(slackChannel, cfg),
-			Webhook:      getDefaultWebhook(webhook, cfg),
+			SlackChannel: slackDefault,
+			Webhook:      webhookDefault,
 		},
 		DefaultPRConfig: manifest.PRConfig{
 			TitleTemplate: "chore(deps): bump {{ .Module }} to {{ .Version }}",
@@ -343,4 +366,121 @@ func mergeManifestDependents(existing, generated *manifest.Manifest) *manifest.M
 	}
 
 	return existing
+}
+
+func filterDiscoveredDependents(discovered []manifest.DependentOptions, targetModule, targetVersion, workspaceDir string, logger di.Logger) ([]manifest.DependentOptions, []manifest.DependentOptions) {
+	if len(discovered) == 0 {
+		return discovered, nil
+	}
+
+	var filtered []manifest.DependentOptions
+	var skipped []manifest.DependentOptions
+
+	for _, dep := range discovered {
+		if dep.ModulePath == targetModule {
+			skipped = append(skipped, dep)
+			continue
+		}
+
+		if dep.DiscoverySource == "workspace" && targetVersion != "" && workspaceDir != "" {
+			upToDate, err := workspaceDependentIsUpToDate(dep, targetModule, targetVersion, workspaceDir)
+			if err != nil && logger != nil {
+				logger.Debug("workspace version check failed",
+					"repo", dep.Repository,
+					"error", err)
+			}
+			if err == nil && upToDate {
+				skipped = append(skipped, dep)
+				continue
+			}
+		}
+
+		filtered = append(filtered, dep)
+	}
+
+	return filtered, skipped
+}
+
+func workspaceDependentIsUpToDate(dep manifest.DependentOptions, targetModule, targetVersion, workspaceDir string) (bool, error) {
+	repoParts := strings.Split(dep.Repository, "/")
+	if len(repoParts) == 0 {
+		return false, fmt.Errorf("invalid repository: %s", dep.Repository)
+	}
+
+	repoDir := filepath.Join(workspaceDir, repoParts[len(repoParts)-1])
+	moduleDir := repoDir
+	if dep.LocalModulePath != "" && dep.LocalModulePath != "." {
+		moduleDir = filepath.Join(repoDir, dep.LocalModulePath)
+	}
+
+	goModPath := filepath.Join(moduleDir, "go.mod")
+	version, err := readDependencyVersionFromGoMod(goModPath, targetModule)
+	if err != nil {
+		return false, err
+	}
+	if version == "" {
+		return false, nil
+	}
+
+	needsUpdate, err := planner.CompareVersions(version, targetVersion)
+	if err != nil {
+		return false, err
+	}
+
+	return !needsUpdate, nil
+}
+
+func readDependencyVersionFromGoMod(goModPath, targetModule string) (string, error) {
+	file, err := os.Open(goModPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	inRequireBlock := false
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "require ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 && parts[1] == targetModule {
+				return parts[2], nil
+			}
+			if strings.HasSuffix(line, "(") {
+				inRequireBlock = true
+				continue
+			}
+		}
+
+		if inRequireBlock {
+			if strings.Contains(line, ")") {
+				inRequireBlock = false
+				continue
+			}
+			parts := strings.Fields(line)
+			if len(parts) >= 2 && parts[0] == targetModule {
+				return parts[1], nil
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+
+	return "", nil
+}
+
+func buildManifestDefaultTests(cfg *config.Config) []manifest.Command {
+	specs := config.ManifestDefaultTests(cfg)
+	if len(specs) == 0 {
+		return []manifest.Command{}
+	}
+
+	commands := make([]manifest.Command, len(specs))
+	for i, spec := range specs {
+		commands[i] = manifest.Command{Cmd: spec.Cmd, Dir: spec.Dir}
+	}
+	return commands
 }
