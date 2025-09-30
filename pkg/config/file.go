@@ -202,6 +202,15 @@ func mergeConfig(dst, src *Config) {
 	if src.executorDryRunSet() {
 		dst.setExecutorDryRun(src.Executor.DryRun)
 	}
+	// Merge SkipUpToDate and ForceAll - these are booleans that need special handling
+	// We need to check if the source explicitly set these values
+	// For now, we always take the source value if it's from a higher-precedence source
+	if src.executorSkipUpToDateSet() {
+		dst.Executor.SkipUpToDate = src.Executor.SkipUpToDate
+	}
+	if src.executorForceAllSet() {
+		dst.Executor.ForceAll = src.Executor.ForceAll
+	}
 
 	// Integration config - GitHub
 	if src.Integration.GitHub.Token != "" {
