@@ -297,9 +297,15 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		if loader != nil {
 			existingManifest, loadErr := loader.Load(finalOutputPath)
 			if loadErr != nil {
-				return newFileError("failed to load existing manifest", loadErr)
+				if logger != nil {
+					logger.Warn("Existing manifest could not be parsed; overwriting with generated manifest",
+						"path", finalOutputPath,
+						"error", loadErr,
+					)
+				}
+			} else {
+				manifestToWrite = mergeManifestDependents(existingManifest, generatedManifest)
 			}
-			manifestToWrite = mergeManifestDependents(existingManifest, generatedManifest)
 		}
 	}
 
