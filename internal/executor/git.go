@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/goliatone/cascade/pkg/gitutil"
+	"github.com/goliatone/cascade/pkg/util/modpath"
 )
 
 // gitOperations implements GitOperations interface using a command runner.
@@ -214,15 +215,7 @@ func extractRepoName(repo string) string {
 }
 
 // buildCloneURL ensures the repo string is a valid cloneable URL.
-func buildCloneURL(repo string) string {
-	// Try to build a clone URL, fallback to original if it fails
-	cloneURL, err := gitutil.BuildCloneURL(repo, gitutil.ProtocolHTTPS)
-	if err != nil {
-		// If gitutil fails, return the original repo string
-		return repo
-	}
-	return cloneURL
-}
+func buildCloneURL(repo string) string { return modpath.BuildCloneURL(repo) }
 
 // normalizeGitURL normalizes git URLs for comparison.
 func normalizeGitURL(url string) string {
