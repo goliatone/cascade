@@ -13,9 +13,13 @@ import (
 // newPlanCommand creates the plan subcommand
 func newPlanCommand() *cobra.Command {
 	var (
-		manifestPath string
-		modulePath   string
-		version      string
+		manifestPath  string
+		modulePath    string
+		version       string
+		checkStrategy string
+		checkCacheTTL time.Duration
+		checkParallel int
+		checkTimeout  time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -33,13 +37,30 @@ Examples:
   cascade plan                                    # Use all auto-detected defaults
   cascade plan --module=github.com/example/lib   # Override just the module
   cascade plan --version=v1.2.3                  # Override just the version
-  cascade plan custom-manifest.yaml              # Use custom manifest file`,
+  cascade plan custom-manifest.yaml              # Use custom manifest file
+  cascade plan --check-strategy=remote           # Force remote checking for CI/CD`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			manifestArg := ""
 			if len(args) > 0 {
 				manifestArg = args[0]
 			}
+
+			// Apply CLI flag overrides to config
+			config := container.Config()
+			if cmd.Flags().Changed("check-strategy") {
+				config.Executor.CheckStrategy = checkStrategy
+			}
+			if cmd.Flags().Changed("check-cache-ttl") {
+				config.Executor.CheckCacheTTL = checkCacheTTL
+			}
+			if cmd.Flags().Changed("check-parallel") {
+				config.Executor.CheckParallel = checkParallel
+			}
+			if cmd.Flags().Changed("check-timeout") {
+				config.Executor.CheckTimeout = checkTimeout
+			}
+
 			return runPlan(manifestPath, manifestArg, modulePath, version)
 		},
 	}
@@ -48,6 +69,12 @@ Examples:
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Manifest file path (default: .cascade.yaml)")
 	cmd.Flags().StringVar(&modulePath, "module", "", "Target module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
 	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3). Auto-detected from .version file or git tags if not provided")
+
+	// Dependency checking flags
+	cmd.Flags().StringVar(&checkStrategy, "check-strategy", "auto", "Dependency checking mode: local, remote, or auto")
+	cmd.Flags().DurationVar(&checkCacheTTL, "check-cache-ttl", 5*time.Minute, "Cache expiration time for remote checks")
+	cmd.Flags().IntVar(&checkParallel, "check-parallel", 0, "Number of parallel checks (0 = auto-detect)")
+	cmd.Flags().DurationVar(&checkTimeout, "check-timeout", 30*time.Second, "Timeout for individual repository checks")
 
 	return cmd
 }
@@ -152,9 +179,29 @@ func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string) error {
 
 	// Show planning statistics if dependency checking was enabled
 	if config.Executor.SkipUpToDate && plan.Stats.TotalDependents > 0 {
-		fmt.Printf("\nChecked %d potential dependents:\n", plan.Stats.TotalDependents)
+		// Display strategy-specific header
+		strategyLabel := plan.Stats.CheckStrategy
+		if strategyLabel == "" {
+			strategyLabel = "local"
+		}
+
+		fmt.Printf("\nDependency Checking (%s mode):\n", strategyLabel)
+
+		// Show cache statistics for remote/auto modes
+		if plan.Stats.CheckStrategy == "remote" || plan.Stats.CheckStrategy == "auto" {
+			totalChecked := plan.Stats.CacheHits + plan.Stats.CacheMisses
+			if totalChecked > 0 {
+				fmt.Printf("  - Checked %d repositories (%d cached, %d fetched)\n",
+					plan.Stats.TotalDependents,
+					plan.Stats.CacheHits,
+					plan.Stats.CacheMisses)
+			}
+		} else {
+			fmt.Printf("  - Checked %d repositories\n", plan.Stats.TotalDependents)
+		}
+
 		if plan.Stats.SkippedUpToDate > 0 {
-			fmt.Printf("  - %d repositories already up-to-date, skipped\n", plan.Stats.SkippedUpToDate)
+			fmt.Printf("  - %d repositories up-to-date, skipped\n", plan.Stats.SkippedUpToDate)
 		}
 		if plan.Stats.WorkItemsCreated > 0 {
 			fmt.Printf("  - %d require updates\n", plan.Stats.WorkItemsCreated)
@@ -162,6 +209,22 @@ func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string) error {
 		if plan.Stats.CheckErrors > 0 {
 			fmt.Printf("  - %d check errors (included for safety)\n", plan.Stats.CheckErrors)
 		}
+
+		// Show performance metrics
+		if plan.Stats.CheckDuration > 0 {
+			durationSec := plan.Stats.CheckDuration.Seconds()
+			if plan.Stats.ParallelChecks {
+				fmt.Printf("  - Check duration: %.1fs (parallel: %d)\n",
+					durationSec,
+					config.Executor.CheckParallel)
+			} else {
+				fmt.Printf("  - Check duration: %.1fs\n", durationSec)
+			}
+		}
+
+		// Add performance warnings
+		showPerformanceWarnings(&plan.Stats, config.Executor.CheckParallel)
+
 		fmt.Println()
 	}
 
@@ -171,4 +234,29 @@ func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string) error {
 	}
 
 	return nil
+}
+
+// showPerformanceWarnings displays performance-related warnings based on check statistics.
+func showPerformanceWarnings(stats *planner.PlanStats, configuredParallel int) {
+	// Warn if remote checking takes >30s total
+	if stats.CheckDuration > 30*time.Second {
+		fmt.Printf("  ⚠ Warning: Dependency checks took %.1fs (>30s)\n", stats.CheckDuration.Seconds())
+
+		// Suggest increasing parallelism if checks are slow and not already parallelized
+		if !stats.ParallelChecks || configuredParallel < 4 {
+			fmt.Printf("  ⚠ Consider increasing parallelism with --check-parallel=8\n")
+		}
+	}
+
+	// Warn about cache misses in repeated runs (only for remote/auto strategies)
+	if (stats.CheckStrategy == "remote" || stats.CheckStrategy == "auto") && stats.CacheMisses > 0 {
+		total := stats.CacheHits + stats.CacheMisses
+		if total > 0 {
+			hitRate := float64(stats.CacheHits) / float64(total)
+			// If cache hit rate is below 50% and we have a significant number of checks
+			if hitRate < 0.5 && total > 5 {
+				fmt.Printf("  ⚠ Low cache hit rate (%.0f%%). Repeated runs may be slower than expected.\n", hitRate*100)
+			}
+		}
+	}
 }
