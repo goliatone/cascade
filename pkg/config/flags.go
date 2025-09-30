@@ -41,14 +41,20 @@ type FlagConfig struct {
 	LogLevel  string
 	LogFormat string
 
-	timeoutSet   bool
-	parallelSet  bool
-	dryRunSet    bool
-	verboseSet   bool
-	quietSet     bool
-	logLevelSet  bool
-	logFormatSet bool
-	stateSet     bool
+	// Dependency checking flags
+	SkipUpToDate bool
+	ForceAll     bool
+
+	timeoutSet      bool
+	parallelSet     bool
+	dryRunSet       bool
+	verboseSet      bool
+	quietSet        bool
+	logLevelSet     bool
+	logFormatSet    bool
+	stateSet        bool
+	skipUpToDateSet bool
+	forceAllSet     bool
 }
 
 // AddFlags adds all configuration flags to the provided cobra command.
@@ -76,6 +82,12 @@ func AddFlags(cmd *cobra.Command) *FlagConfig {
 		"Operation timeout duration")
 	cmd.PersistentFlags().IntVarP(&fc.Parallel, "parallel", "p", 0,
 		"Number of parallel executions (0 = auto)")
+
+	// Dependency checking flags
+	cmd.PersistentFlags().BoolVar(&fc.SkipUpToDate, "skip-up-to-date", true,
+		"Skip dependents that are already up-to-date")
+	cmd.PersistentFlags().BoolVar(&fc.ForceAll, "force-all", false,
+		"Process all dependents regardless of current version")
 
 	// Logging control flags
 	cmd.PersistentFlags().BoolVarP(&fc.Verbose, "verbose", "v", false,
@@ -196,6 +208,12 @@ func (fc *FlagConfig) ToConfig() (*Config, error) {
 		config.setExecutorDryRun(fc.DryRun)
 	}
 
+	// Dependency checking flags - use setter methods to properly track that these were set
+	// The flag defaults are: skip-up-to-date=true, force-all=false
+	// We extract these values from the flag set, so they reflect the defaults
+	config.setExecutorSkipUpToDate(fc.SkipUpToDate)
+	config.setExecutorForceAll(fc.ForceAll)
+
 	if fc.verboseSet {
 		config.setLoggingVerbose(fc.Verbose)
 		if fc.Verbose {
@@ -305,6 +323,20 @@ func extractFlagConfig(flags *pflag.FlagSet) *FlagConfig {
 		fc.Parallel, _ = flags.GetInt("parallel")
 		fc.parallelSet = true
 	}
+
+	// Dependency checking flags - always extract to get defaults
+	skipVal, err := flags.GetBool("skip-up-to-date")
+	if err == nil {
+		fc.SkipUpToDate = skipVal
+		fc.skipUpToDateSet = flags.Changed("skip-up-to-date")
+	}
+
+	forceVal, err := flags.GetBool("force-all")
+	if err == nil {
+		fc.ForceAll = forceVal
+		fc.forceAllSet = flags.Changed("force-all")
+	}
+
 	if flags.Changed("verbose") {
 		fc.Verbose, _ = flags.GetBool("verbose")
 		fc.verboseSet = true
