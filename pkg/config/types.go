@@ -83,6 +83,26 @@ type ExecutorConfig struct {
 	// dependency versions. This flag overrides SkipUpToDate.
 	// Default: false
 	ForceAll bool `json:"force_all" yaml:"force_all"`
+
+	// CheckStrategy controls the dependency checking mode.
+	// Valid values: "local", "remote", "auto"
+	// - local: Use workspace-based checking only
+	// - remote: Use remote git operations only
+	// - auto: Try local first, fallback to remote
+	// Default: "auto"
+	CheckStrategy string `json:"check_strategy" yaml:"check_strategy" validate:"oneof=local remote auto"`
+
+	// CheckCacheTTL sets the cache expiration time for remote dependency checks.
+	// Default: 5 minutes
+	CheckCacheTTL time.Duration `json:"check_cache_ttl" yaml:"check_cache_ttl"`
+
+	// CheckParallel sets the number of parallel dependency checks.
+	// Default: runtime.NumCPU()
+	CheckParallel int `json:"check_parallel" yaml:"check_parallel" validate:"min=1"`
+
+	// CheckTimeout sets the timeout for individual repository checks.
+	// Default: 30 seconds
+	CheckTimeout time.Duration `json:"check_timeout" yaml:"check_timeout"`
 }
 
 // IntegrationConfig manages settings for external service integrations
@@ -291,6 +311,12 @@ const (
 	EnvDryRun          = "CASCADE_DRY_RUN"
 	EnvSkipUpToDate    = "CASCADE_SKIP_UP_TO_DATE"
 	EnvForceAll        = "CASCADE_FORCE_ALL"
+
+	// Dependency checking environment variables
+	EnvCheckStrategy = "CASCADE_CHECK_STRATEGY"
+	EnvCheckCacheTTL = "CASCADE_CHECK_CACHE_TTL"
+	EnvCheckParallel = "CASCADE_CHECK_PARALLEL"
+	EnvCheckTimeout  = "CASCADE_CHECK_TIMEOUT"
 
 	// GitHub integration environment variables
 	EnvGitHubToken    = "CASCADE_GITHUB_TOKEN"

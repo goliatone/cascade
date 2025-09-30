@@ -93,18 +93,95 @@ func providePlannerWithConfig(cfg *config.Config, logger Logger) planner.Planner
 
 	// Only enable dependency checking if SkipUpToDate is true and ForceAll is false
 	if cfg.Executor.SkipUpToDate && !cfg.Executor.ForceAll {
-		// Validate workspace path is configured
-		if cfg.Workspace.Path == "" {
-			logger.Warn("SkipUpToDate enabled but workspace path not configured, dependency checking disabled")
-		} else {
-			logger.Debug("Enabling dependency checking",
-				"workspace", cfg.Workspace.Path,
-				"skip_up_to_date", cfg.Executor.SkipUpToDate,
-				"force_all", cfg.Executor.ForceAll)
-			opts = append(opts,
-				planner.WithDependencyChecker(planner.NewDependencyChecker(logger)),
-				planner.WithWorkspace(cfg.Workspace.Path))
+		// Set default values if not configured
+		strategy := cfg.Executor.CheckStrategy
+		if strategy == "" {
+			strategy = "auto"
 		}
+
+		cacheTTL := cfg.Executor.CheckCacheTTL
+		if cacheTTL == 0 {
+			cacheTTL = 5 * time.Minute
+		}
+
+		parallel := cfg.Executor.CheckParallel
+		if parallel == 0 {
+			parallel = runtime.NumCPU()
+		}
+
+		timeout := cfg.Executor.CheckTimeout
+		if timeout == 0 {
+			timeout = 30 * time.Second
+		}
+
+		checkOpts := planner.CheckOptions{
+			Strategy:       planner.CheckStrategy(strategy),
+			CacheEnabled:   true,
+			CacheTTL:       cacheTTL,
+			ParallelChecks: parallel,
+			Timeout:        timeout,
+		}
+
+		// Create checkers based on strategy
+		var checker planner.DependencyChecker
+		localChecker := planner.NewDependencyChecker(logger)
+		remoteChecker := planner.NewRemoteDependencyChecker(checkOpts, logger)
+
+		switch checkOpts.Strategy {
+		case planner.CheckStrategyLocal:
+			if cfg.Workspace.Path == "" {
+				logger.Warn("Local strategy requested but workspace path not configured, using remote")
+				checker = remoteChecker
+			} else {
+				logger.Debug("Using local dependency checking", "workspace", cfg.Workspace.Path)
+				checker = localChecker
+			}
+
+		case planner.CheckStrategyRemote:
+			logger.Debug("Using remote dependency checking",
+				"cache_ttl", cacheTTL,
+				"parallel", parallel,
+				"timeout", timeout)
+			checker = remoteChecker
+
+		case planner.CheckStrategyAuto:
+			logger.Debug("Using auto dependency checking (local with remote fallback)",
+				"workspace", cfg.Workspace.Path,
+				"cache_ttl", cacheTTL,
+				"parallel", parallel,
+				"timeout", timeout)
+			checker = planner.NewHybridDependencyChecker(
+				localChecker,
+				remoteChecker,
+				checkOpts.Strategy,
+				cfg.Workspace.Path,
+				logger,
+			)
+
+		default:
+			logger.Warn("Unknown check strategy, using auto", "strategy", strategy)
+			checker = planner.NewHybridDependencyChecker(
+				localChecker,
+				remoteChecker,
+				planner.CheckStrategyAuto,
+				cfg.Workspace.Path,
+				logger,
+			)
+		}
+
+		// Wrap in parallel checker if concurrency > 1
+		if checkOpts.ParallelChecks > 1 {
+			logger.Debug("Enabling parallel dependency checking", "concurrency", checkOpts.ParallelChecks)
+			checker = planner.NewParallelDependencyChecker(
+				checker,
+				checkOpts.ParallelChecks,
+				logger,
+			)
+		}
+
+		opts = append(opts,
+			planner.WithDependencyChecker(checker),
+			planner.WithWorkspace(cfg.Workspace.Path))
 	} else if cfg.Executor.ForceAll {
 		logger.Debug("ForceAll enabled, processing all dependents without version checking")
 	} else {
