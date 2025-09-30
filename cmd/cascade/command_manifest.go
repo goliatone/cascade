@@ -200,7 +200,7 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 
 	if len(dependents) == 0 {
 		workspaceDir = resolveWorkspaceDirWithTarget(workspace, cfg, modulePath, moduleDir)
-		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, githubOrg, workspaceDir, maxDepth,
+		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, version, githubOrg, workspaceDir, maxDepth,
 			includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns, cfg, logger)
 		if err != nil {
 			logger.Warn("Discovery failed, proceeding with empty dependents list", "error", err)
