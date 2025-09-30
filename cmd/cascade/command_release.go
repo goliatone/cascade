@@ -17,8 +17,6 @@ func newReleaseCommand() *cobra.Command {
 		manifestPath string
 		modulePath   string
 		version      string
-		skipUpToDate bool
-		forceAll     bool
 	)
 
 	cmd := &cobra.Command{
@@ -43,7 +41,7 @@ Examples:
 			if len(args) > 0 {
 				manifestArg = args[0]
 			}
-			return runRelease(manifestPath, manifestArg, modulePath, version, skipUpToDate, forceAll)
+			return runRelease(manifestPath, manifestArg, modulePath, version)
 		},
 	}
 
@@ -51,23 +49,17 @@ Examples:
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "Path to dependency manifest file (default: .cascade.yaml)")
 	cmd.Flags().StringVar(&modulePath, "module", "", "Go module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
 	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3). Auto-detected from .version file or git tags if not provided")
-	cmd.Flags().BoolVar(&skipUpToDate, "skip-up-to-date", true, "Skip dependents that are already up-to-date (default: true)")
-	cmd.Flags().BoolVar(&forceAll, "force-all", false, "Process all dependents regardless of current version")
 
 	return cmd
 }
 
-func runRelease(manifestFlag, manifestArg, modulePath, version string, skipUpToDate, forceAll bool) error {
+func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 	start := time.Now()
 	ctx := context.Background()
 	logger := container.Logger()
 	cfg := container.Config()
 
-	// Apply flag values to configuration
-	cfg.Executor.SkipUpToDate = skipUpToDate
-	cfg.Executor.ForceAll = forceAll
-
-	// ForceAll overrides SkipUpToDate
+	// ForceAll overrides SkipUpToDate (already set from flags)
 	if cfg.Executor.ForceAll {
 		cfg.Executor.SkipUpToDate = false
 	}
