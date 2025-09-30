@@ -1,5 +1,32 @@
 # Changelog
 
+# [0.1.9](https://github.com/goliatone/cascade/compare/v0.1.8...v0.1.9) - (2025-09-30)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Clone URL ([57d92ff](https://github.com/goliatone/cascade/commit/57d92ffee0238c97f8f5542dcd2d9bd84789c835))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.9 ([146f17f](https://github.com/goliatone/cascade/commit/146f17fff1ea8c46d79e6213a56466292b6553d3))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- New PlanStats ([238c747](https://github.com/goliatone/cascade/commit/238c747a9f25e01f460cfadac4ae9a6c53a80ca0))  - (goliatone)
+- Deps check on planner ([631430f](https://github.com/goliatone/cascade/commit/631430f81077575a5f886019dece739176c60a07))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update test ([ce9e2b8](https://github.com/goliatone/cascade/commit/ce9e2b8be7a65e5db59bd9a0ffd7d81a01ed9a6e))  - (goliatone)
+- Update tests ([de99c9a](https://github.com/goliatone/cascade/commit/de99c9a6acb1cf3a39c15369ccb110c26d4fcf77))  - (goliatone)
+- Skip up to date pkgs ([c1c5b0b](https://github.com/goliatone/cascade/commit/c1c5b0b724e460880160ec768def891fa0c9fb06))  - (goliatone)
+- Add planner to handle updates only for packages that need it ([7ea4963](https://github.com/goliatone/cascade/commit/7ea49637a18bd3576aacc2355265d6f131a56844))  - (goliatone)
+- Add planner for workspace ([0900dd6](https://github.com/goliatone/cascade/commit/0900dd687bdb7d77f615b428f9e96e819dbc429b))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.8 ([f6b7fc4](https://github.com/goliatone/cascade/commit/f6b7fc47a30a82c4f5e000054a86909f9b02b740))  - (goliatone)
+
 # [0.1.8](https://github.com/goliatone/cascade/compare/v0.1.7...v0.1.8) - (2025-09-28)
 
 ## <!-- 13 -->📦 Bumps
