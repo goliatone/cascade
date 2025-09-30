@@ -415,15 +415,23 @@ func newNotifierFromConfigWithManifest(cfg *config.Config, manifestNotifications
 		notifiers = append(notifiers, broker.NewWebhookNotifier(webhook, client, notifyCfg))
 	}
 
+	var baseNotifier broker.Notifier
 	switch len(notifiers) {
 	case 0:
 		logger.Info("No notification integrations configured, using no-op notifier")
-		return broker.NewNoOpNotifier()
+		baseNotifier = broker.NewNoOpNotifier()
 	case 1:
-		return notifiers[0]
+		baseNotifier = notifiers[0]
 	default:
-		return broker.NewMultiNotifier(notifiers...)
+		baseNotifier = broker.NewMultiNotifier(notifiers...)
 	}
+
+	// Wrap with filtering notifier if manifest specifies on_success/on_failure flags
+	if manifestNotifications != nil {
+		baseNotifier = NewFilteringNotifier(baseNotifier, manifestNotifications.OnSuccess, manifestNotifications.OnFailure, logger)
+	}
+
+	return baseNotifier
 }
 
 // ManifestNotifications holds notification settings from manifest defaults.
@@ -431,6 +439,8 @@ func newNotifierFromConfigWithManifest(cfg *config.Config, manifestNotifications
 // global config doesn't specify notification targets.
 type ManifestNotifications struct {
 	SlackChannel string
+	OnFailure    bool
+	OnSuccess    bool
 	Webhook      string
 }
 
