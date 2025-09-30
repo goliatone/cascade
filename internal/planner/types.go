@@ -109,3 +109,63 @@ func (e *DependencyCheckError) Error() string {
 func (e *DependencyCheckError) Unwrap() error {
 	return e.Err
 }
+
+// CheckStrategy defines the strategy for dependency checking.
+type CheckStrategy string
+
+const (
+	// CheckStrategyLocal uses local workspace for dependency checking
+	CheckStrategyLocal CheckStrategy = "local"
+
+	// CheckStrategyRemote uses shallow clone from remote for dependency checking
+	CheckStrategyRemote CheckStrategy = "remote"
+
+	// CheckStrategyAuto tries local first, falls back to remote
+	CheckStrategyAuto CheckStrategy = "auto"
+)
+
+// RemoteDependencyChecker performs dependency checks via remote operations.
+type RemoteDependencyChecker interface {
+	DependencyChecker
+
+	// Warm prepopulates cache with dependency information
+	Warm(ctx context.Context, dependents []manifest.Dependent) error
+
+	// ClearCache removes all cached dependency information
+	ClearCache() error
+}
+
+// CheckOptions configures dependency checking behavior.
+type CheckOptions struct {
+	// Strategy determines the dependency checking mode
+	Strategy CheckStrategy
+
+	// CacheEnabled enables caching of dependency information
+	CacheEnabled bool
+
+	// CacheTTL sets the time-to-live for cache entries
+	CacheTTL time.Duration
+
+	// ParallelChecks sets the number of parallel dependency checks
+	ParallelChecks int
+
+	// ShallowClone enables shallow cloning for remote checks
+	ShallowClone bool
+
+	// Timeout sets the timeout for individual dependency checks
+	Timeout time.Duration
+}
+
+// cacheKey identifies a unique repository + ref combination in the cache.
+type cacheKey struct {
+	cloneURL string
+	ref      string // branch or tag
+}
+
+// cacheEntry stores the parsed dependency information for a repository.
+type cacheEntry struct {
+	goModPath    string
+	dependencies map[string]string // module -> version
+	cachedAt     time.Time
+	ttl          time.Duration
+}
