@@ -522,6 +522,21 @@ func TestGitHubDiscovery_IntegrationWithMockServer(t *testing.T) {
 		}
 	})
 
+	t.Run("skips target repository", func(t *testing.T) {
+		options := GitHubDiscoveryOptions{
+			Organization: "test-org",
+			TargetModule: "github.com/test-org/repo1",
+		}
+
+		dependents, err := discovery.DiscoverDependents(ctx, options)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(dependents) != 0 {
+			t.Fatalf("expected no dependents when target module equals repository, got %d", len(dependents))
+		}
+	})
+
 	// Test ResolveVersion with mocked responses
 	t.Run("ResolveVersion with mock responses", func(t *testing.T) {
 		options := GitHubVersionResolutionOptions{

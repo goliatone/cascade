@@ -207,6 +207,92 @@ func TestWorkspaceDiscovery_findGoModules(t *testing.T) {
 	}
 }
 
+func TestWorkspaceDiscovery_DiscoverDependents_SkipsUpToDateReplace(t *testing.T) {
+	discovery := NewWorkspaceDiscovery()
+	workspaceDir := t.TempDir()
+
+	targetDir := filepath.Join(workspaceDir, "target")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("failed to create target dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte("module github.com/target/module\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatalf("failed to write target go.mod: %v", err)
+	}
+
+	dependentDir := filepath.Join(workspaceDir, "dependent")
+	if err := os.MkdirAll(dependentDir, 0o755); err != nil {
+		t.Fatalf("failed to create dependent dir: %v", err)
+	}
+	dependentGoMod := `module github.com/example/dependent
+
+go 1.21
+
+require github.com/target/module v1.2.3
+
+replace github.com/target/module => ../target
+`
+	if err := os.WriteFile(filepath.Join(dependentDir, "go.mod"), []byte(dependentGoMod), 0o644); err != nil {
+		t.Fatalf("failed to write dependent go.mod: %v", err)
+	}
+
+	opts := DiscoveryOptions{
+		WorkspaceDir:  workspaceDir,
+		TargetModule:  "github.com/target/module",
+		TargetVersion: "v1.2.3",
+	}
+
+	dependents, err := discovery.DiscoverDependents(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(dependents) != 0 {
+		t.Fatalf("expected no dependents, got %d", len(dependents))
+	}
+}
+
+func TestWorkspaceDiscovery_DiscoverDependents_ExcludesTargetModule(t *testing.T) {
+	discovery := NewWorkspaceDiscovery()
+	workspaceDir := t.TempDir()
+
+	targetDir := filepath.Join(workspaceDir, "target")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("failed to create target dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "go.mod"), []byte("module github.com/target/module\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatalf("failed to write target go.mod: %v", err)
+	}
+
+	dependentDir := filepath.Join(workspaceDir, "dependent")
+	if err := os.MkdirAll(dependentDir, 0o755); err != nil {
+		t.Fatalf("failed to create dependent dir: %v", err)
+	}
+	dependentGoMod := `module github.com/example/dependent
+
+go 1.21
+
+require github.com/target/module v1.0.0
+`
+	if err := os.WriteFile(filepath.Join(dependentDir, "go.mod"), []byte(dependentGoMod), 0o644); err != nil {
+		t.Fatalf("failed to write dependent go.mod: %v", err)
+	}
+
+	opts := DiscoveryOptions{
+		WorkspaceDir: workspaceDir,
+		TargetModule: "github.com/target/module",
+	}
+
+	dependents, err := discovery.DiscoverDependents(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(dependents) != 1 {
+		t.Fatalf("expected 1 dependent, got %d", len(dependents))
+	}
+	if dependents[0].Repository != "example/dependent" {
+		t.Fatalf("expected repository example/dependent, got %s", dependents[0].Repository)
+	}
+}
+
 func TestWorkspaceDiscovery_extractModulePath(t *testing.T) {
 	wd := &workspaceDiscovery{}
 
