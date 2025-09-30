@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.1.10](https://github.com/goliatone/cascade/compare/v0.1.9...v0.1.10) - (2025-09-30)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Tests ([d1b1024](https://github.com/goliatone/cascade/commit/d1b1024ef91abe058cd109c93dc6505b5ae41501))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.10 ([56dc853](https://github.com/goliatone/cascade/commit/56dc8537ed872ea243d5372e3e210cf50eaf1aa4))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- New PlanStats ([6d6223e](https://github.com/goliatone/cascade/commit/6d6223e1d875c92dbb4a6c379a9d7e07789a7d8e))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Skip stats ([042fafd](https://github.com/goliatone/cascade/commit/042fafdd96cc9675d909f6cc954c0d9e8021b259))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.9 ([6aa766a](https://github.com/goliatone/cascade/commit/6aa766a242a8012b2f4b712d3bbcabdef29f4d20))  - (goliatone)
+
 # [0.1.9](https://github.com/goliatone/cascade/compare/v0.1.8...v0.1.9) - (2025-09-30)
 
 ## <!-- 1 -->🐛 Bug Fixes
