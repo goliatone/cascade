@@ -41,7 +41,7 @@
           "Repo": "goliatone/go-auth",
           "Module": "github.com/goliatone/go-auth",
           "ModulePath": ".",
-          "Branch": "main",
+          "Branch": "",
           "Tests": [
             {
               "Cmd": [
@@ -51,7 +51,7 @@
               "Dir": "."
             }
           ],
-          "ExtraCommands": [],
+          "ExtraCommands": null,
           "Labels": [
             "package:go-auth"
           ],
@@ -67,7 +67,7 @@
           },
           "Canary": false,
           "Skip": false,
-          "Env": {},
+          "Env": null,
           "Timeout": 0
         }
       ]

@@ -99,7 +99,7 @@
           "Repo": "goliatone/go-auth",
           "Module": "github.com/goliatone/go-auth",
           "ModulePath": ".",
-          "Branch": "main",
+          "Branch": "",
           "Tests": [
             {
               "Cmd": [
@@ -135,7 +135,7 @@
           },
           "Canary": false,
           "Skip": false,
-          "Env": {},
+          "Env": null,
           "Timeout": 0
         }
       ]
