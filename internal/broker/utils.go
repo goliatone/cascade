@@ -35,23 +35,74 @@ func (e *PRValidationError) Unwrap() error {
 
 // ParseRepoString parses a repository string in "owner/name" format.
 // Handles various repository formats including GitHub Enterprise.
-// Deprecated: Use gitutil.ExtractOwnerAndRepo() instead.
+// This function enforces strict validation for broker operations.
 func ParseRepoString(repo string) (owner, name string, err error) {
-	// Delegate to gitutil for consistent repository parsing
-	owner, name, err = gitutil.ExtractOwnerAndRepo(repo)
+	if repo == "" {
+		return "", "", fmt.Errorf("repository string cannot be empty")
+	}
+
+	// Count slashes to validate format before parsing
+	slashCount := 0
+	for _, ch := range repo {
+		if ch == '/' {
+			slashCount++
+		}
+	}
+
+	// Reject invalid formats:
+	// - More than 1 slash for simple format (owner/repo)
+	// - More than 2 slashes for host/owner/repo format
+	// - Unless it's a full URL with protocol
+	if slashCount >= 2 {
+		// Allow URLs with protocol (https://, http://, git@)
+		hasProtocol := false
+		for _, prefix := range []string{"https://", "http://", "git@"} {
+			if len(repo) >= len(prefix) && repo[:len(prefix)] == prefix {
+				hasProtocol = true
+				break
+			}
+		}
+
+		// For non-URLs with 2+ slashes, only allow if it looks like host/owner/repo
+		// where host is github.com, gitlab.com, etc.
+		if !hasProtocol && slashCount == 2 {
+			// Check if first part is a recognized host
+			firstSlash := 0
+			for i, ch := range repo {
+				if ch == '/' {
+					firstSlash = i
+					break
+				}
+			}
+			host := repo[:firstSlash]
+			if host != "github.com" && host != "gitlab.com" && host != "bitbucket.org" {
+				return "", "", fmt.Errorf("repository must be in 'owner/name' format, got: %s", repo)
+			}
+		} else if !hasProtocol && slashCount > 2 {
+			return "", "", fmt.Errorf("repository must be in 'owner/name' format, got: %s", repo)
+		}
+	}
+
+	// Use gitutil to parse
+	parsed, err := gitutil.ParseRepoURL(repo)
 	if err != nil {
 		return "", "", err
 	}
 
-	// Validate owner and name using gitutil
-	if err := gitutil.ValidateOwnerName(owner); err != nil {
-		return "", "", fmt.Errorf("invalid owner name: %w", err)
-	}
-	if err := gitutil.ValidateRepoName(name); err != nil {
-		return "", "", fmt.Errorf("invalid repository name: %w", err)
+	// Broker requires both owner and name to be non-empty
+	if parsed.Owner == "" || parsed.Name == "" {
+		return "", "", fmt.Errorf("both owner and repository name must be non-empty")
 	}
 
-	return owner, name, nil
+	// Validate owner and name using gitutil
+	if err := gitutil.ValidateOwnerName(parsed.Owner); err != nil {
+		return "", "", fmt.Errorf("invalid owner name: %s", parsed.Owner)
+	}
+	if err := gitutil.ValidateRepoName(parsed.Name); err != nil {
+		return "", "", fmt.Errorf("invalid repository name: %s", parsed.Name)
+	}
+
+	return parsed.Owner, parsed.Name, nil
 }
 
 // isValidGitHubName checks if a name follows GitHub naming conventions.

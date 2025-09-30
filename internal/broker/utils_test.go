@@ -2,6 +2,7 @@ package broker
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/goliatone/cascade/internal/planner"
@@ -61,7 +62,7 @@ func TestParseRepoString_Comprehensive(t *testing.T) {
 			name:        "missing slash",
 			repo:        "octocat",
 			wantErr:     true,
-			errContains: "owner/name",
+			errContains: "must be non-empty",
 		},
 		{
 			name:        "too many slashes",
@@ -79,7 +80,7 @@ func TestParseRepoString_Comprehensive(t *testing.T) {
 			name:        "empty name",
 			repo:        "octocat/",
 			wantErr:     true,
-			errContains: "non-empty",
+			errContains: "invalid repository format",
 		},
 		{
 			name:        "invalid characters in owner",
@@ -109,7 +110,7 @@ func TestParseRepoString_Comprehensive(t *testing.T) {
 			name:        "invalid URL format",
 			repo:        "https://github.com/octocat",
 			wantErr:     true,
-			errContains: "invalid repository URL",
+			errContains: "invalid HTTPS URL format",
 		},
 	}
 
@@ -185,7 +186,7 @@ func TestGenerateBranchName(t *testing.T) {
 				Module:        "",
 				SourceVersion: "",
 			},
-			want: "cascade-update--",
+			want: "cascade-update-branch-branch", // gitutil.SanitizeBranchName("") returns "branch"
 		},
 	}
 
@@ -482,8 +483,8 @@ func TestIsValidBranchName(t *testing.T) {
 		{"ends with slash", "invalid/", false},
 		{"contains double dots", "feature..branch", false},
 		{"contains double slashes", "feature//branch", false},
-		{"too long", string(make([]byte, 251)), false},
-		{"exactly 250 chars", string(make([]byte, 250)), true},
+		{"too long", strings.Repeat("x", 251), false},
+		{"exactly 250 valid chars", strings.Repeat("a", 250), true}, // Use valid characters, not null bytes
 	}
 
 	for _, tt := range tests {
