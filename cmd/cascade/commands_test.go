@@ -227,7 +227,7 @@ func TestRunPlanWithMockDependencies(t *testing.T) {
 			defer func() { container = originalContainer }()
 
 			// Call the function under test with default flag values
-			err = runPlan("", tt.manifestPath, "", "", true, false)
+			err = runPlan("", tt.manifestPath, "", "")
 
 			// Check results
 			if tt.expectError && err == nil {

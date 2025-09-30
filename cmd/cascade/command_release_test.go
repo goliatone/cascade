@@ -399,7 +399,7 @@ modules:
 			defer func() { container = originalContainer }()
 
 			// Call the function under test
-			err = runRelease("", manifestPath, "", "", true, false)
+			err = runRelease("", manifestPath, "", "")
 
 			// Check results
 			if tt.expectError && err == nil {
