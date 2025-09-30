@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/goliatone/cascade/pkg/util/modpath"
 	"golang.org/x/mod/semver"
 )
 
@@ -185,7 +186,7 @@ func (w *workspaceDiscovery) DiscoverDependents(ctx context.Context, options Dis
 			repository := w.inferRepository(module.ModulePath)
 			dependent := DependentOptions{
 				Repository:      repository,
-				CloneURL:        w.buildCloneURL(repository),
+				CloneURL:        modpath.BuildCloneURL(repository),
 				ModulePath:      module.ModulePath,
 				LocalModulePath: w.inferLocalModulePath(module.ModulePath),
 			}
@@ -504,31 +505,114 @@ func (w *workspaceDiscovery) getDependencyVersion(ctx context.Context, modulePat
 
 	scanner := bufio.NewScanner(file)
 	inRequireBlock := false
+	inReplaceBlock := false
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
 
-		// Handle single-line require statements
 		if strings.HasPrefix(line, "require ") {
-			parts := strings.Fields(line)
-			if len(parts) >= 3 && parts[1] == targetModule {
-				return parts[2]
-			}
 			if strings.HasSuffix(line, "(") {
 				inRequireBlock = true
 				continue
 			}
+			if version := parseRequireDirective(line, targetModule); version != "" {
+				return version
+			}
+			continue
 		}
 
-		// Handle multi-line require blocks
+		if strings.HasPrefix(line, "replace ") {
+			if strings.HasSuffix(line, "(") {
+				inReplaceBlock = true
+				continue
+			}
+			if version := parseReplaceDirective(strings.TrimPrefix(line, "replace "), targetModule); version != "" {
+				return version
+			}
+			continue
+		}
+
 		if inRequireBlock {
 			if strings.Contains(line, ")") {
 				inRequireBlock = false
+				continue
 			}
-			parts := strings.Fields(line)
-			if len(parts) >= 2 && parts[0] == targetModule {
-				return parts[1]
+			if version := parseRequireDirective(line, targetModule); version != "" {
+				return version
 			}
+			continue
+		}
+
+		if inReplaceBlock {
+			if strings.Contains(line, ")") {
+				inReplaceBlock = false
+				continue
+			}
+			if version := parseReplaceDirective(line, targetModule); version != "" {
+				return version
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return ""
+	}
+
+	return ""
+}
+
+func parseRequireDirective(line, targetModule string) string {
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return ""
+	}
+
+	if parts[0] == "require" {
+		if len(parts) >= 3 && parts[1] == targetModule {
+			return parts[2]
+		}
+		return ""
+	}
+
+	if parts[0] != targetModule {
+		return ""
+	}
+
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+
+	return ""
+}
+
+func parseReplaceDirective(line, targetModule string) string {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "//") {
+		return ""
+	}
+
+	sections := strings.Split(line, "=>")
+	if len(sections) != 2 {
+		return ""
+	}
+
+	left := strings.Fields(strings.TrimSpace(sections[0]))
+	if len(left) == 0 || left[0] != targetModule {
+		return ""
+	}
+
+	rightFields := strings.Fields(strings.TrimSpace(sections[1]))
+	if len(rightFields) == 0 {
+		return ""
+	}
+
+	// Look for semantic version in right side fields
+	for _, field := range rightFields {
+		if strings.HasPrefix(field, "v") {
+			return field
 		}
 	}
 
@@ -559,36 +643,12 @@ func (w *workspaceDiscovery) extractModulePath(goModPath string) (string, error)
 
 // inferRepository attempts to infer the repository path from a Go module path.
 func (w *workspaceDiscovery) inferRepository(modulePath string) string {
-	// For common hosting providers, extract the repository part
-	parts := strings.Split(modulePath, "/")
-
-	if len(parts) >= 3 {
-		switch parts[0] {
-		case "github.com", "gitlab.com", "bitbucket.org":
-			return strings.Join(parts[1:3], "/")
-		}
-	}
-
-	// For non-hosted URLs or unknown hosts, preserve the original module path
-	// This prevents breaking URLs like go.uber.org/zap into invalid repository names
-	return modulePath
+	return modpath.DeriveRepository(modulePath)
 }
 
 // inferLocalModulePath calculates the relative path from repository root to module
 func (w *workspaceDiscovery) inferLocalModulePath(modulePath string) string {
-	parts := strings.Split(modulePath, "/")
-
-	if len(parts) >= 4 {
-		switch parts[0] {
-		case "github.com", "gitlab.com", "bitbucket.org":
-			// For hosted repos, everything after org/repo is the local path
-			return strings.Join(parts[3:], "/")
-		}
-	}
-
-	// For non-hosted URLs or short paths, default to root
-	// This handles cases like go.uber.org/zap where the entire URL is the "repository"
-	return "."
+	return modpath.DeriveLocalModulePath(modulePath)
 }
 
 // shouldIncludeDirectory checks if a directory should be included based on patterns.
@@ -634,17 +694,4 @@ func (w *workspaceDiscovery) shouldIncludeDirectory(dirPath string, options Disc
 	}
 
 	return false
-}
-
-// buildCloneURL ensures the repo string is a valid cloneable URL.
-// This mirrors the logic from internal/executor/git.go to maintain consistency.
-func (w *workspaceDiscovery) buildCloneURL(repo string) string {
-	// If it doesn't have a protocol or git@, and is in owner/repo format, assume it's a GitHub repo.
-	if !strings.HasPrefix(repo, "https://") &&
-		!strings.HasPrefix(repo, "http://") &&
-		!strings.HasPrefix(repo, "git@") &&
-		strings.Count(repo, "/") == 1 {
-		return "https://github.com/" + repo
-	}
-	return repo
 }
