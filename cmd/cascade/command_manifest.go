@@ -134,13 +134,23 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 	// Detect module information when not explicitly provided
 	finalModulePath := strings.TrimSpace(modulePath)
 	moduleDir := ""
-	if autoModulePath, autoModuleDir, err := detectModuleInfo(); err == nil {
-		moduleDir = autoModuleDir
-		if finalModulePath == "" {
-			finalModulePath = autoModulePath
+	if finalModulePath != "" {
+		// Module path explicitly provided, try to derive directory
+		moduleDir = deriveModuleDirFromPath(finalModulePath)
+	}
+
+	// Fall back to auto-detection if no explicit module path or derivation failed
+	if finalModulePath == "" || moduleDir == "" {
+		if autoModulePath, autoModuleDir, err := detectModuleInfo(); err == nil {
+			if moduleDir == "" {
+				moduleDir = autoModuleDir
+			}
+			if finalModulePath == "" {
+				finalModulePath = autoModulePath
+			}
+		} else if finalModulePath == "" {
+			return newValidationError("module path must be provided or go.mod must be present in the current directory", err)
 		}
-	} else if finalModulePath == "" {
-		return newValidationError("module path must be provided or go.mod must be present in the current directory", err)
 	}
 	modulePath = finalModulePath
 
@@ -164,7 +174,7 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		finalVersion = detectedVersion
 	}
 	if finalVersion == "" || strings.EqualFold(finalVersion, "latest") {
-		workspaceDir := resolveWorkspaceDir(workspace, cfg)
+		workspaceDir := resolveWorkspaceDirWithTarget(workspace, cfg, modulePath, moduleDir)
 		resolvedVersion, warnings, err := resolveVersionFromWorkspace(ctx, modulePath, finalVersion, workspaceDir, logger)
 		if err != nil {
 			if finalVersion == "" {
@@ -189,7 +199,7 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 	finalDependentOptions := []manifest.DependentOptions{}
 
 	if len(dependents) == 0 {
-		workspaceDir = resolveWorkspaceDir(workspace, cfg)
+		workspaceDir = resolveWorkspaceDirWithTarget(workspace, cfg, modulePath, moduleDir)
 		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, githubOrg, workspaceDir, maxDepth,
 			includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns, cfg, logger)
 		if err != nil {
