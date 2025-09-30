@@ -2,12 +2,10 @@ package broker
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"regexp"
-	"strings"
 
 	"github.com/goliatone/cascade/internal/planner"
+	"github.com/goliatone/cascade/pkg/gitutil"
 )
 
 // PRValidationError represents validation errors for PR input data.
@@ -37,57 +35,29 @@ func (e *PRValidationError) Unwrap() error {
 
 // ParseRepoString parses a repository string in "owner/name" format.
 // Handles various repository formats including GitHub Enterprise.
+// Deprecated: Use gitutil.ExtractOwnerAndRepo() instead.
 func ParseRepoString(repo string) (owner, name string, err error) {
-	if repo == "" {
-		return "", "", errors.New("repository string cannot be empty")
+	// Delegate to gitutil for consistent repository parsing
+	owner, name, err = gitutil.ExtractOwnerAndRepo(repo)
+	if err != nil {
+		return "", "", err
 	}
 
-	// Handle URLs (https://github.com/owner/repo, https://enterprise.com/owner/repo)
-	if strings.HasPrefix(repo, "https://") || strings.HasPrefix(repo, "http://") {
-		// Extract owner/name from URL
-		parts := strings.Split(repo, "/")
-		if len(parts) < 5 {
-			return "", "", fmt.Errorf("invalid repository URL format: %s", repo)
-		}
-		owner = parts[len(parts)-2]
-		name = parts[len(parts)-1]
-		// Remove .git suffix if present
-		name = strings.TrimSuffix(name, ".git")
-	} else {
-		// Handle owner/name format
-		parts := strings.Split(repo, "/")
-		if len(parts) != 2 {
-			return "", "", fmt.Errorf("repository must be in 'owner/name' format, got: %s", repo)
-		}
-		owner = parts[0]
-		name = parts[1]
+	// Validate owner and name using gitutil
+	if err := gitutil.ValidateOwnerName(owner); err != nil {
+		return "", "", fmt.Errorf("invalid owner name: %w", err)
 	}
-
-	// Validate owner and name
-	if owner == "" || name == "" {
-		return "", "", fmt.Errorf("both owner and repository name must be non-empty")
-	}
-
-	// Basic validation for GitHub naming rules
-	if !isValidGitHubName(owner) {
-		return "", "", fmt.Errorf("invalid owner name: %s", owner)
-	}
-	if !isValidGitHubName(name) {
-		return "", "", fmt.Errorf("invalid repository name: %s", name)
+	if err := gitutil.ValidateRepoName(name); err != nil {
+		return "", "", fmt.Errorf("invalid repository name: %w", err)
 	}
 
 	return owner, name, nil
 }
 
 // isValidGitHubName checks if a name follows GitHub naming conventions.
+// Deprecated: Use gitutil.IsValidGitHubName() instead.
 func isValidGitHubName(name string) bool {
-	if len(name) == 0 || len(name) > 100 {
-		return false
-	}
-	// GitHub names can contain alphanumeric characters, hyphens, underscores, and dots
-	// but cannot start or end with hyphens or dots
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`, name)
-	return matched
+	return gitutil.IsValidGitHubName(name)
 }
 
 // GenerateBranchName creates a consistent branch name for a work item.
@@ -116,26 +86,9 @@ func GenerateBranchName(item planner.WorkItem) string {
 }
 
 // sanitizeForBranch removes or replaces characters that are invalid in branch names.
+// Deprecated: Use gitutil.SanitizeBranchName() instead.
 func sanitizeForBranch(input string) string {
-	// Replace common problematic characters
-	sanitized := strings.ReplaceAll(input, "/", "-")
-	sanitized = strings.ReplaceAll(sanitized, "@", "-at-")
-	sanitized = strings.ReplaceAll(sanitized, "+", "-plus-")
-	sanitized = strings.ReplaceAll(sanitized, ".", "-")
-	sanitized = strings.ReplaceAll(sanitized, " ", "-")
-
-	// Remove any remaining problematic characters
-	re := regexp.MustCompile(`[^a-zA-Z0-9-_]`)
-	sanitized = re.ReplaceAllString(sanitized, "")
-
-	// Remove consecutive dashes
-	re = regexp.MustCompile(`-+`)
-	sanitized = re.ReplaceAllString(sanitized, "-")
-
-	// Trim dashes from start and end
-	sanitized = strings.Trim(sanitized, "-")
-
-	return sanitized
+	return gitutil.SanitizeBranchName(input)
 }
 
 // FindExistingPR searches for an existing PR with the same head branch.
@@ -215,76 +168,19 @@ func ValidatePRInput(input *PRInput) error {
 }
 
 // isValidBranchName checks if a branch name is valid according to Git rules.
+// Deprecated: Use gitutil.ValidateBranchName() instead.
 func isValidBranchName(name string) bool {
-	if len(name) == 0 || len(name) > 250 {
-		return false
-	}
-	// Basic Git branch name validation
-	if strings.HasPrefix(name, "/") || strings.HasSuffix(name, "/") ||
-		strings.Contains(name, "..") || strings.Contains(name, "//") {
-		return false
-	}
-	return true
+	return gitutil.ValidateBranchName(name) == nil
 }
 
 // isValidLabelName checks if a label name follows GitHub rules.
+// Deprecated: Use gitutil.IsValidLabelName() instead.
 func isValidLabelName(name string) bool {
-	if len(name) == 0 || len(name) > 50 {
-		return false
-	}
-	// GitHub labels cannot contain certain characters (colons, hyphens, underscores, dots are allowed)
-	invalidChars := []string{",", ";", "\"", "'", "<", ">", "&"}
-	for _, char := range invalidChars {
-		if strings.Contains(name, char) {
-			return false
-		}
-	}
-	return true
+	return gitutil.IsValidLabelName(name)
 }
 
 // SanitizeLabels enforces GitHub label rules and deduplicates labels.
+// Deprecated: Use gitutil.SanitizeLabels() instead.
 func SanitizeLabels(labels []string) []string {
-	seen := make(map[string]bool)
-	var sanitized []string
-
-	for _, label := range labels {
-		// Trim whitespace
-		label = strings.TrimSpace(label)
-
-		// Skip empty labels
-		if label == "" {
-			continue
-		}
-
-		// Truncate if too long
-		if len(label) > 50 {
-			label = label[:50]
-		}
-
-		// Remove invalid characters (GitHub allows colons, hyphens, underscores, dots)
-		for _, char := range []string{",", ";", "\"", "'", "<", ">", "&"} {
-			label = strings.ReplaceAll(label, char, "")
-		}
-
-		// Skip if we've seen this label already (case-insensitive deduplication)
-		labelLower := strings.ToLower(label)
-		if seen[labelLower] {
-			continue
-		}
-
-		// Skip if label became empty after sanitization
-		if label == "" {
-			continue
-		}
-
-		seen[labelLower] = true
-		sanitized = append(sanitized, label)
-	}
-
-	// Limit to GitHub's maximum of 100 labels
-	if len(sanitized) > 100 {
-		sanitized = sanitized[:100]
-	}
-
-	return sanitized
+	return gitutil.SanitizeLabels(labels)
 }
