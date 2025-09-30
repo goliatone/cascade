@@ -64,6 +64,18 @@ func (c *Config) stateEnabledSet() bool {
 	return c.setFlags.stateEnabled
 }
 
+// ExplicitlySetStateEnabled returns true if the user explicitly set the state enabled/disabled flag.
+// This is used by the DI container to distinguish between "not set" and "explicitly disabled".
+func (c *Config) ExplicitlySetStateEnabled() bool {
+	return c.stateEnabledSet()
+}
+
+// SetStateEnabledForTest allows tests to simulate explicit state enabled/disabled setting.
+// This method should only be used in tests.
+func (c *Config) SetStateEnabledForTest(value bool) {
+	c.setStateEnabled(value)
+}
+
 // setExecutorSkipUpToDate records an explicit skip-up-to-date value originating from a configuration source.
 func (c *Config) setExecutorSkipUpToDate(value bool) {
 	if c == nil {
