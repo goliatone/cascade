@@ -1,5 +1,34 @@
 # Changelog
 
+# [0.1.12](https://github.com/goliatone/cascade/compare/v0.1.11...v0.1.12) - (2025-09-30)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.12 ([2ef11bf](https://github.com/goliatone/cascade/commit/2ef11bfee69499ee37c0ab476a35f9cd566577af))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Release CI/CD ([b037397](https://github.com/goliatone/cascade/commit/b037397862367c24be2c034bd2a5d6ca9eac89ad))  - (goliatone)
+- Git helper ([3af3d96](https://github.com/goliatone/cascade/commit/3af3d96d977c44edbbc562dabbfc051fdbaa4ca6))  - (goliatone)
+- Planer for CI/CD ([05b324a](https://github.com/goliatone/cascade/commit/05b324aedd92b3c258999f31dff32b8b50398dd1))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Move git to helper ([4587f3c](https://github.com/goliatone/cascade/commit/4587f3c7215937f712a8aef83e89be240b8ab88e))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update tests ([1af9734](https://github.com/goliatone/cascade/commit/1af9734541a263876fde4cf6ccd4cdb8e17abe72))  - (goliatone)
+- Support for remote checker ([5a76bb0](https://github.com/goliatone/cascade/commit/5a76bb08cdb501570be918a048bd3cb33ae3b06f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.11 ([bb0f78e](https://github.com/goliatone/cascade/commit/bb0f78eadebf91a3d7720217ba4bc9bf54be3628))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([9c4c963](https://github.com/goliatone/cascade/commit/9c4c963f2b309a1b588df775eb200c1ab3120847))  - (goliatone)
+
 # [0.1.11](https://github.com/goliatone/cascade/compare/v0.1.10...v0.1.11) - (2025-09-30)
 
 ## <!-- 13 -->📦 Bumps
