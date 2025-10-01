@@ -31,6 +31,9 @@ type PlanStats struct {
 	// SkippedUpToDate is the number of dependents skipped because they're already up-to-date
 	SkippedUpToDate int
 
+	// SkippedUpToDateRepos enumerates the repositories skipped for being up-to-date.
+	SkippedUpToDateRepos []string `json:"SkippedUpToDateRepos,omitempty"`
+
 	// CheckErrors is the number of errors encountered during dependency checking
 	CheckErrors int
 

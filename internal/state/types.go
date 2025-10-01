@@ -17,12 +17,13 @@ type Manager interface {
 
 // Summary captures the aggregate status of a cascade run for a module/version pair.
 type Summary struct {
-	Module     string      `json:"module"`
-	Version    string      `json:"version"`
-	StartTime  time.Time   `json:"start_time"`
-	EndTime    time.Time   `json:"end_time"`
-	Items      []ItemState `json:"items"`
-	RetryCount int         `json:"retry_count"`
+	Module          string      `json:"module"`
+	Version         string      `json:"version"`
+	StartTime       time.Time   `json:"start_time"`
+	EndTime         time.Time   `json:"end_time"`
+	Items           []ItemState `json:"items"`
+	SkippedUpToDate []string    `json:"skipped_up_to_date,omitempty"`
+	RetryCount      int         `json:"retry_count"`
 }
 
 // ItemState describes the last known status for a particular repository update.
