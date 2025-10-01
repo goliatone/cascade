@@ -256,6 +256,9 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 	deps := newExecutionDeps()
 	stateManager := container.State()
 	summary := &state.Summary{Module: target.Module, Version: target.Version, StartTime: time.Now()}
+	if len(plan.Stats.SkippedUpToDateRepos) > 0 {
+		summary.SkippedUpToDate = append([]string(nil), plan.Stats.SkippedUpToDateRepos...)
+	}
 	tracker := newStateTracker(target.Module, target.Version, summary, stateManager, logger, nil)
 
 	executor := container.Executor()
