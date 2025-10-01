@@ -8,10 +8,12 @@ import (
 	"path"
 	"strings"
 
+	"github.com/goliatone/cascade/internal/broker"
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
 	gh "github.com/google/go-github/v66/github"
+	oauth2 "golang.org/x/oauth2"
 )
 
 func performMultiSourceDiscovery(ctx context.Context, targetModule, targetVersion, githubOrg, workspace string, maxDepth int,
@@ -304,6 +306,59 @@ func discoverGitHubDependentsWithClient(ctx context.Context, client *gh.Client, 
 	}
 
 	return dependents, nil
+}
+
+func newGitHubClient(ctx context.Context, cfg *config.Config) (*gh.Client, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuration required for GitHub discovery")
+	}
+
+	token := strings.TrimSpace(cfg.Integration.GitHub.Token)
+	if token == "" {
+		envToken, err := broker.LoadGitHubToken()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load GitHub token: %w", err)
+		}
+		token = strings.TrimSpace(envToken)
+		if token == "" {
+			return nil, fmt.Errorf("GitHub token is empty after loading from environment")
+		}
+	}
+
+	httpClient := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token}))
+
+	endpoint := strings.TrimSpace(cfg.Integration.GitHub.Endpoint)
+	if endpoint == "" {
+		return gh.NewClient(httpClient), nil
+	}
+
+	baseURL, uploadURL := normalizeEnterpriseEndpoints(endpoint)
+	client, err := gh.NewEnterpriseClient(baseURL, uploadURL, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("create github enterprise client: %w", err)
+	}
+	return client, nil
+}
+
+func normalizeEnterpriseEndpoints(endpoint string) (string, string) {
+	base := strings.TrimSpace(endpoint)
+	if base == "" {
+		return "", ""
+	}
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+
+	trimmed := strings.TrimSuffix(base, "/")
+	if strings.HasSuffix(trimmed, "/api/v3") {
+		prefix := strings.TrimSuffix(trimmed, "/api/v3")
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+		return prefix + "api/v3/", prefix + "api/uploads/"
+	}
+
+	return base, base
 }
 
 func matchesRepoPatterns(fullName string, includePatterns, excludePatterns []string) bool {
