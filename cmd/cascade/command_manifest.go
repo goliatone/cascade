@@ -30,27 +30,7 @@ Use subcommands to perform specific manifest operations.`,
 
 // newManifestGenerateCommand creates the manifest generate subcommand
 func newManifestGenerateCommand() *cobra.Command {
-	var (
-		moduleName      string
-		modulePath      string
-		repository      string
-		version         string
-		outputPath      string
-		dependents      []string
-		slackChannel    string
-		webhook         string
-		force           bool
-		yes             bool
-		nonInteractive  bool
-		workspace       string
-		maxDepth        int
-		includePatterns []string
-		excludePatterns []string
-		// GitHub discovery flags
-		githubOrg             string
-		githubIncludePatterns []string
-		githubExcludePatterns []string
-	)
+	req := manifestGenerateRequest{}
 
 	cmd := &cobra.Command{
 		Use:     "generate",
@@ -81,92 +61,32 @@ Examples:
   cascade manifest generate --workspace=/path/to/workspace --max-depth=3     # Custom workspace discovery
   cascade manifest generate --yes --dry-run                                  # Non-interactive dry run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runManifestGenerate(moduleName, modulePath, repository, version, outputPath, dependents, slackChannel, webhook, force, yes, nonInteractive, workspace, maxDepth, includePatterns, excludePatterns, githubOrg, githubIncludePatterns, githubExcludePatterns)
+			return runManifestGenerate(req)
 		},
 	}
 
-	// Module and version flags (auto-detected if not provided)
-	cmd.Flags().StringVar(&modulePath, "module-path", "", "Go module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
-	cmd.Flags().StringVar(&version, "version", "", "Target version (e.g., v1.2.3, latest). Auto-detected from .version file or git tags if not provided")
+	// Core metadata flags
+	cmd.Flags().StringVar(&req.ModuleName, "module-name", "", "Human-friendly module name (defaults to basename of module path)")
+	cmd.Flags().StringVar(&req.ModulePath, "module-path", "", "Go module path (e.g., github.com/example/lib). Auto-detected from go.mod if not provided")
+	cmd.Flags().StringVar(&req.Repository, "repository", "", "GitHub repository (defaults to module path without domain)")
+	cmd.Flags().StringVar(&req.Version, "version", "", "Target version (e.g., v1.2.3, latest). Auto-detected from .version file or git tags if not provided")
 
-	// Optional configuration flags
-	cmd.Flags().StringVar(&moduleName, "module-name", "", "Human-friendly module name (defaults to basename of module path)")
-	cmd.Flags().StringVar(&repository, "repository", "", "GitHub repository (defaults to module path without domain)")
-	cmd.Flags().StringVar(&outputPath, "output", "", "Output file path (default: .cascade.yaml)")
-	cmd.Flags().StringSliceVar(&dependents, "dependents", []string{}, "Dependent repositories (format: owner/repo). If omitted, discovers dependents in workspace")
-	cmd.Flags().StringVar(&slackChannel, "slack-channel", "", "Default Slack notification channel")
-	cmd.Flags().StringVar(&webhook, "webhook", "", "Default webhook URL for notifications")
-	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing manifest without prompting")
-	cmd.Flags().BoolVar(&yes, "yes", false, "Automatically confirm all prompts")
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Run in non-interactive mode (same as --yes)")
+	// Output and dependent configuration
+	cmd.Flags().StringVar(&req.OutputPath, "output", "", "Output file path (default: .cascade.yaml)")
+	cmd.Flags().StringSliceVar(&req.Dependents, "dependents", []string{}, "Dependent repositories (format: owner/repo). If omitted, discovers dependents in workspace")
+	cmd.Flags().StringVar(&req.SlackChannel, "slack-channel", "", "Default Slack notification channel")
+	cmd.Flags().StringVar(&req.Webhook, "webhook", "", "Default webhook URL for notifications")
 
-	// Workspace discovery flags
-	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace directory to scan for dependents (default: auto-detected from module location)")
-	cmd.Flags().IntVar(&maxDepth, "max-depth", 0, "Maximum depth to scan in workspace directory (0 = no limit)")
-	cmd.Flags().StringSliceVar(&includePatterns, "include", []string{}, "Directory patterns to include during discovery")
-	cmd.Flags().StringSliceVar(&excludePatterns, "exclude", []string{}, "Directory patterns to exclude during discovery (e.g., vendor, .git)")
-
-	// GitHub discovery flags
-	cmd.Flags().StringVar(&githubOrg, "github-org", "", "GitHub organization to search for dependent repositories (auto-detected from module path if not provided)")
-	cmd.Flags().StringSliceVar(&githubIncludePatterns, "github-include", []string{}, "Repository name patterns to include during GitHub discovery")
-	cmd.Flags().StringSliceVar(&githubExcludePatterns, "github-exclude", []string{}, "Repository name patterns to exclude during GitHub discovery")
+	addConfirmationFlags(cmd, &req)
+	addWorkspaceDiscoveryFlags(cmd, &req)
+	addGitHubDiscoveryFlags(cmd, &req)
 
 	// No required flags - all values can be auto-detected or have sensible defaults
-
 	return cmd
 }
 
-func runManifestGenerate(moduleName, modulePath, repository, version, outputPath string, dependents []string, slackChannel, webhook string, force, yes, nonInteractive bool, workspace string, maxDepth int, includePatterns, excludePatterns []string, githubOrg string, githubIncludePatterns, githubExcludePatterns []string) error {
-	req := manifestGenerateRequest{
-		ModuleName:      moduleName,
-		ModulePath:      modulePath,
-		Repository:      repository,
-		Version:         version,
-		OutputPath:      outputPath,
-		Dependents:      dependents,
-		SlackChannel:    slackChannel,
-		Webhook:         webhook,
-		Force:           force,
-		Yes:             yes,
-		NonInteractive:  nonInteractive,
-		Workspace:       workspace,
-		MaxDepth:        maxDepth,
-		IncludePatterns: includePatterns,
-		ExcludePatterns: excludePatterns,
-		GitHubOrg:       githubOrg,
-		GitHubInclude:   githubIncludePatterns,
-		GitHubExclude:   githubExcludePatterns,
-	}
-
-	return manifestGenerate(context.Background(), req, container.Config())
-}
-
-func mergeManifestDependents(existing, generated *manifest.Manifest) *manifest.Manifest {
-	if existing == nil {
-		return generated
-	}
-
-	if generated == nil || len(generated.Modules) == 0 {
-		return existing
-	}
-
-	newModule := generated.Modules[0]
-	replaced := false
-
-	for i := range existing.Modules {
-		module := &existing.Modules[i]
-		if module.Module == newModule.Module || module.Repo == newModule.Repo {
-			module.Dependents = newModule.Dependents
-			replaced = true
-			break
-		}
-	}
-
-	if !replaced {
-		existing.Modules = append(existing.Modules, newModule)
-	}
-
-	return existing
+func runManifestGenerate(options manifestGenerateRequest) error {
+	return manifestGenerate(context.Background(), options, container.Config())
 }
 
 func filterDiscoveredDependents(discovered []manifest.DependentOptions, targetModule, targetVersion, workspaceDir string, logger di.Logger) ([]manifest.DependentOptions, []manifest.DependentOptions) {
