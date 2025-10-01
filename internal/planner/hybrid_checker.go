@@ -77,12 +77,49 @@ func (h *hybridDependencyChecker) NeedsUpdate(
 
 		needsUpdate, err := h.localChecker.NeedsUpdate(ctx, dependent, target, workspace)
 		if err == nil {
-			if h.logger != nil {
-				h.logger.Debug("local check succeeded",
-					"repo", dependent.Repo,
-					"needs_update", needsUpdate)
+			if !needsUpdate {
+				if h.logger != nil {
+					h.logger.Debug("local check succeeded (up-to-date)",
+						"repo", dependent.Repo)
+				}
+				return false, nil
 			}
-			return needsUpdate, nil
+
+			if h.remoteChecker == nil {
+				if h.logger != nil {
+					h.logger.Debug("local check flagged update but no remote checker available; trusting local result",
+						"repo", dependent.Repo)
+				}
+				return true, nil
+			}
+
+			// Local workspaces can lag behind remote repositories (e.g., CI caches or
+			// developer clones). When the local check says an update is needed we
+			// confirm the version against the authoritative remote source before
+			// scheduling any work. This avoids redundant updates after dependents have
+			// already been fixed upstream.
+			if h.logger != nil {
+				h.logger.Debug("local check flagged update; verifying remotely",
+					"repo", dependent.Repo)
+			}
+
+			remoteNeedsUpdate, remoteErr := h.remoteChecker.NeedsUpdate(ctx, dependent, target, "")
+			if remoteErr != nil {
+				if h.logger != nil {
+					h.logger.Debug("remote verification failed; defaulting to update",
+						"repo", dependent.Repo,
+						"error", remoteErr.Error())
+				}
+				return true, remoteErr
+			}
+
+			if h.logger != nil {
+				h.logger.Debug("remote verification completed",
+					"repo", dependent.Repo,
+					"needs_update", remoteNeedsUpdate)
+			}
+
+			return remoteNeedsUpdate, nil
 		}
 
 		// Local check failed - fallback to remote

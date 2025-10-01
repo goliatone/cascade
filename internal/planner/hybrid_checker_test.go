@@ -123,18 +123,17 @@ func TestHybridDependencyChecker_RemoteStrategy(t *testing.T) {
 	}
 }
 
-func TestHybridDependencyChecker_AutoStrategy_LocalSuccess(t *testing.T) {
+func TestHybridDependencyChecker_AutoStrategy_LocalReportsUpdateTriggersRemote(t *testing.T) {
 	localChecker := &mockDependencyChecker{
 		needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target Target, workspace string) (bool, error) {
-			return true, nil // Local check succeeds
+			return true, nil // Local check succeeds but flags update
 		},
 	}
 
 	remoteChecker := &mockRemoteDependencyCheckerImpl{
 		mockDependencyChecker: mockDependencyChecker{
 			needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target Target, workspace string) (bool, error) {
-				t.Error("remote checker should not be called when local succeeds")
-				return false, nil
+				return true, nil
 			},
 		},
 	}
@@ -156,13 +155,94 @@ func TestHybridDependencyChecker_AutoStrategy_LocalSuccess(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 	if !needsUpdate {
-		t.Error("expected needsUpdate=true")
+		t.Error("expected needsUpdate=true from remote verification")
 	}
 	if localChecker.callCount != 1 {
 		t.Errorf("expected local checker called once, got %d", localChecker.callCount)
 	}
-	if remoteChecker.callCount != 0 {
-		t.Errorf("expected remote checker not called, got %d calls", remoteChecker.callCount)
+	if remoteChecker.callCount != 1 {
+		t.Errorf("expected remote checker called once for verification, got %d", remoteChecker.callCount)
+	}
+}
+
+func TestHybridDependencyChecker_AutoStrategy_RemoteOverridesStaleWorkspace(t *testing.T) {
+	localChecker := &mockDependencyChecker{
+		needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target Target, workspace string) (bool, error) {
+			return true, nil // Local workspace suggests update
+		},
+	}
+
+	remoteChecker := &mockRemoteDependencyCheckerImpl{
+		mockDependencyChecker: mockDependencyChecker{
+			needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target Target, workspace string) (bool, error) {
+				return false, nil // Remote repository already updated
+			},
+		},
+	}
+
+	checker := NewHybridDependencyChecker(
+		localChecker,
+		remoteChecker,
+		CheckStrategyAuto,
+		"/workspace",
+		nil,
+	)
+
+	dependent := manifest.Dependent{Repo: "goliatone/test-repo"}
+	target := Target{Module: "github.com/goliatone/go-errors", Version: "v0.9.0"}
+
+	needsUpdate, err := checker.NeedsUpdate(context.Background(), dependent, target, "/workspace")
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if needsUpdate {
+		t.Error("expected needsUpdate=false after remote verification")
+	}
+	if localChecker.callCount != 1 {
+		t.Errorf("expected local checker called once, got %d", localChecker.callCount)
+	}
+	if remoteChecker.callCount != 1 {
+		t.Errorf("expected remote checker called once, got %d", remoteChecker.callCount)
+	}
+}
+
+func TestHybridDependencyChecker_AutoStrategy_RemoteVerificationErrors(t *testing.T) {
+	localChecker := &mockDependencyChecker{
+		needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target Target, workspace string) (bool, error) {
+			return true, nil
+		},
+	}
+
+	remoteChecker := &mockRemoteDependencyCheckerImpl{
+		mockDependencyChecker: mockDependencyChecker{
+			needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target Target, workspace string) (bool, error) {
+				return true, errors.New("remote failure")
+			},
+		},
+	}
+
+	checker := NewHybridDependencyChecker(
+		localChecker,
+		remoteChecker,
+		CheckStrategyAuto,
+		"/workspace",
+		nil,
+	)
+
+	dependent := manifest.Dependent{Repo: "goliatone/test-repo"}
+	target := Target{Module: "github.com/goliatone/go-errors", Version: "v0.9.0"}
+
+	needsUpdate, err := checker.NeedsUpdate(context.Background(), dependent, target, "/workspace")
+
+	if err == nil {
+		t.Fatalf("expected error from remote verification")
+	}
+	if !needsUpdate {
+		t.Error("expected needsUpdate=true when remote verification fails")
+	}
+	if remoteChecker.callCount != 1 {
+		t.Errorf("expected remote checker called once, got %d", remoteChecker.callCount)
 	}
 }
 
@@ -508,12 +588,11 @@ require (
 	// Create a real local checker
 	localChecker := NewDependencyChecker(nil)
 
-	// Create a mock remote checker that should NOT be called
+	// Create a mock remote checker that confirms the local result
 	remoteChecker := &mockRemoteDependencyCheckerImpl{
 		mockDependencyChecker: mockDependencyChecker{
 			needsUpdateFunc: func(ctx context.Context, dependent manifest.Dependent, target Target, workspace string) (bool, error) {
-				t.Error("remote checker should not be called when local succeeds")
-				return false, nil
+				return true, nil
 			},
 		},
 	}
@@ -547,8 +626,8 @@ require (
 		t.Error("expected needsUpdate=true (v0.8.0 < v0.9.0)")
 	}
 
-	// Verify remote checker was NOT called
-	if remoteChecker.callCount != 0 {
-		t.Errorf("expected remote checker not called, got %d calls", remoteChecker.callCount)
+	// Verify remote checker performed the confirmation
+	if remoteChecker.callCount != 1 {
+		t.Errorf("expected remote checker called once for confirmation, got %d calls", remoteChecker.callCount)
 	}
 }
