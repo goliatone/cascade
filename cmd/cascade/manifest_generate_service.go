@@ -9,6 +9,7 @@ import (
 
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/pkg/config"
+	"github.com/goliatone/cascade/pkg/util/modpath"
 	workspacepkg "github.com/goliatone/cascade/pkg/workspace"
 	"gopkg.in/yaml.v3"
 )
@@ -75,7 +76,7 @@ func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *con
 		req.ModuleName = deriveModuleName(req.ModulePath)
 	}
 	if req.Repository == "" {
-		req.Repository = deriveRepository(req.ModulePath)
+		req.Repository = modpath.DeriveRepository(req.ModulePath)
 	}
 	if req.GitHubOrg == "" {
 		req.GitHubOrg = deriveGitHubOrgFromModule(req.ModulePath)
