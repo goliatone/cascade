@@ -691,26 +691,24 @@ func TestManifestGenerate_OverwriteBehavior(t *testing.T) {
 			defer func() { container = originalContainer }()
 
 			// Call the function under test
-			err = runManifestGenerate(
-				"test-module",
-				"github.com/example/test",
-				"example/test",
-				"v1.0.0",
-				outputPath,
-				[]string{},
-				"",
-				"",
-				tt.force,
-				true,       // yes flag - skip confirmation in tests
-				false,      // non-interactive
-				"",         // workspace
-				0,          // maxDepth
-				[]string{}, // includePatterns
-				[]string{}, // excludePatterns
-				"",         // githubOrg
-				[]string{}, // githubIncludePatterns
-				[]string{}, // githubExcludePatterns
-			)
+			err = runManifestGenerate(manifestGenerateRequest{
+				ModuleName:      "test-module",
+				ModulePath:      "github.com/example/test",
+				Repository:      "example/test",
+				Version:         "v1.0.0",
+				OutputPath:      outputPath,
+				Dependents:      []string{},
+				Force:           tt.force,
+				Yes:             true, // skip confirmation in tests
+				NonInteractive:  false,
+				Workspace:       "",
+				MaxDepth:        0,
+				IncludePatterns: []string{},
+				ExcludePatterns: []string{},
+				GitHubOrg:       "",
+				GitHubInclude:   []string{},
+				GitHubExclude:   []string{},
+			})
 
 			// Check that no error occurred for valid cases
 			if err != nil {
@@ -770,26 +768,14 @@ func TestManifestGenerate_WorkspaceHandling(t *testing.T) {
 	defer func() { container = originalContainer }()
 
 	// Call the function without explicit output path (should use workspace config)
-	err = runManifestGenerate(
-		"test-module",
-		"github.com/example/test",
-		"example/test",
-		"v1.0.0",
-		"", // Empty output path should use workspace config
-		[]string{},
-		"",
-		"",
-		false,      // force
-		true,       // yes flag - skip confirmation in tests
-		false,      // non-interactive
-		"",         // workspace
-		0,          // maxDepth
-		[]string{}, // includePatterns
-		[]string{}, // excludePatterns
-		"",         // githubOrg
-		[]string{}, // githubIncludePatterns
-		[]string{}, // githubExcludePatterns
-	)
+	err = runManifestGenerate(manifestGenerateRequest{
+		ModuleName: "test-module",
+		ModulePath: "github.com/example/test",
+		Repository: "example/test",
+		Version:    "v1.0.0",
+		Dependents: []string{},
+		Yes:        true,
+	})
 
 	// Check that no error occurred
 	if err != nil {

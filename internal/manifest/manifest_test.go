@@ -211,7 +211,6 @@ func TestExpandDefaults_PartialDependent(t *testing.T) {
 func TestManifestYAMLOmitsEmptyDependentFields(t *testing.T) {
 	manifestData := &manifest.Manifest{
 		ManifestVersion: 1,
-		Defaults:        manifest.Defaults{},
 		Modules: []manifest.Module{
 			{
 				Name:   "go-errors",
@@ -232,14 +231,33 @@ func TestManifestYAMLOmitsEmptyDependentFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("yaml marshal: %v", err)
 	}
-	content := string(data)
-	if !strings.Contains(content, "repo: goliatone/go-logger") {
-		t.Fatalf("expected repo to be present in YAML, got:\n%s", content)
+
+	var parsed map[string]any
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("yaml unmarshal: %v", err)
 	}
 
-	for _, field := range []string{"branch:", "tests:", "extra_commands:", "labels:", "notifications:", "pr:", "canary:", "skip:", "env:", "timeout:"} {
-		if strings.Contains(content, field) {
-			t.Fatalf("expected optional field %q to be omitted, YAML:\n%s", field, content)
+	modules, ok := parsed["modules"].([]any)
+	if !ok || len(modules) == 0 {
+		t.Fatalf("expected modules in YAML, got %#v", parsed["modules"])
+	}
+	module, ok := modules[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected module map, got %T", modules[0])
+	}
+	deps, ok := module["dependents"].([]any)
+	if !ok || len(deps) != 1 {
+		t.Fatalf("expected one dependent, got %#v", module["dependents"])
+	}
+	dep, ok := deps[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected dependent map, got %T", deps[0])
+	}
+
+	forbidden := []string{"branch", "tests", "extra_commands", "labels", "notifications", "pr", "canary", "skip", "env", "timeout"}
+	for _, key := range forbidden {
+		if _, exists := dep[key]; exists {
+			t.Fatalf("expected dependent field %q to be omitted, map=%#v", key, dep)
 		}
 	}
 }

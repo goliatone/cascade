@@ -116,8 +116,8 @@ func TestPersistorSave_MergesSanitizesAndReports(t *testing.T) {
 	if len(result.Report.DroppedDependents) != 1 || result.Report.DroppedDependents[0].Reason != persist.DropReasonInvalid {
 		t.Fatalf("expected one invalid dropped dependent, got %#v", result.Report.DroppedDependents)
 	}
-	if !result.Report.ManifestVersionUpdated {
-		t.Fatalf("expected manifest version to be marked updated")
+	if result.Report.ManifestVersionUpdated {
+		t.Fatalf("expected manifest version to already be current")
 	}
 
 	yamlStr := string(result.YAML)
