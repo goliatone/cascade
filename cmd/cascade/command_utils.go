@@ -64,6 +64,11 @@ func printResumeSummary(module, version string, itemStates []state.ItemState, pl
 		return
 	}
 
+	if len(plan.Stats.SkippedUpToDateRepos) > 0 {
+		fmt.Printf("%d repositories already up-to-date, skipped: %s\n",
+			len(plan.Stats.SkippedUpToDateRepos), strings.Join(plan.Stats.SkippedUpToDateRepos, ", "))
+	}
+
 	stateByRepo := make(map[string]state.ItemState, len(itemStates))
 	for _, st := range itemStates {
 		stateByRepo[st.Repo] = st
