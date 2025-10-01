@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/goliatone/cascade/pkg/config"
+	"github.com/goliatone/cascade/pkg/workspace"
 )
 
 // applyManifestDefaults applies default value discovery logic for manifest path
@@ -41,7 +42,7 @@ func applyVersionDefaults(ctx context.Context, version, moduleDir string, cfg *c
 	}
 
 	if finalVersion == "" || strings.EqualFold(finalVersion, "latest") {
-		workspaceDir := resolveWorkspaceDir("", cfg)
+		workspaceDir := workspace.Resolve("", cfg, "", "")
 		resolvedVersion, warnings, err := resolveVersionFromWorkspace(ctx, "", finalVersion, workspaceDir, container.Logger())
 		if err != nil {
 			if finalVersion == "" {
