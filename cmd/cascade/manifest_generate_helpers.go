@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/goliatone/cascade/internal/manifest"
-	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
 )
 
