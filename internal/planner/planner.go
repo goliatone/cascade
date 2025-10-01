@@ -85,6 +85,7 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 			if !needsUpdate {
 				// Skip this dependent - already up-to-date
 				stats.SkippedUpToDate++
+				stats.SkippedUpToDateRepos = append(stats.SkippedUpToDateRepos, dependent.Repo)
 				continue
 			}
 		}
