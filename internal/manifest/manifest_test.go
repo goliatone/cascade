@@ -10,6 +10,7 @@ import (
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/pkg/testsupport"
 	"github.com/google/go-cmp/cmp"
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoader_Load_GeneratesExpectedManifest(t *testing.T) {
@@ -204,6 +205,42 @@ func TestExpandDefaults_PartialDependent(t *testing.T) {
 	}
 	if result.PR.TitleTemplate != "chore: update dependencies" {
 		t.Fatalf("expected PR title template from defaults, got %s", result.PR.TitleTemplate)
+	}
+}
+
+func TestManifestYAMLOmitsEmptyDependentFields(t *testing.T) {
+	manifestData := &manifest.Manifest{
+		ManifestVersion: 1,
+		Defaults:        manifest.Defaults{},
+		Modules: []manifest.Module{
+			{
+				Name:   "go-errors",
+				Module: "github.com/goliatone/go-errors",
+				Repo:   "goliatone/go-errors",
+				Dependents: []manifest.Dependent{
+					{
+						Repo:       "goliatone/go-logger",
+						Module:     "github.com/goliatone/go-logger",
+						ModulePath: ".",
+					},
+				},
+			},
+		},
+	}
+
+	data, err := yaml.Marshal(manifestData)
+	if err != nil {
+		t.Fatalf("yaml marshal: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "repo: goliatone/go-logger") {
+		t.Fatalf("expected repo to be present in YAML, got:\n%s", content)
+	}
+
+	for _, field := range []string{"branch:", "tests:", "extra_commands:", "labels:", "notifications:", "pr:", "canary:", "skip:", "env:", "timeout:"} {
+		if strings.Contains(content, field) {
+			t.Fatalf("expected optional field %q to be omitted, YAML:\n%s", field, content)
+		}
 	}
 }
 

@@ -556,6 +556,9 @@ func TestPlanner_PlanStatistics(t *testing.T) {
 		if plan.Stats.SkippedUpToDate != 0 {
 			t.Errorf("expected SkippedUpToDate=0 without checker, got %d", plan.Stats.SkippedUpToDate)
 		}
+		if len(plan.Stats.SkippedUpToDateRepos) != 0 {
+			t.Errorf("expected no skipped repos recorded, got %v", plan.Stats.SkippedUpToDateRepos)
+		}
 	})
 
 	t.Run("with checker - all up to date", func(t *testing.T) {
@@ -584,6 +587,9 @@ func TestPlanner_PlanStatistics(t *testing.T) {
 		if plan.Stats.TotalDependents != plan.Stats.SkippedUpToDate {
 			t.Errorf("expected all dependents skipped: total=%d, skipped=%d",
 				plan.Stats.TotalDependents, plan.Stats.SkippedUpToDate)
+		}
+		if len(plan.Stats.SkippedUpToDateRepos) != plan.Stats.SkippedUpToDate {
+			t.Errorf("expected skipped repo list length %d, got %d", plan.Stats.SkippedUpToDate, len(plan.Stats.SkippedUpToDateRepos))
 		}
 	})
 
@@ -618,6 +624,9 @@ func TestPlanner_PlanStatistics(t *testing.T) {
 			t.Errorf("expected total=%d, got created=%d + skipped=%d = %d",
 				plan.Stats.TotalDependents, plan.Stats.WorkItemsCreated,
 				plan.Stats.SkippedUpToDate, totalProcessed)
+		}
+		if len(plan.Stats.SkippedUpToDateRepos) != plan.Stats.SkippedUpToDate {
+			t.Errorf("expected skipped repo list length %d, got %d", plan.Stats.SkippedUpToDate, len(plan.Stats.SkippedUpToDateRepos))
 		}
 	})
 

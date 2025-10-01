@@ -39,12 +39,13 @@ func TestManagerContract(t *testing.T) {
 
 	// Test SaveSummary with basic fixture
 	testSummary := &Summary{
-		Module:     "example.com/test-module",
-		Version:    "v1.2.3",
-		StartTime:  time.Date(2023, 12, 1, 10, 0, 0, 0, time.UTC),
-		EndTime:    time.Date(2023, 12, 1, 10, 30, 0, 0, time.UTC),
-		RetryCount: 0,
-		Items:      []ItemState{},
+		Module:          "example.com/test-module",
+		Version:         "v1.2.3",
+		StartTime:       time.Date(2023, 12, 1, 10, 0, 0, 0, time.UTC),
+		EndTime:         time.Date(2023, 12, 1, 10, 30, 0, 0, time.UTC),
+		RetryCount:      0,
+		SkippedUpToDate: []string{"example/repo-up-to-date"},
+		Items:           []ItemState{},
 	}
 
 	err = manager.SaveSummary(testSummary)
@@ -63,6 +64,9 @@ func TestManagerContract(t *testing.T) {
 		// Verify timestamps were normalized to UTC
 		if loadedSummary.StartTime.Location() != time.UTC {
 			t.Errorf("expected UTC timezone for start time, got %v", loadedSummary.StartTime.Location())
+		}
+		if len(loadedSummary.SkippedUpToDate) != 1 || loadedSummary.SkippedUpToDate[0] != "example/repo-up-to-date" {
+			t.Errorf("expected skipped list to round-trip, got %v", loadedSummary.SkippedUpToDate)
 		}
 	}
 
