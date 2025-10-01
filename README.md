@@ -278,6 +278,8 @@ manifest_generator:
   discovery:
     enabled: true
     max_depth: 3
+
+The logic that maps configuration into manifest defaults lives in `pkg/config/defaults.go`. Update those helpers to adjust the built-in branch, test command, or discovery filters across the CLI.
     include_patterns: ["services/*"]
     exclude_patterns: ["vendor/*", ".git/*", "node_modules/*"]
     github:
