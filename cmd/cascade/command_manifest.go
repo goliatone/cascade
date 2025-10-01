@@ -13,6 +13,7 @@ import (
 	"github.com/goliatone/cascade/internal/planner"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
+	workspacepkg "github.com/goliatone/cascade/pkg/workspace"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -141,7 +142,7 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 	moduleDir := ""
 	if finalModulePath != "" {
 		// Module path explicitly provided, try to derive directory
-		moduleDir = deriveModuleDirFromPath(finalModulePath)
+		moduleDir = workspacepkg.DeriveModuleDirFromPath(finalModulePath)
 	}
 
 	// Fall back to auto-detection if no explicit module path or derivation failed
@@ -179,7 +180,7 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 		finalVersion = detectedVersion
 	}
 	if finalVersion == "" || strings.EqualFold(finalVersion, "latest") {
-		workspaceDir := resolveWorkspaceDirWithTarget(workspace, cfg, modulePath, moduleDir)
+		workspaceDir := workspacepkg.Resolve(workspace, cfg, modulePath, moduleDir)
 		resolvedVersion, warnings, err := resolveVersionFromWorkspace(ctx, modulePath, finalVersion, workspaceDir, logger)
 		if err != nil {
 			if finalVersion == "" {
@@ -204,7 +205,7 @@ func runManifestGenerate(moduleName, modulePath, repository, version, outputPath
 	finalDependentOptions := []manifest.DependentOptions{}
 
 	if len(dependents) == 0 {
-		workspaceDir = resolveWorkspaceDirWithTarget(workspace, cfg, modulePath, moduleDir)
+		workspaceDir = workspacepkg.Resolve(workspace, cfg, modulePath, moduleDir)
 		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, version, githubOrg, workspaceDir, maxDepth,
 			includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns, cfg, logger)
 		if err != nil {
