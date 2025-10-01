@@ -9,7 +9,6 @@ import (
 
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/pkg/config"
-	"github.com/goliatone/cascade/pkg/util/modpath"
 	workspacepkg "github.com/goliatone/cascade/pkg/workspace"
 	"gopkg.in/yaml.v3"
 )
@@ -247,32 +246,4 @@ func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *con
 
 	fmt.Printf("Manifest generated successfully: %s\n", finalOutputPath)
 	return nil
-}
-
-func buildDependentOptions(dependents []string) []manifest.DependentOptions {
-	if len(dependents) == 0 {
-		return []manifest.DependentOptions{}
-	}
-
-	options := make([]manifest.DependentOptions, len(dependents))
-	for i, dep := range dependents {
-		repo := strings.TrimSpace(dep)
-		modulePath := ""
-
-		if strings.Count(repo, "/") == 1 && !strings.Contains(repo, ".") {
-			modulePath = "github.com/" + repo
-		} else {
-			modulePath = repo
-			repo = deriveRepository(repo)
-		}
-
-		options[i] = manifest.DependentOptions{
-			Repository:      repo,
-			CloneURL:        buildCloneURL(repo),
-			ModulePath:      modulePath,
-			LocalModulePath: deriveLocalModulePath(modulePath),
-		}
-	}
-
-	return options
 }
