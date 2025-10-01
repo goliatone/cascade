@@ -7,15 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/internal/planner"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
-	workspacepkg "github.com/goliatone/cascade/pkg/workspace"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // newManifestCommand creates the manifest management subcommand with generate subcommand
@@ -120,231 +117,28 @@ Examples:
 }
 
 func runManifestGenerate(moduleName, modulePath, repository, version, outputPath string, dependents []string, slackChannel, webhook string, force, yes, nonInteractive bool, workspace string, maxDepth int, includePatterns, excludePatterns []string, githubOrg string, githubIncludePatterns, githubExcludePatterns []string) error {
-	start := time.Now()
-	ctx := context.Background()
-	logger := container.Logger()
-	cfg := container.Config()
-
-	defer func() {
-		if logger != nil {
-			logger.Debug("Manifest generate command completed",
-				"duration_ms", time.Since(start).Milliseconds(),
-				"module_path", modulePath,
-				"version", version,
-				"output", outputPath,
-				"dry_run", cfg.Executor.DryRun,
-			)
-		}
-	}()
-
-	// Detect module information when not explicitly provided
-	finalModulePath := strings.TrimSpace(modulePath)
-	moduleDir := ""
-	if finalModulePath != "" {
-		// Module path explicitly provided, try to derive directory
-		moduleDir = workspacepkg.DeriveModuleDirFromPath(finalModulePath)
+	req := manifestGenerateRequest{
+		ModuleName:      moduleName,
+		ModulePath:      modulePath,
+		Repository:      repository,
+		Version:         version,
+		OutputPath:      outputPath,
+		Dependents:      dependents,
+		SlackChannel:    slackChannel,
+		Webhook:         webhook,
+		Force:           force,
+		Yes:             yes,
+		NonInteractive:  nonInteractive,
+		Workspace:       workspace,
+		MaxDepth:        maxDepth,
+		IncludePatterns: includePatterns,
+		ExcludePatterns: excludePatterns,
+		GitHubOrg:       githubOrg,
+		GitHubInclude:   githubIncludePatterns,
+		GitHubExclude:   githubExcludePatterns,
 	}
 
-	// Fall back to auto-detection if no explicit module path or derivation failed
-	if finalModulePath == "" || moduleDir == "" {
-		if autoModulePath, autoModuleDir, err := detectModuleInfo(); err == nil {
-			if moduleDir == "" {
-				moduleDir = autoModuleDir
-			}
-			if finalModulePath == "" {
-				finalModulePath = autoModulePath
-			}
-		} else if finalModulePath == "" {
-			return newValidationError("module path must be provided or go.mod must be present in the current directory", err)
-		}
-	}
-	modulePath = finalModulePath
-
-	// Derive defaults from module path
-	if moduleName == "" {
-		moduleName = deriveModuleName(modulePath)
-	}
-	if repository == "" {
-		repository = deriveRepository(modulePath)
-	}
-	if githubOrg == "" {
-		githubOrg = deriveGitHubOrgFromModule(modulePath)
-	}
-
-	// Resolve version if not provided or if "latest" specified
-	finalVersion := strings.TrimSpace(version)
-	var versionWarnings []string
-	if finalVersion == "" {
-		detectedVersion, warnings := detectDefaultVersion(ctx, moduleDir)
-		versionWarnings = append(versionWarnings, warnings...)
-		finalVersion = detectedVersion
-	}
-	if finalVersion == "" || strings.EqualFold(finalVersion, "latest") {
-		workspaceDir := workspacepkg.Resolve(workspace, cfg, modulePath, moduleDir)
-		resolvedVersion, warnings, err := resolveVersionFromWorkspace(ctx, modulePath, finalVersion, workspaceDir, logger)
-		if err != nil {
-			if finalVersion == "" {
-				return newValidationError("version resolution failed and no explicit version provided", err)
-			} else {
-				return newValidationError("latest version resolution failed", err)
-			}
-		}
-		finalVersion = resolvedVersion
-		versionWarnings = warnings
-	}
-
-	version = finalVersion
-
-	// Resolve output path
-	finalOutputPath := resolveGenerateOutputPath(outputPath, cfg)
-	outputPath = finalOutputPath
-
-	// Resolve discovery options if dependents not explicitly provided
-	var discoveredDependents []manifest.DependentOptions
-	workspaceDir := ""
-	finalDependentOptions := []manifest.DependentOptions{}
-
-	if len(dependents) == 0 {
-		workspaceDir = workspacepkg.Resolve(workspace, cfg, modulePath, moduleDir)
-		mergedDependents, err := performMultiSourceDiscovery(ctx, modulePath, version, githubOrg, workspaceDir, maxDepth,
-			includePatterns, excludePatterns, githubIncludePatterns, githubExcludePatterns, cfg, logger)
-		if err != nil {
-			logger.Warn("Discovery failed, proceeding with empty dependents list", "error", err)
-		} else {
-			discoveredDependents = mergedDependents
-
-			filteredDependents, skippedDependents := filterDiscoveredDependents(discoveredDependents, modulePath, finalVersion, workspaceDir, logger)
-			if len(skippedDependents) > 0 && logger != nil {
-				logger.Info("Filtered discovered dependents",
-					"skipped", dependentsOptionsToStrings(skippedDependents))
-			}
-			discoveredDependents = filteredDependents
-			finalDependentOptions = append(finalDependentOptions, discoveredDependents...)
-
-			if len(discoveredDependents) > 0 {
-				logger.Info("Discovery completed",
-					"total_dependents", len(discoveredDependents),
-					"dependents", dependentsOptionsToStrings(discoveredDependents))
-			}
-		}
-
-		if len(discoveredDependents) > 0 && !yes && !nonInteractive {
-			filteredDependents, err := promptForDependentSelection(discoveredDependents)
-			if err != nil {
-				return fmt.Errorf("dependent selection failed: %w", err)
-			}
-			discoveredDependents = filteredDependents
-			finalDependentOptions = append([]manifest.DependentOptions{}, discoveredDependents...)
-		}
-	} else {
-		finalDependentOptions = buildDependentOptions(dependents)
-	}
-
-	finalDependentNames := dependentsOptionsToStrings(finalDependentOptions)
-
-	// Display discovery summary and handle confirmation
-	if err := displayDiscoverySummary(modulePath, finalVersion, workspaceDir, discoveredDependents, finalDependentNames, versionWarnings, yes, nonInteractive, cfg.Executor.DryRun); err != nil {
-		return err
-	}
-
-	logger.Info("Generating dependency manifest",
-		"module", modulePath,
-		"version", finalVersion,
-		"output", finalOutputPath)
-
-	// Build generate options with config defaults merged
-	defaultBranch := config.ManifestDefaultBranch(cfg)
-	defaultTests := buildManifestDefaultTests(cfg)
-	slackDefault := slackChannel
-	if slackDefault == "" {
-		slackDefault = config.ManifestDefaultSlackChannel(cfg)
-	}
-	webhookDefault := webhook
-	if webhookDefault == "" {
-		webhookDefault = config.ManifestDefaultWebhook(cfg)
-	}
-
-	options := manifest.GenerateOptions{
-		ModuleName:        moduleName,
-		ModulePath:        modulePath,
-		Repository:        repository,
-		Version:           finalVersion,
-		Dependents:        finalDependentOptions,
-		DefaultBranch:     defaultBranch,
-		DefaultLabels:     []string{"automation:cascade"},
-		DefaultCommitTmpl: "chore(deps): bump {{ .Module }} to {{ .Version }}",
-		DefaultTests:      defaultTests,
-		DefaultNotifications: manifest.Notifications{
-			SlackChannel: slackDefault,
-			Webhook:      webhookDefault,
-		},
-		DefaultPRConfig: manifest.PRConfig{
-			TitleTemplate: "chore(deps): bump {{ .Module }} to {{ .Version }}",
-			BodyTemplate:  "Automated dependency update for {{ .Module }} to {{ .Version }}",
-		},
-	}
-
-	// Generate manifest
-	generator := container.ManifestGenerator()
-	generatedManifest, err := generator.Generate(ctx, options)
-	if err != nil {
-		return newValidationError("failed to generate manifest", err)
-	}
-
-	manifestToWrite := generatedManifest
-
-	if _, err := os.Stat(finalOutputPath); err == nil {
-		loader := container.Manifest()
-		if loader != nil {
-			existingManifest, loadErr := loader.Load(finalOutputPath)
-			if loadErr != nil {
-				if logger != nil {
-					logger.Warn("Existing manifest could not be parsed; overwriting with generated manifest",
-						"path", finalOutputPath,
-						"error", loadErr,
-					)
-				}
-			} else {
-				manifestToWrite = mergeManifestDependents(existingManifest, generatedManifest)
-			}
-		}
-	}
-
-	// Serialize to YAML
-	yamlData, err := yaml.Marshal(manifestToWrite)
-	if err != nil {
-		return newConfigError("failed to serialize manifest to YAML", err)
-	}
-
-	// Handle dry-run vs actual file writing
-	if cfg.Executor.DryRun {
-		fmt.Printf("DRY RUN: Would write manifest to %s\n", finalOutputPath)
-		fmt.Printf("--- Generated Manifest ---\n%s", string(yamlData))
-		return nil
-	}
-
-	// Check for existing file and handle overwrite logic
-	if _, err := os.Stat(finalOutputPath); err == nil {
-		if !force {
-			fmt.Printf("File %s already exists. Overwrite? [y/N]: ", finalOutputPath)
-			var response string
-			fmt.Scanln(&response)
-			if response != "y" && response != "Y" && response != "yes" && response != "YES" {
-				fmt.Println("Manifest generation cancelled.")
-				return nil
-			}
-		} else {
-			logger.Info("Overwriting existing manifest with --force flag", "path", finalOutputPath)
-		}
-	}
-
-	// Write to file
-	if err := os.WriteFile(finalOutputPath, yamlData, 0644); err != nil {
-		return newFileError("failed to write manifest file", err)
-	}
-
-	fmt.Printf("Manifest generated successfully: %s\n", finalOutputPath)
-	return nil
+	return manifestGenerate(context.Background(), req, container.Config())
 }
 
 func mergeManifestDependents(existing, generated *manifest.Manifest) *manifest.Manifest {
