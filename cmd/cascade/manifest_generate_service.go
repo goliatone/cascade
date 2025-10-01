@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/goliatone/cascade/internal/manifest"
+	"github.com/goliatone/cascade/internal/manifest/persist"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/util/modpath"
 	workspacepkg "github.com/goliatone/cascade/pkg/workspace"
-	"gopkg.in/yaml.v3"
 )
 
 type manifestGenerateRequest struct {
@@ -196,38 +197,26 @@ func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *con
 	if err != nil {
 		return newValidationError("failed to generate manifest", err)
 	}
-
-	manifestToWrite := generatedManifest
-
-	if _, err := os.Stat(finalOutputPath); err == nil {
-		loader := container.Manifest()
-		if loader != nil {
-			existingManifest, loadErr := loader.Load(finalOutputPath)
-			if loadErr != nil {
-				if logger != nil {
-					logger.Warn("Existing manifest could not be parsed; overwriting with generated manifest",
-						"path", finalOutputPath,
-						"error", loadErr,
-					)
-				}
-			} else {
-				manifestToWrite = mergeManifestDependents(existingManifest, generatedManifest)
-			}
+	if generatedManifest != nil && len(generatedManifest.Modules) > 0 {
+		module := &generatedManifest.Modules[0]
+		if module.Name == "" {
+			module.Name = req.ModuleName
+		}
+		if module.Module == "" {
+			module.Module = req.ModulePath
+		}
+		if module.Repo == "" {
+			module.Repo = req.Repository
 		}
 	}
 
-	yamlData, err := yaml.Marshal(manifestToWrite)
-	if err != nil {
-		return newConfigError("failed to serialize manifest to YAML", err)
+	fileExists := false
+	if info, err := os.Stat(finalOutputPath); err == nil && !info.IsDir() {
+		fileExists = true
 	}
 
-	if cfg.Executor.DryRun {
-		fmt.Printf("DRY RUN: Would write manifest to %s\n", finalOutputPath)
-		fmt.Printf("--- Generated Manifest ---\n%s", string(yamlData))
-		return nil
-	}
-
-	if _, err := os.Stat(finalOutputPath); err == nil {
+	shouldWrite := !cfg.Executor.DryRun
+	if shouldWrite && fileExists {
 		if !req.Force {
 			fmt.Printf("File %s already exists. Overwrite? [y/N]: ", finalOutputPath)
 			var response string
@@ -241,8 +230,50 @@ func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *con
 		}
 	}
 
-	if err := os.WriteFile(finalOutputPath, yamlData, 0644); err != nil {
-		return newFileError("failed to write manifest file", err)
+	persistor := persist.NewPersistor(container.Manifest())
+	result, err := persistor.Save(generatedManifest, persist.Options{
+		Path:          finalOutputPath,
+		TargetModule:  req.ModulePath,
+		TargetVersion: finalVersion,
+		DryRun:        !shouldWrite,
+	})
+	if err != nil {
+		var validationErr *manifest.ValidationError
+		if errors.As(err, &validationErr) {
+			return newValidationError("manifest validation failed", validationErr)
+		}
+		if shouldWrite {
+			return newFileError("failed to persist manifest", err)
+		}
+		return newConfigError("failed to prepare manifest", err)
+	}
+
+	if logger != nil {
+		for _, warning := range result.Report.LoadWarnings {
+			logger.Warn("Manifest persistence warning", "warning", warning)
+		}
+		if len(result.Report.DeduplicatedRepos) > 0 {
+			logger.Info("Deduplicated dependents during manifest sanitization", "repos", result.Report.DeduplicatedRepos)
+		}
+		if len(result.Report.DroppedDependents) > 0 {
+			droppedRepos := make([]string, len(result.Report.DroppedDependents))
+			for i, drop := range result.Report.DroppedDependents {
+				droppedRepos[i] = drop.Repo
+			}
+			logger.Info("Dropped dependents during manifest sanitization",
+				"count", len(result.Report.DroppedDependents),
+				"repos", droppedRepos,
+			)
+		}
+		if result.Report.ManifestVersionUpdated {
+			logger.Info("Normalized manifest schema version", "version", result.Manifest.ManifestVersion)
+		}
+	}
+
+	if !shouldWrite {
+		fmt.Printf("DRY RUN: Would write manifest to %s\n", finalOutputPath)
+		fmt.Printf("--- Generated Manifest ---\n%s", string(result.YAML))
+		return nil
 	}
 
 	fmt.Printf("Manifest generated successfully: %s\n", finalOutputPath)
