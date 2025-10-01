@@ -1,5 +1,45 @@
 # Changelog
 
+# [0.1.18](https://github.com/goliatone/cascade/compare/v0.1.17...v0.1.18) - (2025-10-01)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Check for logger ([f5c5e17](https://github.com/goliatone/cascade/commit/f5c5e1776667576c9c4b1da193413e91ae19602c))  - (goliatone)
+- Ommit empty from config ([5e52310](https://github.com/goliatone/cascade/commit/5e52310fc28cb98500da8e2feca656e2357cc801))  - (goliatone)
+- Merge manifest ([c4090f3](https://github.com/goliatone/cascade/commit/c4090f356e00878a9dfc89ccce1aae0997e7b340))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.18 ([cd90eea](https://github.com/goliatone/cascade/commit/cd90eea2159615e2a3706c19a630b6c3cb6f4915))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Flag helpers ([39de24b](https://github.com/goliatone/cascade/commit/39de24bf383adff2c3157ecbbadb1ecdccd86ec9))  - (goliatone)
+- Manifest persist ([33b1bce](https://github.com/goliatone/cascade/commit/33b1bce4eb4cfa03317c848199d8a6cef16c5cbc))  - (goliatone)
+- Generate manifest ([18b39c7](https://github.com/goliatone/cascade/commit/18b39c738ebd7d0ebc11ba1568d239ac7848cf80))  - (goliatone)
+- Service discovery ([0c2b27c](https://github.com/goliatone/cascade/commit/0c2b27c12f69bd6922d6800c10203ab2cbdfc051))  - (goliatone)
+- Filtering config ([2363610](https://github.com/goliatone/cascade/commit/23636104a416cff459a12ec44da47704dd5deb77))  - (goliatone)
+- Utils ([10761ef](https://github.com/goliatone/cascade/commit/10761efee9b9c5347e403bf2d152b4b64cf45ec3))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Provider setup ([b8654f3](https://github.com/goliatone/cascade/commit/b8654f373bb4dcdba31e0f413295cc9c29c63b19))  - (goliatone)
+- Simplify code ([01bdc8b](https://github.com/goliatone/cascade/commit/01bdc8b03a5a73fbc836d2af8db7a7290244adf4))  - (goliatone)
+- Workspace setup ([b01c651](https://github.com/goliatone/cascade/commit/b01c651533fd7a828959436cb2c38d232337068d))  - (goliatone)
+- Centralize workspace ([85ca93a](https://github.com/goliatone/cascade/commit/85ca93a8c3bac652001f7067416e64e452c657f5))  - (goliatone)
+- Centralize config ([680ae5f](https://github.com/goliatone/cascade/commit/680ae5f816a11a9b046413652a7e274a76234b66))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update tests ([ef0b395](https://github.com/goliatone/cascade/commit/ef0b3951ccd60b66841e2417f73d349499f2b656))  - (goliatone)
+- Refactoring service ([ef9e6a6](https://github.com/goliatone/cascade/commit/ef9e6a69b7aaa2e0799cb025b4de221413bb90b9))  - (goliatone)
+- Refactor consilation code ([b41bf0a](https://github.com/goliatone/cascade/commit/b41bf0afa778a2f54808c4bf787fcdc43f42f144))  - (goliatone)
+- Fix defualts ([fddfcc8](https://github.com/goliatone/cascade/commit/fddfcc80a10d4c61e1e2db073f2011d4408f02a9))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.17 ([764b4ba](https://github.com/goliatone/cascade/commit/764b4bae377ff4e3181ceb904345a9da94ce5a53))  - (goliatone)
+
 # [0.1.17](https://github.com/goliatone/cascade/compare/v0.1.16...v0.1.17) - (2025-09-30)
 
 ## <!-- 1 -->🐛 Bug Fixes
