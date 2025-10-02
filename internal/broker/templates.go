@@ -428,22 +428,21 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// escapeMarkdown escapes special markdown characters to prevent injection.
+var slackEscapeReplacer = strings.NewReplacer(
+	"&", "&amp;",
+	"<", "&lt;",
+	">", "&gt;",
+	"`", "\\`",
+	"*", "\\*",
+	"[", "\\[",
+	"]", "\\]",
+	"|", "\\|",
+)
+
+// escapeMarkdown escapes characters that would break Slack mrkdwn formatting while
+// keeping common symbols (like parentheses and underscores) readable.
 func escapeMarkdown(s string) string {
-	// Order matters: escape & first to avoid double-escaping
-	result := strings.ReplaceAll(s, "&", "&amp;")
-	result = strings.ReplaceAll(result, "<", "&lt;")
-	result = strings.ReplaceAll(result, ">", "&gt;")
-	result = strings.ReplaceAll(result, "`", "\\`")
-	result = strings.ReplaceAll(result, "*", "\\*")
-	result = strings.ReplaceAll(result, "_", "\\_")
-	result = strings.ReplaceAll(result, "#", "\\#")
-	result = strings.ReplaceAll(result, "[", "\\[")
-	result = strings.ReplaceAll(result, "]", "\\]")
-	result = strings.ReplaceAll(result, "(", "\\(")
-	result = strings.ReplaceAll(result, ")", "\\)")
-	result = strings.ReplaceAll(result, "|", "\\|")
-	return result
+	return slackEscapeReplacer.Replace(s)
 }
 
 // joinStrings is a template function that joins string slices.
