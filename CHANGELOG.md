@@ -1,5 +1,29 @@
 # Changelog
 
+# [0.1.20](https://github.com/goliatone/cascade/compare/v0.1.19...v0.1.20) - (2025-10-02)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update notification tests ([a6e6781](https://github.com/goliatone/cascade/commit/a6e6781f776cdf5058888477c3bb9234d25eeaed))  - (goliatone)
+- Update notification template ([3649385](https://github.com/goliatone/cascade/commit/3649385ca74963857c068ed7b966c64097f25611))  - (goliatone)
+- Ensure we check for new version of pacakges when we plan/release ([7137f17](https://github.com/goliatone/cascade/commit/7137f170fab47fdc1de928c3c0b5a541bd28b4dd))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.20 ([5ceb951](https://github.com/goliatone/cascade/commit/5ceb9516616dce590f5b012515a55f336aa2c047))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Executor dep ([1f6e705](https://github.com/goliatone/cascade/commit/1f6e7057a5c819201ed28b698d6629e8f315736d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.19 ([f9e3fc8](https://github.com/goliatone/cascade/commit/f9e3fc8b44358c020e6bea4aa106c0391270d7bb))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([2aa9a5e](https://github.com/goliatone/cascade/commit/2aa9a5e1756419c3361a928b253770822d6969ab))  - (goliatone)
+
 # [0.1.19](https://github.com/goliatone/cascade/compare/v0.1.18...v0.1.19) - (2025-10-01)
 
 ## <!-- 13 -->📦 Bumps
