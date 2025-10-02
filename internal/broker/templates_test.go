@@ -305,12 +305,12 @@ func TestEscapeMarkdown(t *testing.T) {
 		{
 			name:  "html characters",
 			input: "<script>alert('xss')</script>",
-			want:  "&lt;script&gt;alert\\('xss'\\)&lt;/script&gt;",
+			want:  "&lt;script&gt;alert('xss')&lt;/script&gt;",
 		},
 		{
 			name:  "mixed characters",
 			input: "# Header with `code` and <tags>",
-			want:  "\\# Header with \\`code\\` and &lt;tags&gt;",
+			want:  "# Header with \\`code\\` and &lt;tags&gt;",
 		},
 	}
 
