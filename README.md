@@ -151,6 +151,10 @@ Cascade uses intelligent dependency checking to avoid unnecessary updates:
 - **`remote`** - Clone repositories remotely via shallow git clones (works without workspace)
 - **`auto`** - Try local first, fall back to remote if unavailable (recommended)
 
+When a local workspace reports that a repository still requires an update, Cascade
+confirms the result against the remote repository before scheduling work. This keeps
+plan/release runs accurate even if a cached workspace has not been refreshed since the dependent was fixed upstream.
+
 ### CI/CD Configuration
 
 Use the following flags to optimize for CI/CD environments:
