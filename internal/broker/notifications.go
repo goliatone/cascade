@@ -81,6 +81,7 @@ func (s *SlackNotifier) Send(ctx context.Context, item planner.WorkItem, result 
 		"channel": s.channel,
 		"text":    message,
 		"as_user": true,
+		"mrkdwn":  true,
 	}
 
 	return s.sendWithRetry(ctx, payload)
@@ -336,19 +337,17 @@ func isTransientError(err error) bool {
 }
 
 // Default notification template
-const defaultNotificationTemplate = `{{if eq .Status "completed"}}✅{{else if eq .Status "failed"}}❌{{else}}⚠️{{end}} **{{.Module}}** update {{.Status}}
+const defaultNotificationTemplate = `{{if eq .Status "completed"}}✅{{else if eq .Status "failed"}}❌{{else}}⚠️{{end}} *{{.Module}}* update *{{.Status}}*
 
-**Repository**: {{.Repo}}
-{{if .BranchName}}**Branch**: {{.BranchName}}{{end}}
-{{if .Status}}**Status**: {{.Status}}{{end}}
-{{if .CommitHash}}**Commit**: {{.CommitHash | truncate8}}{{end}}
+*Repository:* {{.Repo}}
+{{if .BranchName}}*Branch:* {{.BranchName}}{{end}}
+{{if .CommitHash}}*Commit:* {{.CommitHash | truncate8}}{{end}}
 
-{{if .Reason}}**Details**: {{.Reason | truncate200 | escape}}{{end}}
-{{if .FailureSummary}}**Failing Test**: {{.FailureSummary | escape}}
-{{if .FailureMessage}}**Failure**: {{.FailureMessage | truncate200 | escape}}{{end}}
-{{if .FailureCommand}}**Command**: {{.FailureCommand | escape}}{{end}}
-{{end}}
-{{if .DependencySummary}}**Dependency**: {{.DependencySummary | escape}}{{if .DependencyNote}} - {{.DependencyNote | truncate200 | escape}}{{end}}{{end}}
+{{if .Reason}}*Details:* {{.Reason | truncate200 | escape}}{{end}}
+{{if .FailureSummary}}*Failing Test:* {{.FailureSummary | escape}}{{end}}
+{{if .FailureMessage}}*Failure:* {{.FailureMessage | truncate200 | escape}}{{end}}
+{{if .FailureCommand}}*Command:* {{.FailureCommand | escape}}{{end}}
+{{if .DependencySummary}}*Dependency:* {{.DependencySummary | escape}}{{if .DependencyNote}} — {{.DependencyNote | truncate200 | escape}}{{end}}{{end}}
 
 Generated at {{.Timestamp.Format "15:04:05 MST"}}`
 
