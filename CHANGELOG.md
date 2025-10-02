@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.1.22](https://github.com/goliatone/cascade/compare/v0.1.21...v0.1.22) - (2025-10-02)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.22 ([1d172dc](https://github.com/goliatone/cascade/commit/1d172dc655adc38cd2e27a93cee8681b579a0ff0))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Slack message format ([c3100b7](https://github.com/goliatone/cascade/commit/c3100b79e02aec677f4446418fa02fdbfa21704a))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.21 ([97db806](https://github.com/goliatone/cascade/commit/97db806d3691dab82f635dc46b9f9fcb5c2fb5d7))  - (goliatone)
+
 # [0.1.21](https://github.com/goliatone/cascade/compare/v0.1.20...v0.1.21) - (2025-10-02)
 
 ## <!-- 1 -->🐛 Bug Fixes
