@@ -102,6 +102,17 @@ func mergeNotifications(defaults, dependent Notifications) Notifications {
 	if result.Webhook == "" {
 		result.Webhook = defaults.Webhook
 	}
+	if result.GitHubIssues == nil && defaults.GitHubIssues != nil {
+		copy := *defaults.GitHubIssues
+		if len(copy.Labels) > 0 {
+			copy.Labels = append([]string(nil), copy.Labels...)
+		}
+		result.GitHubIssues = &copy
+	} else if result.GitHubIssues != nil && defaults.GitHubIssues != nil {
+		if len(result.GitHubIssues.Labels) == 0 && len(defaults.GitHubIssues.Labels) > 0 {
+			result.GitHubIssues.Labels = append([]string(nil), defaults.GitHubIssues.Labels...)
+		}
+	}
 	return result
 }
 
