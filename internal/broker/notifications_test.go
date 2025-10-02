@@ -3,6 +3,7 @@ package broker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/goliatone/cascade/internal/executor"
+	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/internal/planner"
 )
 
@@ -414,6 +416,72 @@ func TestRenderNotification_Failed(t *testing.T) {
 
 	if !strings.Contains(message, "Tests failed with multiple") {
 		t.Error("Expected truncated reason in notification")
+	}
+}
+
+func TestRenderNotification_FailureDetails(t *testing.T) {
+	item := planner.WorkItem{
+		Module: "example.com/module",
+		Repo:   "owner/repo",
+	}
+
+	failureOutput := `=== RUN   TestExample
+--- FAIL: TestExample (0.00s)
+    example_test.go:12: unexpected response code
+FAIL
+exit status 1
+FAIL    example.com/app    0.123s
+`
+
+	cmd := manifest.Command{Cmd: []string{"go", "test", "./..."}}
+	cmdErr := &executor.CommandExecutionError{
+		Command:  cmd.Cmd,
+		Dir:      "repo",
+		Output:   failureOutput,
+		ExitCode: 1,
+		Err:      errors.New("exit status 1"),
+	}
+
+	result := &executor.Result{
+		Status: executor.StatusFailed,
+		Reason: "test execution failed",
+		TestResults: []executor.CommandResult{
+			{
+				Command: cmd,
+				Output:  failureOutput,
+				Err:     cmdErr,
+			},
+		},
+		DependencyImpact: &executor.DependencyImpact{
+			Module:             "example.com/pkg",
+			TargetVersion:      "v1.2.0",
+			OldVersion:         "v1.1.0",
+			OldVersionDetected: true,
+			NewVersion:         "v1.2.0",
+			NewVersionDetected: true,
+			Applied:            true,
+		},
+	}
+
+	message, err := RenderNotification("", item, result)
+	if err != nil {
+		t.Fatalf("RenderNotification error: %v", err)
+	}
+
+	if !strings.Contains(message, "**Failing Test**: TestExample (example.com/app)") {
+		t.Fatalf("expected failing test summary in message, got:\n%s", message)
+	}
+
+	if !strings.Contains(message, "**Failure**: example_test.go:12: unexpected response code") {
+		t.Fatalf("expected failure details in message, got:\n%s", message)
+	}
+
+	if !strings.Contains(message, "**Command**: go test ./...") {
+		t.Fatalf("expected failing command in message, got:\n%s", message)
+	}
+
+	if !strings.Contains(message, "**Dependency**: example.com/pkg -> v1.2.0 (was v1.1.0)") {
+		t.Fatalf("expected dependency summary in message, got:\n%s", message)
 	}
 }
 
