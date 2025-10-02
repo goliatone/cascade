@@ -468,11 +468,11 @@ FAIL    example.com/app    0.123s
 		t.Fatalf("RenderNotification error: %v", err)
 	}
 
-	if !strings.Contains(message, "**Failing Test**: TestExample (example.com/app)") {
+	if !strings.Contains(message, "**Failing Test**: "+escapeMarkdown("TestExample (example.com/app)")) {
 		t.Fatalf("expected failing test summary in message, got:\n%s", message)
 	}
 
-	if !strings.Contains(message, "**Failure**: example_test.go:12: unexpected response code") {
+	if !strings.Contains(message, "**Failure**: "+escapeMarkdown("example_test.go:12: unexpected response code")) {
 		t.Fatalf("expected failure details in message, got:\n%s", message)
 	}
 
@@ -480,7 +480,7 @@ FAIL    example.com/app    0.123s
 		t.Fatalf("expected failing command in message, got:\n%s", message)
 	}
 
-	if !strings.Contains(message, "**Dependency**: example.com/pkg -> v1.2.0 (was v1.1.0)") {
+	if !strings.Contains(message, "**Dependency**: "+escapeMarkdown("example.com/pkg -> v1.2.0 (was v1.1.0)")) {
 		t.Fatalf("expected dependency summary in message, got:\n%s", message)
 	}
 }
