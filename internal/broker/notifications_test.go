@@ -14,6 +14,7 @@ import (
 	"github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/internal/planner"
+	"github.com/google/go-github/v66/github"
 )
 
 // mockHTTPClient is a test double for HTTP client.
@@ -53,6 +54,43 @@ func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 		Body:       io.NopCloser(strings.NewReader(resp.body)),
 		Header:     make(http.Header),
 	}, nil
+}
+
+type stubGitHubIssuesService struct {
+	createIssue    *github.Issue
+	createErr      error
+	createRequests []*github.IssueRequest
+	listIssues     [][]*github.Issue
+	listErr        error
+	listCalls      int
+}
+
+func (s *stubGitHubIssuesService) Create(_ context.Context, _, _ string, issue *github.IssueRequest) (*github.Issue, *github.Response, error) {
+	copy := *issue
+	if issue.Labels != nil {
+		labels := append([]string(nil), (*issue.Labels)...)
+		copy.Labels = &labels
+	}
+	s.createRequests = append(s.createRequests, &copy)
+	if s.createErr != nil {
+		return nil, &github.Response{}, s.createErr
+	}
+	return s.createIssue, &github.Response{}, nil
+}
+
+func (s *stubGitHubIssuesService) ListByRepo(_ context.Context, _, _ string, _ *github.IssueListByRepoOptions) ([]*github.Issue, *github.Response, error) {
+	s.listCalls++
+	if s.listErr != nil {
+		return nil, &github.Response{}, s.listErr
+	}
+	if s.listCalls == 0 || len(s.listIssues) == 0 {
+		return []*github.Issue{}, &github.Response{}, nil
+	}
+	index := s.listCalls - 1
+	if index >= len(s.listIssues) {
+		index = len(s.listIssues) - 1
+	}
+	return s.listIssues[index], &github.Response{}, nil
 }
 
 func TestSlackNotifier_Send_Success(t *testing.T) {
@@ -262,6 +300,144 @@ func TestWebhookNotifier_Send_NonTransientError(t *testing.T) {
 	if len(client.requests) != 1 {
 		t.Fatalf("Expected 1 request (no retries for 400), got %d", len(client.requests))
 	}
+}
+
+func TestGitHubIssueNotifier_CreateIssue(t *testing.T) {
+	issueURL := "https://github.com/owner/repo/issues/123"
+	service := &stubGitHubIssuesService{
+		listIssues: [][]*github.Issue{{}},
+		createIssue: &github.Issue{
+			HTMLURL: github.String(issueURL),
+			Number:  github.Int(123),
+		},
+	}
+
+	notifier := NewGitHubIssueNotifier(service, &GitHubIssueConfig{Enabled: true, Labels: []string{"cascade-failure"}})
+
+	item := planner.WorkItem{
+		Repo:          "owner/repo",
+		Module:        "example.com/module",
+		SourceModule:  "example.com/module",
+		SourceVersion: "v1.2.3",
+		BranchName:    "auto/example-v1.2.3",
+		Notifications: manifest.Notifications{
+			GitHubIssues: &manifest.GitHubIssueNotification{Enabled: true, Labels: []string{"cascade-failure", "dependencies"}},
+		},
+	}
+
+	result := &executor.Result{Status: executor.StatusFailed, Reason: "tests failed"}
+
+	notification, err := notifier.Send(context.Background(), item, result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if notification == nil {
+		t.Fatal("expected notification result")
+	}
+	if notification.Message != issueURL {
+		t.Fatalf("expected message %q, got %q", issueURL, notification.Message)
+	}
+
+	if len(service.createRequests) != 1 {
+		t.Fatalf("expected 1 create request, got %d", len(service.createRequests))
+	}
+	request := service.createRequests[0]
+
+	expectedTitle, err := RenderGitHubIssueTitle("", item, result)
+	if err != nil {
+		t.Fatalf("failed to render expected title: %v", err)
+	}
+	if request.Title == nil || *request.Title != expectedTitle {
+		t.Fatalf("unexpected issue title: got %q, want %q", stringPtrValue(request.Title), expectedTitle)
+	}
+
+	if request.Labels == nil {
+		t.Fatal("expected labels to be set")
+	}
+	labels := *request.Labels
+	if len(labels) != 2 || labels[0] != "cascade-failure" || labels[1] != "dependencies" {
+		t.Fatalf("unexpected labels: %v", labels)
+	}
+}
+
+func TestGitHubIssueNotifier_SkipsWhenDisabled(t *testing.T) {
+	service := &stubGitHubIssuesService{}
+	notifier := NewGitHubIssueNotifier(service, nil)
+
+	item := planner.WorkItem{
+		Repo: "owner/repo",
+		Notifications: manifest.Notifications{
+			GitHubIssues: &manifest.GitHubIssueNotification{Enabled: false},
+		},
+	}
+	result := &executor.Result{Status: executor.StatusFailed}
+
+	notification, err := notifier.Send(context.Background(), item, result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if notification == nil {
+		t.Fatal("expected notification result")
+	}
+	if notification.Message != "github issue notifications disabled" {
+		t.Fatalf("expected disabled message, got %q", notification.Message)
+	}
+	if len(service.createRequests) != 0 {
+		t.Fatalf("expected no create requests, got %d", len(service.createRequests))
+	}
+}
+
+func TestGitHubIssueNotifier_ReusesExistingIssue(t *testing.T) {
+	item := planner.WorkItem{
+		Repo:          "owner/repo",
+		Module:        "example.com/module",
+		SourceModule:  "example.com/module",
+		SourceVersion: "v1.2.3",
+		Notifications: manifest.Notifications{},
+	}
+	result := &executor.Result{Status: executor.StatusFailed, Reason: "build failed"}
+
+	expectedTitle, err := RenderGitHubIssueTitle("", item, result)
+	if err != nil {
+		t.Fatalf("render title failed: %v", err)
+	}
+
+	existingURL := "https://github.com/owner/repo/issues/456"
+	service := &stubGitHubIssuesService{
+		listIssues: [][]*github.Issue{{
+			{
+				Title:   github.String(expectedTitle),
+				HTMLURL: github.String(existingURL),
+				Number:  github.Int(456),
+			},
+		}},
+	}
+
+	notifier := NewGitHubIssueNotifier(service, &GitHubIssueConfig{Enabled: true})
+
+	notification, err := notifier.Send(context.Background(), item, result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if notification == nil {
+		t.Fatal("expected notification result")
+	}
+	if notification.Message != existingURL {
+		t.Fatalf("expected existing issue URL %q, got %q", existingURL, notification.Message)
+	}
+	if len(service.createRequests) != 0 {
+		t.Fatalf("expected no create requests, got %d", len(service.createRequests))
+	}
+	if service.listCalls == 0 {
+		t.Fatal("expected list to be called")
+	}
+}
+
+func stringPtrValue(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func TestMultiNotifier_Send_PartialSuccess(t *testing.T) {

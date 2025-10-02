@@ -177,6 +177,16 @@ func newNotifierFromConfigWithManifest(cfg *config.Config, manifestNotifications
 	notifyCfg := broker.DefaultNotificationConfig()
 	var notifiers []broker.Notifier
 
+	var githubDefaults *broker.GitHubIssueConfig
+	if manifestNotifications != nil && manifestNotifications.GitHubIssues != nil {
+		githubDefaults = &broker.GitHubIssueConfig{
+			Enabled: manifestNotifications.GitHubIssues.Enabled,
+		}
+		if len(manifestNotifications.GitHubIssues.Labels) > 0 {
+			githubDefaults.Labels = append([]string(nil), manifestNotifications.GitHubIssues.Labels...)
+		}
+	}
+
 	// Determine Slack configuration, preferring manifest settings over global config
 	slackToken := strings.TrimSpace(cfg.Integration.Slack.Token)
 	slackChannel := strings.TrimSpace(cfg.Integration.Slack.Channel)
@@ -210,6 +220,43 @@ func newNotifierFromConfigWithManifest(cfg *config.Config, manifestNotifications
 		notifiers = append(notifiers, broker.NewWebhookNotifier(webhook, client, notifyCfg))
 	}
 
+	// Configure GitHub issue notifications if credentials are available
+	githubToken := strings.TrimSpace(cfg.Integration.GitHub.Token)
+	if githubToken == "" {
+		if envToken, err := broker.LoadGitHubToken(); err == nil {
+			envToken = strings.TrimSpace(envToken)
+			if envToken != "" {
+				githubToken = envToken
+				logger.Debug("Using GitHub token from environment for issue notifications")
+			}
+		}
+	}
+
+	if githubToken != "" {
+		oauthClient, err := newGitHubHTTPClient(githubToken, baseClient)
+		if err != nil {
+			logger.Error("Failed to initialize GitHub HTTP client for issue notifications", "error", err)
+		} else {
+			endpoint := strings.TrimSpace(cfg.Integration.GitHub.Endpoint)
+			var ghClient *github.Client
+			if endpoint == "" {
+				ghClient = github.NewClient(oauthClient)
+			} else {
+				baseURL, uploadURL := normalizeEnterpriseEndpoints(endpoint)
+				ghClient, err = github.NewEnterpriseClient(baseURL, uploadURL, oauthClient)
+				if err != nil {
+					logger.Error("Failed to create GitHub Enterprise client for issue notifications", "error", err)
+				}
+			}
+
+			if err == nil && ghClient != nil {
+				notifiers = append(notifiers, broker.NewGitHubIssueNotifier(ghClient.Issues, githubDefaults))
+			}
+		}
+	} else if githubDefaults != nil && githubDefaults.Enabled {
+		logger.Warn("GitHub issue notifications enabled but GitHub token not configured; skipping GitHub issue notifier")
+	}
+
 	var baseNotifier broker.Notifier
 	switch len(notifiers) {
 	case 0:
@@ -237,6 +284,13 @@ type ManifestNotifications struct {
 	OnFailure    bool
 	OnSuccess    bool
 	Webhook      string
+	GitHubIssues *ManifestGitHubIssues
+}
+
+// ManifestGitHubIssues captures default GitHub issue configuration from the manifest.
+type ManifestGitHubIssues struct {
+	Enabled bool
+	Labels  []string
 }
 
 func cloneHTTPClient(base *http.Client, timeout time.Duration) *http.Client {
