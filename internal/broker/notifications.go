@@ -343,7 +343,12 @@ const defaultNotificationTemplate = `{{if eq .Status "completed"}}✅{{else if e
 {{if .Status}}**Status**: {{.Status}}{{end}}
 {{if .CommitHash}}**Commit**: {{.CommitHash | truncate8}}{{end}}
 
-{{if .Reason}}**Details**: {{.Reason | truncate200}}{{end}}
+{{if .Reason}}**Details**: {{.Reason | truncate200 | escape}}{{end}}
+{{if .FailureSummary}}**Failing Test**: {{.FailureSummary | escape}}
+{{if .FailureMessage}}**Failure**: {{.FailureMessage | truncate200 | escape}}{{end}}
+{{if .FailureCommand}}**Command**: {{.FailureCommand | escape}}{{end}}
+{{end}}
+{{if .DependencySummary}}**Dependency**: {{.DependencySummary | escape}}{{if .DependencyNote}} - {{.DependencyNote | truncate200 | escape}}{{end}}{{end}}
 
 Generated at {{.Timestamp.Format "15:04:05 MST"}}`
 
