@@ -240,7 +240,21 @@ func (g *generator) buildDependents(options GenerateOptions) []Dependent {
 }
 
 func isNotificationsEmpty(notifications Notifications) bool {
-	return notifications.SlackChannel == "" && !notifications.OnFailure && !notifications.OnSuccess && notifications.Webhook == ""
+	githubIssuesConfigured := false
+	if notifications.GitHubIssues != nil {
+		if notifications.GitHubIssues.Enabled {
+			githubIssuesConfigured = true
+		}
+		if len(notifications.GitHubIssues.Labels) > 0 {
+			githubIssuesConfigured = true
+		}
+	}
+
+	return notifications.SlackChannel == "" &&
+		!notifications.OnFailure &&
+		!notifications.OnSuccess &&
+		notifications.Webhook == "" &&
+		!githubIssuesConfigured
 }
 
 func isPRConfigEmpty(pr PRConfig) bool {
