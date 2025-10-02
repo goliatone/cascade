@@ -164,11 +164,24 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 
 	// Extract notification settings from manifest defaults
 	var manifestNotifications *di.ManifestNotifications
-	if manifestData.Defaults.Notifications.SlackChannel != "" || manifestData.Defaults.Notifications.Webhook != "" {
+	defaults := manifestData.Defaults.Notifications
+	hasNotificationDefaults := defaults.SlackChannel != "" || defaults.Webhook != "" || defaults.GitHubIssues != nil
+
+	var githubIssueLabels []string
+	githubIssueEnabled := false
+
+	if defaults.GitHubIssues != nil {
+		githubIssueEnabled = defaults.GitHubIssues.Enabled
+		if len(defaults.GitHubIssues.Labels) > 0 {
+			githubIssueLabels = append([]string(nil), defaults.GitHubIssues.Labels...)
+		}
+	}
+
+	if hasNotificationDefaults {
 		// Default on_failure to true if not explicitly set
 		// This ensures failures are always notified unless explicitly disabled
-		onFailure := manifestData.Defaults.Notifications.OnFailure
-		onSuccess := manifestData.Defaults.Notifications.OnSuccess
+		onFailure := defaults.OnFailure
+		onSuccess := defaults.OnSuccess
 
 		// If neither flag is set, default on_failure to true
 		if !onFailure && !onSuccess {
@@ -176,16 +189,26 @@ func runRelease(manifestFlag, manifestArg, modulePath, version string) error {
 		}
 
 		manifestNotifications = &di.ManifestNotifications{
-			SlackChannel: manifestData.Defaults.Notifications.SlackChannel,
+			SlackChannel: defaults.SlackChannel,
 			OnFailure:    onFailure,
 			OnSuccess:    onSuccess,
-			Webhook:      manifestData.Defaults.Notifications.Webhook,
+			Webhook:      defaults.Webhook,
 		}
+
+		if defaults.GitHubIssues != nil {
+			manifestNotifications.GitHubIssues = &di.ManifestGitHubIssues{
+				Enabled: githubIssueEnabled,
+			}
+			manifestNotifications.GitHubIssues.Labels = githubIssueLabels
+		}
+
 		logger.Debug("Found notification settings in manifest",
 			"slack_channel", manifestNotifications.SlackChannel,
 			"on_failure", manifestNotifications.OnFailure,
 			"on_success", manifestNotifications.OnSuccess,
-			"webhook", manifestNotifications.Webhook)
+			"webhook", manifestNotifications.Webhook,
+			"github_issues_enabled", githubIssueEnabled,
+			"github_issue_labels", githubIssueLabels)
 	}
 
 	// Show planning statistics if dependency checking was enabled

@@ -16,6 +16,9 @@ defaults:
     notifications:
         slack_channel: ""
         webhook: ""
+        github_issues:
+            enabled: false
+            labels: []
     pr:
         title: 'chore(deps): bump {{ .Module }} to {{ .Version }}'
         body_template: Automated dependency update for {{ .Module }} to {{ .Version }}
@@ -37,6 +40,9 @@ modules:
           notifications:
             slack_channel: ""
             webhook: ""
+            github_issues:
+                enabled: false
+                labels: []
           pr:
             title: ""
             body_template: ""
@@ -56,6 +62,9 @@ modules:
           notifications:
             slack_channel: ""
             webhook: ""
+            github_issues:
+                enabled: false
+                labels: []
           pr:
             title: ""
             body_template: ""
