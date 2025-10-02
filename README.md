@@ -254,6 +254,11 @@ modules:
 notifications:
   slack:
     channel: "#releases"
+  github_issues:
+    enabled: true
+    labels:
+      - cascade-failure
+      - dependencies
 ```
 
 ### Configuration Sources
@@ -279,6 +284,9 @@ manifest_generator:
     channels: ["#releases"]
     on_success: false
     on_failure: true
+    github_issues:
+      enabled: true
+      labels: ["cascade-failure", "dependencies"]
   discovery:
     enabled: true
     max_depth: 3
