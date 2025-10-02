@@ -54,11 +54,24 @@ type Logger interface {
 
 // Result represents the outcome of executing a work item.
 type Result struct {
-	Status       Status
-	Reason       string
-	CommitHash   string
-	TestResults  []CommandResult
-	ExtraResults []CommandResult
+	Status           Status
+	Reason           string
+	CommitHash       string
+	TestResults      []CommandResult
+	ExtraResults     []CommandResult
+	DependencyImpact *DependencyImpact
+}
+
+// DependencyImpact captures how a dependency update affected go.mod.
+type DependencyImpact struct {
+	Module             string
+	TargetVersion      string
+	OldVersion         string
+	NewVersion         string
+	OldVersionDetected bool
+	NewVersionDetected bool
+	Applied            bool
+	Notes              []string
 }
 
 // CommandResult represents the outcome of executing a single command.

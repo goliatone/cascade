@@ -39,6 +39,13 @@ func (e *executor) Apply(ctx context.Context, input WorkItemContext) (*Result, e
 		ExtraResults: []CommandResult{},
 	}
 
+	if input.Item.SourceModule != "" {
+		result.DependencyImpact = &DependencyImpact{
+			Module:        input.Item.SourceModule,
+			TargetVersion: input.Item.SourceVersion,
+		}
+	}
+
 	// Clone/prepare repository using GitOperations
 	// Use CloneURL if available, otherwise fall back to Repo
 	cloneURL := input.Item.Repo
@@ -67,6 +74,10 @@ func (e *executor) Apply(ctx context.Context, input WorkItemContext) (*Result, e
 		return result, err
 	}
 
+	if result.DependencyImpact != nil {
+		captureOldDependencyVersion(result.DependencyImpact, workPath)
+	}
+
 	// Update module dependencies using GoOperations
 	if input.Logger != nil {
 		input.Logger.Info("updating module", "module", input.Item.SourceModule, "version", input.Item.SourceVersion)
@@ -78,6 +89,10 @@ func (e *executor) Apply(ctx context.Context, input WorkItemContext) (*Result, e
 		return result, err
 	}
 
+	if result.DependencyImpact != nil {
+		captureNewDependencyVersion(result.DependencyImpact, workPath, "after go get")
+	}
+
 	// Run go mod tidy
 	if input.Logger != nil {
 		input.Logger.Info("running go mod tidy")
@@ -87,6 +102,10 @@ func (e *executor) Apply(ctx context.Context, input WorkItemContext) (*Result, e
 	if err != nil {
 		e.handleExecutionError(result, err, "go mod tidy")
 		return result, err
+	}
+
+	if result.DependencyImpact != nil {
+		captureNewDependencyVersion(result.DependencyImpact, workPath, "after go mod tidy")
 	}
 
 	// Execute tests using CommandRunner
