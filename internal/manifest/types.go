@@ -63,8 +63,15 @@ type PRConfig struct {
 
 // Notifications holds optional notification targets.
 type Notifications struct {
-	SlackChannel string `yaml:"slack_channel,omitempty"`
-	OnFailure    bool   `yaml:"on_failure,omitempty"`
-	OnSuccess    bool   `yaml:"on_success,omitempty"`
-	Webhook      string `yaml:"webhook,omitempty"`
+	SlackChannel string                   `yaml:"slack_channel,omitempty"`
+	OnFailure    bool                     `yaml:"on_failure,omitempty"`
+	OnSuccess    bool                     `yaml:"on_success,omitempty"`
+	Webhook      string                   `yaml:"webhook,omitempty"`
+	GitHubIssues *GitHubIssueNotification `yaml:"github_issues,omitempty"`
+}
+
+// GitHubIssueNotification configures GitHub issue creation for failures.
+type GitHubIssueNotification struct {
+	Enabled bool     `yaml:"enabled"`
+	Labels  []string `yaml:"labels,omitempty"`
 }
