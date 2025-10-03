@@ -339,7 +339,7 @@ require (
 		t.Fatalf("expected 1 fetch, got %d", fetchCount)
 	}
 
-	// Second call - cache hit (should not fetch again)
+	// Second call - cache miss due to target version mismatch (forces revalidation)
 	needsUpdate, err := checker.NeedsUpdate(context.Background(), dependent, target, "")
 	if err != nil {
 		t.Fatalf("second call failed: %v", err)
@@ -347,17 +347,17 @@ require (
 	if !needsUpdate {
 		t.Error("expected needsUpdate=true")
 	}
-	if fetchCount != 1 {
-		t.Errorf("expected 1 fetch total, got %d (cache not working)", fetchCount)
+	if fetchCount != 2 {
+		t.Errorf("expected 2 fetches total (cache revalidation), got %d", fetchCount)
 	}
 
 	// Verify cache stats
 	stats := checker.cache.Stats()
-	if stats.Hits != 1 {
-		t.Errorf("expected 1 cache hit, got %d", stats.Hits)
+	if stats.Hits != 0 {
+		t.Errorf("expected 0 cache hits, got %d", stats.Hits)
 	}
-	if stats.Misses != 1 {
-		t.Errorf("expected 1 cache miss, got %d", stats.Misses)
+	if stats.Misses != 2 {
+		t.Errorf("expected 2 cache misses, got %d", stats.Misses)
 	}
 }
 

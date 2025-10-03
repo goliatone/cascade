@@ -41,9 +41,9 @@ func TestRemoteDependencyChecker_GetCacheStats(t *testing.T) {
 	}
 
 	// Perform some cache operations to generate hits and misses
-	checker.cache.Get("https://github.com/user/repo1.git", "main", "github.com/example/module") // hit
-	checker.cache.Get("https://github.com/user/repo2.git", "main", "github.com/example/module") // hit
-	checker.cache.Get("https://github.com/user/repo3.git", "main", "github.com/example/module") // miss
+	checker.cache.Get("https://github.com/user/repo1.git", "main", "github.com/example/module", "") // hit
+	checker.cache.Get("https://github.com/user/repo2.git", "main", "github.com/example/module", "") // hit
+	checker.cache.Get("https://github.com/user/repo3.git", "main", "github.com/example/module", "") // miss
 
 	// Check stats reflect the operations
 	stats = checker.GetCacheStats()
@@ -75,8 +75,8 @@ func TestRemoteDependencyChecker_LogCacheStats(t *testing.T) {
 	// Add cache entries and operations
 	deps := map[string]string{"github.com/example/module": "v1.2.3"}
 	checker.cache.Set("https://github.com/user/repo.git", "main", deps)
-	checker.cache.Get("https://github.com/user/repo.git", "main", "github.com/example/module") // hit
-	checker.cache.Get("https://github.com/user/repo.git", "main", "missing")                   // miss
+	checker.cache.Get("https://github.com/user/repo.git", "main", "github.com/example/module", "") // hit
+	checker.cache.Get("https://github.com/user/repo.git", "main", "missing", "")                   // miss
 
 	// Log the stats
 	checker.LogCacheStats()
@@ -163,7 +163,7 @@ func TestRemoteDependencyChecker_LogCacheStats_HitRate(t *testing.T) {
 
 			// Simulate hits and misses by manually setting cache stats
 			for i := 0; i < tt.hits; i++ {
-				checker.cache.Get("url", "ref", "exists-"+string(rune(i))) // will miss
+				checker.cache.Get("url", "ref", "exists-"+string(rune(i)), "") // will miss
 			}
 			// Add an entry to get hits
 			if tt.hits > 0 {
@@ -176,11 +176,11 @@ func TestRemoteDependencyChecker_LogCacheStats_HitRate(t *testing.T) {
 				checker.cache.Clear()
 				checker.cache.Set("url", "ref", deps)
 				for i := 0; i < tt.hits; i++ {
-					checker.cache.Get("url", "ref", "module"+string(rune(i)))
+					checker.cache.Get("url", "ref", "module"+string(rune(i)), "")
 				}
 			}
 			for i := 0; i < tt.misses; i++ {
-				checker.cache.Get("other-url", "ref", "missing")
+				checker.cache.Get("other-url", "ref", "missing", "")
 			}
 
 			checker.LogCacheStats()

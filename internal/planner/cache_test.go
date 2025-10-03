@@ -21,7 +21,7 @@ func TestDependencyCache_SetAndGet(t *testing.T) {
 	cache.Set(cloneURL, ref, deps)
 
 	// Get existing dependency
-	version, found := cache.Get(cloneURL, ref, "github.com/foo/bar")
+	version, found := cache.Get(cloneURL, ref, "github.com/foo/bar", "")
 	if !found {
 		t.Error("Expected to find cached dependency")
 	}
@@ -30,7 +30,7 @@ func TestDependencyCache_SetAndGet(t *testing.T) {
 	}
 
 	// Get another existing dependency
-	version, found = cache.Get(cloneURL, ref, "github.com/baz/qux")
+	version, found = cache.Get(cloneURL, ref, "github.com/baz/qux", "")
 	if !found {
 		t.Error("Expected to find cached dependency")
 	}
@@ -39,12 +39,17 @@ func TestDependencyCache_SetAndGet(t *testing.T) {
 	}
 
 	// Get non-existing dependency
-	version, found = cache.Get(cloneURL, ref, "github.com/missing/module")
+	version, found = cache.Get(cloneURL, ref, "github.com/missing/module", "")
 	if found {
 		t.Error("Expected not to find missing dependency")
 	}
 	if version != "" {
 		t.Errorf("Expected empty version for missing dependency, got %s", version)
+	}
+
+	// Target version mismatch should be treated as a cache miss
+	if _, found = cache.Get(cloneURL, ref, "github.com/foo/bar", "v9.9.9"); found {
+		t.Error("Expected cache miss when target version differs from cached value")
 	}
 }
 
@@ -61,7 +66,7 @@ func TestDependencyCache_TTLExpiration(t *testing.T) {
 
 	// Set and immediately get
 	cache.Set(cloneURL, ref, deps)
-	version, found := cache.Get(cloneURL, ref, "github.com/foo/bar")
+	version, found := cache.Get(cloneURL, ref, "github.com/foo/bar", "")
 	if !found {
 		t.Error("Expected to find fresh cache entry")
 	}
@@ -73,7 +78,7 @@ func TestDependencyCache_TTLExpiration(t *testing.T) {
 	time.Sleep(shortTTL + 10*time.Millisecond)
 
 	// Get after expiration
-	version, found = cache.Get(cloneURL, ref, "github.com/foo/bar")
+	version, found = cache.Get(cloneURL, ref, "github.com/foo/bar", "")
 	if found {
 		t.Error("Expected cache entry to be expired")
 	}
@@ -119,8 +124,8 @@ func TestDependencyCache_Clear(t *testing.T) {
 	cache.Set("https://github.com/user/repo2", "main", map[string]string{"mod2": "v2.0.0"})
 
 	// Trigger some hits and misses
-	cache.Get("https://github.com/user/repo1", "main", "mod1")
-	cache.Get("https://github.com/user/repo1", "main", "missing")
+	cache.Get("https://github.com/user/repo1", "main", "mod1", "")
+	cache.Get("https://github.com/user/repo1", "main", "missing", "")
 
 	stats := cache.Stats()
 	if stats.Size != 2 {
@@ -163,31 +168,38 @@ func TestDependencyCache_Stats(t *testing.T) {
 	})
 
 	// Hit
-	cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar")
+	cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "")
 	stats = cache.Stats()
 	if stats.Hits != 1 {
 		t.Errorf("Expected 1 hit, got %d", stats.Hits)
 	}
 
 	// Miss (wrong module)
-	cache.Get("https://github.com/user/repo", "main", "missing")
+	cache.Get("https://github.com/user/repo", "main", "missing", "")
 	stats = cache.Stats()
 	if stats.Misses != 1 {
 		t.Errorf("Expected 1 miss, got %d", stats.Misses)
 	}
 
 	// Miss (wrong URL)
-	cache.Get("https://github.com/user/other", "main", "github.com/foo/bar")
+	cache.Get("https://github.com/user/other", "main", "github.com/foo/bar", "")
 	stats = cache.Stats()
 	if stats.Misses != 2 {
 		t.Errorf("Expected 2 misses, got %d", stats.Misses)
 	}
 
 	// Miss (wrong ref)
-	cache.Get("https://github.com/user/repo", "develop", "github.com/foo/bar")
+	cache.Get("https://github.com/user/repo", "develop", "github.com/foo/bar", "")
 	stats = cache.Stats()
 	if stats.Misses != 3 {
 		t.Errorf("Expected 3 misses, got %d", stats.Misses)
+	}
+
+	// Miss (target version mismatch)
+	cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "v9.9.9")
+	stats = cache.Stats()
+	if stats.Misses != 4 {
+		t.Errorf("Expected 4 misses, got %d", stats.Misses)
 	}
 
 	if stats.Size != 1 {
@@ -222,7 +234,7 @@ func TestDependencyCache_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < operations; j++ {
-				cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar")
+				cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "")
 			}
 		}(i)
 	}
@@ -298,7 +310,7 @@ func TestDependencyCache_MultipleBranches(t *testing.T) {
 	})
 
 	// Verify main branch
-	version, found := cache.Get(cloneURL, "main", "github.com/foo/bar")
+	version, found := cache.Get(cloneURL, "main", "github.com/foo/bar", "")
 	if !found {
 		t.Error("Expected to find main branch dependency")
 	}
@@ -307,7 +319,7 @@ func TestDependencyCache_MultipleBranches(t *testing.T) {
 	}
 
 	// Verify develop branch
-	version, found = cache.Get(cloneURL, "develop", "github.com/foo/bar")
+	version, found = cache.Get(cloneURL, "develop", "github.com/foo/bar", "")
 	if !found {
 		t.Error("Expected to find develop branch dependency")
 	}
@@ -332,7 +344,7 @@ func BenchmarkCache_Get_Hit(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar")
+		cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "")
 	}
 }
 
@@ -341,7 +353,7 @@ func BenchmarkCache_Get_Miss(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar")
+		cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "")
 	}
 }
 
@@ -367,7 +379,7 @@ func BenchmarkCache_ConcurrentReads(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar")
+			cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "")
 		}
 	})
 }
@@ -400,7 +412,7 @@ func BenchmarkCache_MixedReadWrite(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			if i%2 == 0 {
-				cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar")
+				cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "")
 			} else {
 				cache.Set("https://github.com/user/repo", "main", deps)
 			}

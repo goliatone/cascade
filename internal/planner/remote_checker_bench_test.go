@@ -131,13 +131,13 @@ func BenchmarkCacheOperations(b *testing.B) {
 
 	b.Run("cache_hit", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _ = cache.Get("https://github.com/example/repo-50.git", "main", "github.com/example/lib1")
+			_, _ = cache.Get("https://github.com/example/repo-50.git", "main", "github.com/example/lib1", "")
 		}
 	})
 
 	b.Run("cache_miss", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _ = cache.Get("https://github.com/example/nonexistent.git", "main", "github.com/example/lib1")
+			_, _ = cache.Get("https://github.com/example/nonexistent.git", "main", "github.com/example/lib1", "")
 		}
 	})
 
