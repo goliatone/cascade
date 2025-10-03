@@ -163,6 +163,76 @@ func TestGitOperations_EnsureClone(t *testing.T) {
 	}
 }
 
+func TestGitOperations_refreshDefaultBranch_FastForward(t *testing.T) {
+	mockRunner := newMockGitCommandRunner()
+	git := &gitOperations{runner: mockRunner}
+
+	mockRunner.setResponse("status --porcelain", "", nil)
+	mockRunner.setResponse("fetch origin --prune", "", nil)
+	mockRunner.setResponse("symbolic-ref refs/remotes/origin/HEAD", "refs/remotes/origin/main", nil)
+	mockRunner.setResponse("rev-parse --abbrev-ref HEAD", "main", nil)
+	mockRunner.setResponse("merge --ff-only origin/main", "", nil)
+
+	if err := git.refreshDefaultBranch(context.Background(), "/tmp/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !containsGitCall(mockRunner.calls, "fetch origin --prune") {
+		t.Errorf("expected fetch to be called")
+	}
+	if !containsGitCall(mockRunner.calls, "merge --ff-only origin/main") {
+		t.Errorf("expected merge to fast-forward default branch")
+	}
+}
+
+func TestGitOperations_refreshDefaultBranch_SkipOnDirty(t *testing.T) {
+	mockRunner := newMockGitCommandRunner()
+	git := &gitOperations{runner: mockRunner}
+
+	mockRunner.setResponse("status --porcelain", "M  file.go", nil)
+
+	if err := git.refreshDefaultBranch(context.Background(), "/tmp/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if containsGitCall(mockRunner.calls, "fetch origin --prune") {
+		t.Errorf("did not expect fetch when repository is dirty")
+	}
+	if containsGitCall(mockRunner.calls, "merge --ff-only origin/main") {
+		t.Errorf("did not expect merge when skipping refresh")
+	}
+}
+
+func TestGitOperations_refreshDefaultBranch_SkipOnDifferentHead(t *testing.T) {
+	mockRunner := newMockGitCommandRunner()
+	git := &gitOperations{runner: mockRunner}
+
+	mockRunner.setResponse("status --porcelain", "", nil)
+	mockRunner.setResponse("fetch origin --prune", "", nil)
+	mockRunner.setResponse("symbolic-ref refs/remotes/origin/HEAD", "refs/remotes/origin/main", nil)
+	mockRunner.setResponse("rev-parse --abbrev-ref HEAD", "feature", nil)
+
+	if err := git.refreshDefaultBranch(context.Background(), "/tmp/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !containsGitCall(mockRunner.calls, "fetch origin --prune") {
+		t.Errorf("expected fetch to occur before determining head")
+	}
+	if containsGitCall(mockRunner.calls, "merge --ff-only origin/main") {
+		t.Errorf("did not expect merge when on non-default branch")
+	}
+}
+
+func containsGitCall(calls []mockCall, signature string) bool {
+	for _, call := range calls {
+		if strings.Join(call.args, " ") == signature {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGitOperations_Commit(t *testing.T) {
 	tests := []struct {
 		name         string

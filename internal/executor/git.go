@@ -57,6 +57,10 @@ func (g *gitOperations) EnsureClone(ctx context.Context, repo, workspace string)
 			}
 		}
 
+		if err := g.refreshDefaultBranch(ctx, repoPath); err != nil {
+			return "", fmt.Errorf("failed to refresh repository %s: %w", repoPath, err)
+		}
+
 		// Repository exists and is correct, return the path
 		return repoPath, nil
 	}
@@ -155,6 +159,42 @@ func (g *gitOperations) resetWorktree(ctx context.Context, repoPath, worktreePat
 
 	if _, err := g.runner.Run(ctx, worktreePath, "clean", "-fd"); err != nil {
 		return fmt.Errorf("failed to clean worktree %s: %w", worktreePath, err)
+	}
+
+	return nil
+}
+
+func (g *gitOperations) refreshDefaultBranch(ctx context.Context, repoPath string) error {
+	status, err := g.runner.Run(ctx, repoPath, "status", "--porcelain")
+	if err != nil {
+		return fmt.Errorf("failed to check git status in %s: %w", repoPath, err)
+	}
+
+	if strings.TrimSpace(status) != "" {
+		return nil
+	}
+
+	if _, err := g.runner.Run(ctx, repoPath, "fetch", "origin", "--prune"); err != nil {
+		return fmt.Errorf("failed to fetch origin in %s: %w", repoPath, err)
+	}
+
+	defaultBranch, err := g.getDefaultBranch(ctx, repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to determine default branch for %s: %w", repoPath, err)
+	}
+
+	headBranch, err := g.runner.Run(ctx, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return fmt.Errorf("failed to determine current branch in %s: %w", repoPath, err)
+	}
+	headBranch = cleanGitOutput(headBranch)
+
+	if headBranch != defaultBranch {
+		return nil
+	}
+
+	if _, err := g.runner.Run(ctx, repoPath, "merge", "--ff-only", "origin/"+defaultBranch); err != nil {
+		return fmt.Errorf("failed to fast-forward %s to origin/%s: %w", repoPath, defaultBranch, err)
 	}
 
 	return nil
