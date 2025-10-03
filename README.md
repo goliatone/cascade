@@ -217,10 +217,20 @@ See the "CI/CD Pipeline Examples" section below for complete workflow configurat
 
 ### Manifest File
 
-The `.cascade.yaml` manifest file defines module dependencies and update rules. You can generate a starter manifest using `cascade manifest generate`, or craft one manually:
+The `.cascade.yaml` manifest file defines module dependencies and update rules. You can generate a starter manifest using `cascade manifest generate`, or craft one manually. Each repository can now describe both how it should be released (the top-level `module` block) and how it expects upstream releases to validate against it (entries under the top-level `dependents` map):
 
 ```yaml
 manifest_version: 1
+
+module:
+  module: github.com/goliatone/go-errors
+  branch: main
+  tests:
+    - cmd: [go, test, ./...]
+  extra_commands:
+    - cmd: [go, vet, ./...]
+  notifications:
+    slack_channel: "#go-errors"
 
 defaults:
   branch: main
@@ -259,7 +269,24 @@ notifications:
     labels:
       - cascade-failure
       - dependencies
+
+dependents:
+  github.com/goliatone/go-errors:
+    tests:
+      - cmd: [task, dependent:test]
+    extra_commands:
+      - cmd: [task, dependent:lint]
+    env:
+      CI: "true"
 ```
+
+When Cascade plans a release it merges configuration in this order:
+
+1. Global `defaults` from the releasing repository
+2. The dependent repository's own `module` block (if present in its `.cascade.yaml`)
+3. The dependent repository's `dependents[<module>]` override for the module being updated
+
+This precedence keeps legacy manifests working while giving each dependent full control over the tests, extra commands, environment, notifications, and timeouts it requires.
 
 ### Configuration Sources
 
