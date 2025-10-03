@@ -1,0 +1,22 @@
+manifest_version: 1
+module:
+  module: github.com/example/dependent
+  module_path: .
+defaults:
+  branch: main
+modules:
+  - name: placeholder
+    module: github.com/example/placeholder
+    repo: example/placeholder
+    release_artifact: release.json
+    dependents: []
+dependents:
+  github.com/goliatone/go-errors:
+    branch: release
+    tests:
+      - cmd: ["task", "dep:test"]
+        dir: ""
+    extra_commands:
+      - cmd: ["task", "dep:lint"]
+        dir: ""
+    labels: ["dep:label"]

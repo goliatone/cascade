@@ -1,4 +1,22 @@
 manifest_version: 1
+module:
+  module: github.com/goliatone/cascade
+  module_path: .
+  branch: main
+  tests:
+    - cmd: ["task", "test:module"]
+      dir: ""
+  extra_commands:
+    - cmd: ["task", "lint:module"]
+      dir: ""
+  labels: ["module:self"]
+  env:
+    GOFLAGS: "-count=1"
+  notifications:
+    slack_channel: "#cascade-module"
+  pr:
+    title: "chore: cascade module update"
+  timeout: 10m
 defaults:
   branch: main
   tests:
@@ -61,3 +79,21 @@ modules:
         labels: ["package:go-auth"]
         notifications:
           slack_channel: "#go-auth-releases"
+dependents:
+  github.com/goliatone/go-errors:
+    branch: release
+    tests:
+      - cmd: ["task", "dependent:test"]
+        dir: ""
+    extra_commands:
+      - cmd: ["task", "dependent:lint"]
+        dir: ""
+    labels: ["module:go-errors"]
+    notifications:
+      slack_channel: "#deps"
+    pr:
+      title: "deps: update go-errors"
+    env:
+      FOO: "bar"
+    timeout: 5m
+    canary: true

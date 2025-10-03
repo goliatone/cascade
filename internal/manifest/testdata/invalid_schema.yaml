@@ -1,4 +1,7 @@
 manifest_version: 1
+module:
+  module: ""
+  module_path: ""
 defaults:
   branch: main
   tests:
@@ -32,3 +35,6 @@ modules:
       - repo: "example/dependent-1"  # Invalid: duplicate dependent repo
         module: "github.com/example/dependent-1"
         module_path: "."
+dependents:
+  "":
+    branch: main

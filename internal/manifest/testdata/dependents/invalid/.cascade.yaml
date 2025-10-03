@@ -1,0 +1,2 @@
+manifest_version: invalid
+  - this: is not valid yaml

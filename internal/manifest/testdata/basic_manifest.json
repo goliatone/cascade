@@ -1,5 +1,48 @@
 {
   "ManifestVersion": 1,
+  "Module": {
+    "Module": "github.com/goliatone/cascade",
+    "ModulePath": ".",
+    "Branch": "main",
+    "Tests": [
+      {
+        "Cmd": [
+          "task",
+          "test:module"
+        ],
+        "Dir": ""
+      }
+    ],
+    "ExtraCommands": [
+      {
+        "Cmd": [
+          "task",
+          "lint:module"
+        ],
+        "Dir": ""
+      }
+    ],
+    "Labels": [
+      "module:self"
+    ],
+    "Notifications": {
+      "SlackChannel": "#cascade-module",
+      "OnFailure": false,
+      "OnSuccess": false,
+      "Webhook": "",
+      "GitHubIssues": null
+    },
+    "PR": {
+      "TitleTemplate": "chore: cascade module update",
+      "BodyTemplate": "",
+      "Reviewers": null,
+      "TeamReviewers": null
+    },
+    "Env": {
+      "GOFLAGS": "-count=1"
+    },
+    "Timeout": 600000000000
+  },
   "Defaults": {
     "Branch": "main",
     "Tests": [
@@ -28,7 +71,10 @@
     "CommitTemplate": "chore(deps): bump {{ module }} to {{ version }}",
     "Notifications": {
       "SlackChannel": "#releases",
-      "Webhook": ""
+      "OnFailure": false,
+      "OnSuccess": false,
+      "Webhook": "",
+      "GitHubIssues": null
     },
     "PR": {
       "TitleTemplate": "chore: update dependencies",
@@ -48,6 +94,7 @@
       "Dependents": [
         {
           "Repo": "goliatone/go-logger",
+          "CloneURL": "",
           "Module": "github.com/goliatone/go-logger",
           "ModulePath": ".",
           "Branch": "main",
@@ -74,7 +121,10 @@
           ],
           "Notifications": {
             "SlackChannel": "",
-            "Webhook": ""
+            "OnFailure": false,
+            "OnSuccess": false,
+            "Webhook": "",
+            "GitHubIssues": null
           },
           "PR": {
             "TitleTemplate": "chore: update go-logger deps",
@@ -89,6 +139,7 @@
         },
         {
           "Repo": "goliatone/go-router",
+          "CloneURL": "",
           "Module": "github.com/goliatone/go-router",
           "ModulePath": ".",
           "Branch": "develop",
@@ -106,7 +157,10 @@
           "Labels": [],
           "Notifications": {
             "SlackChannel": "",
-            "Webhook": ""
+            "OnFailure": false,
+            "OnSuccess": false,
+            "Webhook": "",
+            "GitHubIssues": null
           },
           "PR": {
             "TitleTemplate": "",
@@ -129,6 +183,7 @@
       "Dependents": [
         {
           "Repo": "goliatone/go-auth",
+          "CloneURL": "",
           "Module": "github.com/goliatone/go-auth",
           "ModulePath": ".",
           "Branch": "main",
@@ -157,7 +212,10 @@
           ],
           "Notifications": {
             "SlackChannel": "#go-auth-releases",
-            "Webhook": ""
+            "OnFailure": false,
+            "OnSuccess": false,
+            "Webhook": "",
+            "GitHubIssues": null
           },
           "PR": {
             "TitleTemplate": "",
@@ -172,5 +230,50 @@
         }
       ]
     }
-  ]
+  ],
+  "Dependents": {
+    "github.com/goliatone/go-errors": {
+      "Branch": "release",
+      "Tests": [
+        {
+          "Cmd": [
+            "task",
+            "dependent:test"
+          ],
+          "Dir": ""
+        }
+      ],
+      "ExtraCommands": [
+        {
+          "Cmd": [
+            "task",
+            "dependent:lint"
+          ],
+          "Dir": ""
+        }
+      ],
+      "Labels": [
+        "module:go-errors"
+      ],
+      "Notifications": {
+        "SlackChannel": "#deps",
+        "OnFailure": false,
+        "OnSuccess": false,
+        "Webhook": "",
+        "GitHubIssues": null
+      },
+      "PR": {
+        "TitleTemplate": "deps: update go-errors",
+        "BodyTemplate": "",
+        "Reviewers": null,
+        "TeamReviewers": null
+      },
+      "Env": {
+        "FOO": "bar"
+      },
+      "Timeout": 300000000000,
+      "Canary": true,
+      "Skip": false
+    }
+  }
 }
