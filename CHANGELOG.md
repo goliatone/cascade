@@ -1,5 +1,32 @@
 # Changelog
 
+# [0.1.31](https://github.com/goliatone/cascade/compare/v0.1.30...v0.1.31) - (2025-10-03)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update test data and tests ([53f85bf](https://github.com/goliatone/cascade/commit/53f85bf1e3217ed4e589d5d33a6e4d4a65da6790))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.31 ([40959bf](https://github.com/goliatone/cascade/commit/40959bf122bf0f35dbf73465d112ff1a9db9fcd8))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Manifest pull test command from dependent ([d26e23b](https://github.com/goliatone/cascade/commit/d26e23b662bf498cff323fd9bd9f8f4af1dee249))  - (goliatone)
+- Print info ([f8158f8](https://github.com/goliatone/cascade/commit/f8158f8316dad84cb0a8bb48cd3ff39fba69c126))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update tests ([5b1d6be](https://github.com/goliatone/cascade/commit/5b1d6be006136c40788cea3e63c4d3dde838e8e8))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.30 ([04ac4f0](https://github.com/goliatone/cascade/commit/04ac4f09e1ef5f51a2496f193b2ffc2d1c4b8e85))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([3d95fb9](https://github.com/goliatone/cascade/commit/3d95fb9ab0fd795d5407bd1c8dbe559d8032a424))  - (goliatone)
+
 # [0.1.30](https://github.com/goliatone/cascade/compare/v0.1.29...v0.1.30) - (2025-10-03)
 
 ## <!-- 1 -->🐛 Bug Fixes
