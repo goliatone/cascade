@@ -299,10 +299,6 @@ func TestLoadDependentManifest(t *testing.T) {
 		},
 	}
 
-	if err := os.MkdirAll(filepath.Join("testdata", "dependents", "missing"), 0o755); err != nil {
-		t.Fatalf("create missing dir: %v", err)
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m, err := manifest.LoadDependentManifest(context.Background(), tt.repoDir)

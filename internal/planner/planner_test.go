@@ -3,6 +3,7 @@ package planner_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -41,6 +42,36 @@ func TestPlanner_PlanProducesExpectedWorkItems(t *testing.T) {
 		wantJSON, _ := json.MarshalIndent(want, "", "  ")
 		t.Fatalf("plan mismatch\n got: %s\nwant: %s", gotJSON, wantJSON)
 	}
+}
+
+type recordingLogger struct {
+	infos  []string
+	errors []string
+	debugs []string
+	warns  []string
+}
+
+func (l *recordingLogger) format(msg string, args ...any) string {
+	if len(args) == 0 {
+		return msg
+	}
+	return fmt.Sprintf("%s %v", msg, args)
+}
+
+func (l *recordingLogger) Info(msg string, args ...any) {
+	l.infos = append(l.infos, l.format(msg, args...))
+}
+
+func (l *recordingLogger) Error(msg string, args ...any) {
+	l.errors = append(l.errors, l.format(msg, args...))
+}
+
+func (l *recordingLogger) Debug(msg string, args ...any) {
+	l.debugs = append(l.debugs, l.format(msg, args...))
+}
+
+func (l *recordingLogger) Warn(msg string, args ...any) {
+	l.warns = append(l.warns, l.format(msg, args...))
 }
 
 func TestPlanner_InvalidTarget_EmptyModule(t *testing.T) {
@@ -335,6 +366,65 @@ dependents:
 
 	if loggerItem.Timeout != time.Minute {
 		t.Fatalf("expected override timeout, got %s", loggerItem.Timeout)
+	}
+}
+
+func TestPlanner_FallbackWhenOverrideLoadFails(t *testing.T) {
+	workspace := t.TempDir()
+	dependentDir := filepath.Join(workspace, "go-logger")
+	if err := os.MkdirAll(dependentDir, 0o755); err != nil {
+		t.Fatalf("mkdir dependent: %v", err)
+	}
+
+	invalidManifest := "manifest_version: invalid\n  - this: is not valid yaml\n"
+	if err := os.WriteFile(filepath.Join(dependentDir, ".cascade.yaml"), []byte(invalidManifest), 0o644); err != nil {
+		t.Fatalf("write invalid manifest: %v", err)
+	}
+
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	logger := &recordingLogger{}
+	plan, err := planner.New(planner.WithWorkspace(workspace), planner.WithLogger(logger)).Plan(context.Background(), m, planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"})
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	var loggerItem *planner.WorkItem
+	for i := range plan.Items {
+		if plan.Items[i].Repo == "goliatone/go-logger" {
+			loggerItem = &plan.Items[i]
+			break
+		}
+	}
+	if loggerItem == nil {
+		t.Fatalf("expected work item for go-logger")
+	}
+
+	if loggerItem.Branch != "main" {
+		t.Fatalf("expected default branch 'main', got %s", loggerItem.Branch)
+	}
+
+	if len(loggerItem.Tests) == 0 || strings.Join(loggerItem.Tests[0].Cmd, " ") != "go test ./... -race" {
+		t.Fatalf("expected defaults to remain, got %#v", loggerItem.Tests)
+	}
+
+	if len(logger.warns) == 0 {
+		t.Fatalf("expected warning logs when override parsing fails")
+	}
+
+	var warnedOverride bool
+	for _, msg := range logger.warns {
+		if strings.Contains(msg, "failed to load dependent overrides") {
+			warnedOverride = true
+			break
+		}
+	}
+	if !warnedOverride {
+		t.Fatalf("expected warning about failed override load, warnings=%#v", logger.warns)
 	}
 }
 

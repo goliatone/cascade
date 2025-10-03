@@ -267,6 +267,92 @@ func TestExecutor_Apply_ValidationErrors(t *testing.T) {
 	}
 }
 
+func TestExecutor_Apply_UsesProvidedCommandsAndEnv(t *testing.T) {
+	ctx := context.Background()
+	workspace := "/workspace"
+	workPath := workspace + "/test-repo/worktree"
+
+	mockGit := &mockGitOperations{
+		clonePath:  workspace + "/test-repo",
+		workPath:   workPath,
+		commitHash: "abc123",
+	}
+	mockGo := &mockGoOperations{}
+	recordingRunner := &recordingCommandRunner{}
+	logger := &mockLogger{}
+
+	workItem := planner.WorkItem{
+		Repo:          "https://github.com/test/repo",
+		SourceModule:  "github.com/goliatone/go-errors",
+		SourceVersion: "v1.2.3",
+		Branch:        "main",
+		BranchName:    "update-branch",
+		CommitMessage: "update dependency",
+		Tests: []manifest.Command{
+			{Cmd: []string{"task", "test"}, Dir: "tests"},
+			{Cmd: []string{"go", "test", "./..."}},
+		},
+		ExtraCommands: []manifest.Command{
+			{Cmd: []string{"task", "lint"}},
+		},
+		Env: map[string]string{
+			"FOO": "bar",
+			"BAR": "baz",
+		},
+		Timeout: time.Minute,
+	}
+
+	input := executor.WorkItemContext{
+		Item:      workItem,
+		Workspace: workspace,
+		Git:       mockGit,
+		Go:        mockGo,
+		Runner:    recordingRunner,
+		Logger:    logger,
+	}
+
+	result, err := executor.New().Apply(ctx, input)
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if result.Status != executor.StatusCompleted {
+		t.Fatalf("expected completed status, got %s", result.Status)
+	}
+
+	expectedCommands := append([]manifest.Command{}, workItem.Tests...)
+	expectedCommands = append(expectedCommands, workItem.ExtraCommands...)
+
+	if len(recordingRunner.calls) != len(expectedCommands) {
+		t.Fatalf("expected %d command calls, got %d", len(expectedCommands), len(recordingRunner.calls))
+	}
+
+	for i, call := range recordingRunner.calls {
+		expected := expectedCommands[i]
+		if len(call.cmd.Cmd) != len(expected.Cmd) {
+			t.Fatalf("call %d command mismatch: got %#v, want %#v", i, call.cmd.Cmd, expected.Cmd)
+		}
+		for j, arg := range expected.Cmd {
+			if call.cmd.Cmd[j] != arg {
+				t.Fatalf("call %d command arg mismatch at %d: got %s, want %s", i, j, call.cmd.Cmd[j], arg)
+			}
+		}
+		if call.cmd.Dir != expected.Dir {
+			t.Fatalf("call %d dir mismatch: got %s, want %s", i, call.cmd.Dir, expected.Dir)
+		}
+		if call.timeout != workItem.Timeout {
+			t.Fatalf("call %d timeout mismatch: got %s, want %s", i, call.timeout, workItem.Timeout)
+		}
+		if len(call.env) != len(workItem.Env) {
+			t.Fatalf("call %d env length mismatch", i)
+		}
+		for k, v := range workItem.Env {
+			if call.env[k] != v {
+				t.Fatalf("call %d env mismatch for %s: got %s, want %s", i, k, call.env[k], v)
+			}
+		}
+	}
+}
+
 // Mock implementations for testing
 type mockGitOperations struct {
 	clonePath  string
@@ -337,6 +423,25 @@ func (m *mockCommandRunner) Run(ctx context.Context, repoPath string, cmd manife
 	}
 
 	return result, nil
+}
+
+type recordingCommandRunner struct {
+	calls []commandCall
+}
+
+type commandCall struct {
+	cmd     manifest.Command
+	env     map[string]string
+	timeout time.Duration
+}
+
+func (r *recordingCommandRunner) Run(ctx context.Context, repoPath string, cmd manifest.Command, env map[string]string, timeout time.Duration) (executor.CommandResult, error) {
+	envCopy := make(map[string]string, len(env))
+	for k, v := range env {
+		envCopy[k] = v
+	}
+	r.calls = append(r.calls, commandCall{cmd: cmd, env: envCopy, timeout: timeout})
+	return executor.CommandResult{Command: cmd}, nil
 }
 
 type mockLogger struct{}
