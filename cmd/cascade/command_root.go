@@ -7,16 +7,14 @@ import (
 
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
-	"github.com/goliatone/cascade/pkg/version"
 	"github.com/spf13/cobra"
 )
 
 // newRootCommand creates the root cobra command with all subcommands
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "cascade",
-		Short:   "Cascade orchestrates automated dependency updates across Go repositories",
-		Version: version.GetVersion(),
+		Use:   "cascade",
+		Short: "Cascade orchestrates automated dependency updates across Go repositories",
 		Long: `Cascade is a CLI tool that orchestrates automated dependency updates across
 multiple Go repositories. It reads dependency manifests, plans updates,
 executes changes, and manages pull requests through GitHub integration.
