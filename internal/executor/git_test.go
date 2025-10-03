@@ -299,6 +299,48 @@ func TestGitOperations_EnsureWorktree_AllowsTrailingBranchNewline(t *testing.T) 
 	}
 }
 
+func TestGitOperations_EnsureWorktree_ResetsExistingWorktree(t *testing.T) {
+	const (
+		branch = "feature"
+		base   = "main"
+	)
+
+	mockRunner := newMockGitCommandRunner()
+	mockRunner.setResponse("branch --show-current", branch, nil)
+
+	git := NewGitOperationsWithRunner(mockRunner)
+	ctx := context.Background()
+
+	repoPath, err := os.MkdirTemp("", "git-worktree-reset-*")
+	if err != nil {
+		t.Fatalf("failed to create repo path: %v", err)
+	}
+	defer os.RemoveAll(repoPath)
+
+	worktreePath := filepath.Join(repoPath, ".worktrees", branch)
+	if err := os.MkdirAll(filepath.Join(worktreePath, ".git"), 0o755); err != nil {
+		t.Fatalf("failed to set up worktree directory: %v", err)
+	}
+
+	if _, err := git.EnsureWorktree(ctx, repoPath, branch, base); err != nil {
+		t.Fatalf("EnsureWorktree returned error: %v", err)
+	}
+
+	if len(mockRunner.calls) < 2 {
+		t.Fatalf("expected at least two git calls, got %d", len(mockRunner.calls))
+	}
+
+	resetCall := mockRunner.calls[len(mockRunner.calls)-2]
+	if got, want := strings.Join(resetCall.args, " "), "reset --hard origin/"+base; got != want {
+		t.Fatalf("expected reset command %q, got %q", want, got)
+	}
+
+	cleanCall := mockRunner.calls[len(mockRunner.calls)-1]
+	if got, want := strings.Join(cleanCall.args, " "), "clean -fd"; got != want {
+		t.Fatalf("expected clean command %q, got %q", want, got)
+	}
+}
+
 func TestGitOperations_getDefaultBranch_TrimsOutput(t *testing.T) {
 	mockRunner := newMockGitCommandRunner()
 	mockRunner.setResponse("symbolic-ref refs/remotes/origin/HEAD", "refs/remotes/origin/main\n", nil)

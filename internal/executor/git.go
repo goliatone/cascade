@@ -103,6 +103,10 @@ func (g *gitOperations) EnsureWorktree(ctx context.Context, repoPath, branch str
 			return "", fmt.Errorf("worktree %s is on branch %s, expected %s", worktreePath, currentBranch, branch)
 		}
 
+		if err := g.resetWorktree(ctx, repoPath, worktreePath, base); err != nil {
+			return "", err
+		}
+
 		return worktreePath, nil
 	}
 
@@ -133,6 +137,27 @@ func (g *gitOperations) EnsureWorktree(ctx context.Context, repoPath, branch str
 	}
 
 	return worktreePath, nil
+}
+
+func (g *gitOperations) resetWorktree(ctx context.Context, repoPath, worktreePath, base string) error {
+	baseRef := base
+	if baseRef == "" {
+		var err error
+		baseRef, err = g.getDefaultBranch(ctx, repoPath)
+		if err != nil {
+			return fmt.Errorf("failed to determine default branch while resetting worktree %s: %w", worktreePath, err)
+		}
+	}
+
+	if _, err := g.runner.Run(ctx, worktreePath, "reset", "--hard", "origin/"+baseRef); err != nil {
+		return fmt.Errorf("failed to reset worktree %s to origin/%s: %w", worktreePath, baseRef, err)
+	}
+
+	if _, err := g.runner.Run(ctx, worktreePath, "clean", "-fd"); err != nil {
+		return fmt.Errorf("failed to clean worktree %s: %w", worktreePath, err)
+	}
+
+	return nil
 }
 
 // Commit creates a commit with the given message in the repository.
