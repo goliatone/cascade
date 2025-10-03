@@ -1,7 +1,13 @@
 package planner
 
 import (
+	"regexp"
 	"strings"
+)
+
+var (
+	modulePlaceholder  = regexp.MustCompile(`(?i)\{\{\s*\.?module\s*\}\}`)
+	versionPlaceholder = regexp.MustCompile(`(?i)\{\{\s*\.?version\s*\}\}`)
 )
 
 // RenderCommitMessage renders a commit message template with placeholder substitution.
@@ -12,8 +18,8 @@ func RenderCommitMessage(template string, target Target) string {
 		return "Update " + target.Module + " to " + target.Version
 	}
 
-	result := strings.ReplaceAll(template, "{{ module }}", target.Module)
-	result = strings.ReplaceAll(result, "{{ version }}", target.Version)
+	result := modulePlaceholder.ReplaceAllString(template, target.Module)
+	result = versionPlaceholder.ReplaceAllString(result, target.Version)
 	return result
 }
 
