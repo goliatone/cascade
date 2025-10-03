@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.1.27](https://github.com/goliatone/cascade/compare/v0.1.26...v0.1.27) - (2025-10-03)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Git should reset repo to get latest version ([c0aac92](https://github.com/goliatone/cascade/commit/c0aac92a75eda231cdb51ab767ae2a82455e4208))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.27 ([3604512](https://github.com/goliatone/cascade/commit/3604512ffb803c0caad4cd4b47efe5b22e46ac9a))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Release workflows ([0979c5a](https://github.com/goliatone/cascade/commit/0979c5acb650919ca86950d5daafaee28ce71906))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Use templates ([6fb49ca](https://github.com/goliatone/cascade/commit/6fb49ca252c913acd075f8fbb37c5118ff8450c7))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.26 ([2e0aa3e](https://github.com/goliatone/cascade/commit/2e0aa3ef9cd0ae6b71c430155daa4551a4879d7b))  - (goliatone)
+
 # [0.1.26](https://github.com/goliatone/cascade/compare/v0.1.25...v0.1.26) - (2025-10-03)
 
 ## <!-- 1 -->🐛 Bug Fixes
