@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/internal/planner"
@@ -235,6 +236,105 @@ modules:
 				t.Fatalf("expected error containing %q, got %q", tt.expectError, err.Error())
 			}
 		})
+	}
+}
+
+func TestPlanner_AppliesDependentOverrides(t *testing.T) {
+	workspace := t.TempDir()
+	dependentDir := filepath.Join(workspace, "go-logger")
+	if err := os.MkdirAll(dependentDir, 0o755); err != nil {
+		t.Fatalf("mkdir dependent: %v", err)
+	}
+
+	manifestContents := `manifest_version: 1
+module:
+  module: github.com/goliatone/go-logger
+  branch: module-default
+  tests:
+    - cmd: ["task", "module:test"]
+      dir: ""
+  extra_commands:
+    - cmd: ["task", "module:lint"]
+      dir: ""
+  labels: ["module:label"]
+  notifications:
+    slack_channel: "#module"
+  pr:
+    title: "module pr"
+  env:
+    MODULE_ENV: "module"
+  timeout: 2m
+dependents:
+  github.com/goliatone/go-errors:
+    branch: override-branch
+    tests:
+      - cmd: ["task", "override:test"]
+        dir: ""
+    env:
+      OVERRIDE_ENV: "override"
+    timeout: 1m
+`
+
+	if err := os.WriteFile(filepath.Join(dependentDir, ".cascade.yaml"), []byte(manifestContents), 0o644); err != nil {
+		t.Fatalf("write dependent manifest: %v", err)
+	}
+
+	loader := manifest.NewLoader()
+	m, err := loader.Load(filepath.Join("..", "manifest", "testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	target := planner.Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"}
+
+	p := planner.New(planner.WithWorkspace(workspace))
+	plan, err := p.Plan(context.Background(), m, target)
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+
+	var loggerItem *planner.WorkItem
+	for i := range plan.Items {
+		if plan.Items[i].Repo == "goliatone/go-logger" {
+			loggerItem = &plan.Items[i]
+			break
+		}
+	}
+
+	if loggerItem == nil {
+		t.Fatalf("expected work item for go-logger")
+	}
+
+	if loggerItem.Branch != "override-branch" {
+		t.Fatalf("expected override branch, got %s", loggerItem.Branch)
+	}
+
+	if len(loggerItem.Tests) != 1 || strings.Join(loggerItem.Tests[0].Cmd, " ") != "task override:test" {
+		t.Fatalf("expected override tests, got %#v", loggerItem.Tests)
+	}
+
+	if len(loggerItem.ExtraCommands) != 1 || strings.Join(loggerItem.ExtraCommands[0].Cmd, " ") != "task module:lint" {
+		t.Fatalf("expected module extra command, got %#v", loggerItem.ExtraCommands)
+	}
+
+	if len(loggerItem.Labels) != 1 || loggerItem.Labels[0] != "module:label" {
+		t.Fatalf("expected module labels, got %#v", loggerItem.Labels)
+	}
+
+	if loggerItem.Notifications.SlackChannel != "#module" {
+		t.Fatalf("expected module notifications, got %#v", loggerItem.Notifications)
+	}
+
+	if loggerItem.PR.TitleTemplate != "module pr" {
+		t.Fatalf("expected module PR title, got %s", loggerItem.PR.TitleTemplate)
+	}
+
+	if loggerItem.Env["MODULE_ENV"] != "module" || loggerItem.Env["OVERRIDE_ENV"] != "override" {
+		t.Fatalf("expected merged env, got %#v", loggerItem.Env)
+	}
+
+	if loggerItem.Timeout != time.Minute {
+		t.Fatalf("expected override timeout, got %s", loggerItem.Timeout)
 	}
 }
 

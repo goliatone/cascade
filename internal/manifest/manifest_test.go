@@ -1,6 +1,7 @@
 package manifest_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -29,6 +30,40 @@ func TestLoader_Load_GeneratesExpectedManifest(t *testing.T) {
 
 	if diff := cmp.Diff(&want, got); diff != "" {
 		t.Fatalf("manifest mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoader_Load_ModuleAndDependentOverrides(t *testing.T) {
+	loader := manifest.NewLoader()
+	manifestPath := filepath.Join("testdata", "basic.yaml")
+	m, err := loader.Load(manifestPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if m.Module == nil {
+		t.Fatalf("expected module config to be populated")
+	}
+
+	if m.Module.Module != "github.com/goliatone/cascade" {
+		t.Fatalf("unexpected module path: %s", m.Module.Module)
+	}
+
+	if len(m.Module.Tests) == 0 {
+		t.Fatalf("expected module tests to be normalized")
+	}
+
+	depOverride, ok := m.Dependents["github.com/goliatone/go-errors"]
+	if !ok {
+		t.Fatalf("expected dependent override for github.com/goliatone/go-errors")
+	}
+
+	if len(depOverride.Tests) != 1 || depOverride.Tests[0].Cmd[0] != "task" {
+		t.Fatalf("unexpected dependent override tests: %#v", depOverride.Tests)
+	}
+
+	if depOverride.Timeout == 0 {
+		t.Fatalf("expected dependent override timeout to be set")
 	}
 }
 
@@ -118,6 +153,180 @@ func TestFindModule_NotFound(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "module not found") {
 		t.Fatalf("FindModule error = %v, want to contain 'module not found'", err)
+	}
+}
+
+func TestFindModuleConfig_ReturnsMatch(t *testing.T) {
+	var m manifest.Manifest
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "basic_manifest.json"), &m); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	config, ok := manifest.FindModuleConfig(&m, "github.com/goliatone/cascade")
+	if !ok {
+		t.Fatalf("FindModuleConfig expected to find module config")
+	}
+
+	if config.Branch != "main" {
+		t.Fatalf("unexpected module branch: %s", config.Branch)
+	}
+}
+
+func TestFindModuleConfig_NotFound(t *testing.T) {
+	var m manifest.Manifest
+	if err := testsupport.LoadGolden(filepath.Join("testdata", "basic_manifest.json"), &m); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	config, ok := manifest.FindModuleConfig(&m, "github.com/example/missing")
+	if ok {
+		t.Fatalf("FindModuleConfig should not find missing module, config=%#v", config)
+	}
+
+	if config != nil {
+		t.Fatalf("FindModuleConfig should return nil config when not found")
+	}
+
+	if cfg, ok := manifest.FindModuleConfig(nil, "github.com/example/missing"); ok || cfg != nil {
+		t.Fatalf("FindModuleConfig with nil manifest should return nil, false")
+	}
+}
+
+func TestLoadDependentOverrides(t *testing.T) {
+	tests := []struct {
+		name       string
+		repoDir    string
+		modulePath string
+		wantNil    bool
+		wantErr    string
+		assert     func(t *testing.T, cfg *manifest.DependentConfig)
+	}{
+		{
+			name:       "override present",
+			repoDir:    filepath.Join("testdata", "dependents", "with_override"),
+			modulePath: "github.com/goliatone/go-errors",
+			assert: func(t *testing.T, cfg *manifest.DependentConfig) {
+				if cfg.Branch != "release" {
+					t.Fatalf("expected branch 'release', got %s", cfg.Branch)
+				}
+				if len(cfg.Tests) != 1 || len(cfg.Tests[0].Cmd) == 0 || cfg.Tests[0].Cmd[0] != "task" {
+					t.Fatalf("unexpected tests: %#v", cfg.Tests)
+				}
+			},
+		},
+		{
+			name:       "missing module entry",
+			repoDir:    filepath.Join("testdata", "dependents", "missing_entry"),
+			modulePath: "github.com/goliatone/go-errors",
+			wantNil:    true,
+		},
+		{
+			name: "no manifest",
+			repoDir: func() string {
+				dir := t.TempDir()
+				return dir
+			}(),
+			modulePath: "github.com/goliatone/go-errors",
+			wantNil:    true,
+		},
+		{
+			name:       "invalid manifest",
+			repoDir:    filepath.Join("testdata", "dependents", "invalid"),
+			modulePath: "github.com/goliatone/go-errors",
+			wantErr:    "failed to parse YAML",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := manifest.LoadDependentOverrides(context.Background(), tt.repoDir, tt.modulePath)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %v does not contain %q", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.wantNil {
+				if cfg != nil {
+					t.Fatalf("expected nil override, got %#v", cfg)
+				}
+				return
+			}
+
+			if cfg == nil {
+				t.Fatalf("expected override to be returned")
+			}
+
+			if tt.assert != nil {
+				ttAssert := tt.assert
+				ttAssert(t, cfg)
+			}
+		})
+	}
+}
+
+func TestLoadDependentManifest(t *testing.T) {
+	missingDir := t.TempDir()
+
+	tests := []struct {
+		name    string
+		repoDir string
+		exists  bool
+		wantErr string
+	}{
+		{
+			name:    "manifest present",
+			repoDir: filepath.Join("testdata", "dependents", "with_override"),
+			exists:  true,
+		},
+		{
+			name:    "manifest missing",
+			repoDir: missingDir,
+			exists:  false,
+		},
+		{
+			name:    "invalid manifest",
+			repoDir: filepath.Join("testdata", "dependents", "invalid"),
+			wantErr: "failed to parse YAML",
+		},
+	}
+
+	if err := os.MkdirAll(filepath.Join("testdata", "dependents", "missing"), 0o755); err != nil {
+		t.Fatalf("create missing dir: %v", err)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := manifest.LoadDependentManifest(context.Background(), tt.repoDir)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %v does not contain %q", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.exists && m == nil {
+				t.Fatalf("expected manifest, got nil")
+			}
+			if !tt.exists && m != nil {
+				t.Fatalf("expected nil manifest, got %#v", m)
+			}
+		})
 	}
 }
 
@@ -293,6 +502,8 @@ func TestValidate_SchemaErrors(t *testing.T) {
 
 	errorStr := err.Error()
 	expectedErrors := []string{
+		"module.module cannot be empty",
+		"module.module_path cannot be empty",
 		"name cannot be empty",
 		"repo cannot be empty",
 		"duplicate module name: duplicate-name",
@@ -300,6 +511,7 @@ func TestValidate_SchemaErrors(t *testing.T) {
 		"module cannot be empty",
 		"module_path cannot be empty",
 		"duplicate dependent repo: example/dependent-1",
+		"dependents key cannot be empty",
 	}
 
 	for _, expected := range expectedErrors {
