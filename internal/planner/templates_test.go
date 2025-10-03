@@ -22,6 +22,12 @@ func TestRenderCommitMessage(t *testing.T) {
 			expected: "Update go-errors to v1.2.3",
 		},
 		{
+			name:     "template with dot notation placeholders",
+			template: "chore(deps): bump {{ .Module }} to {{ .Version }}",
+			target:   Target{Module: "github.com/goliatone/go-errors", Version: "v1.2.3"},
+			expected: "chore(deps): bump github.com/goliatone/go-errors to v1.2.3",
+		},
+		{
 			name:     "template with only module placeholder",
 			template: "Bump {{ module }} dependency",
 			target:   Target{Module: "go-errors", Version: "v1.2.3"},
