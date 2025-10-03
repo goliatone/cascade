@@ -231,6 +231,20 @@ func runPlan(manifestFlag, manifestArg, moduleFlag, versionFlag string) error {
 	fmt.Printf("Found %d work items:\n", len(plan.Items))
 	for i, item := range plan.Items {
 		fmt.Printf("  %d. %s (%s) -> %s\n", i+1, item.Repo, item.Module, item.BranchName)
+
+		if len(item.Tests) > 0 {
+			fmt.Println("     Tests:")
+			for _, cmd := range item.Tests {
+				fmt.Printf("       - %s\n", strings.Join(cmd.Cmd, " "))
+			}
+		}
+
+		if len(item.ExtraCommands) > 0 {
+			fmt.Println("     Extra Commands:")
+			for _, cmd := range item.ExtraCommands {
+				fmt.Printf("       - %s\n", strings.Join(cmd.Cmd, " "))
+			}
+		}
 	}
 
 	return nil
