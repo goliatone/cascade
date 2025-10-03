@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.1.26](https://github.com/goliatone/cascade/compare/v0.1.25...v0.1.26) - (2025-10-03)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Bust cache in relesae ([7becab1](https://github.com/goliatone/cascade/commit/7becab10a76a216746ce93038b408b55a636da10))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.26 ([2b13ccf](https://github.com/goliatone/cascade/commit/2b13ccfbceece38fa91a7ca281a69f45ecfe43b0))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.25 ([204bd60](https://github.com/goliatone/cascade/commit/204bd608d590780706b6d6186f56f0ddea141cac))  - (goliatone)
+
 # [0.1.25](https://github.com/goliatone/cascade/compare/v0.1.24...v0.1.25) - (2025-10-03)
 
 ## <!-- 13 -->📦 Bumps
