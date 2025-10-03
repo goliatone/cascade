@@ -26,8 +26,9 @@ func newDependencyCache(ttl time.Duration) *dependencyCache {
 }
 
 // Get retrieves the version of a module from the cache.
-// Returns the version and true if found and not expired, empty string and false otherwise.
-func (c *dependencyCache) Get(cloneURL, ref, modulePath string) (string, bool) {
+// Returns the version and true if found, not expired, and matches the requested target version (when provided).
+// Returns empty string and false otherwise which signals callers to perform a fresh fetch.
+func (c *dependencyCache) Get(cloneURL, ref, modulePath, targetVersion string) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -49,6 +50,14 @@ func (c *dependencyCache) Get(cloneURL, ref, modulePath string) (string, bool) {
 	// Check if the specific module exists in the dependencies
 	version, exists := entry.dependencies[modulePath]
 	if !exists {
+		atomic.AddInt64(&c.misses, 1)
+		return "", false
+	}
+
+	// If the target version is provided and the cached version differs, treat as a miss so that
+	// callers re-validate against the remote repository. This prevents stale cache entries from
+	// masking newer releases of the target module.
+	if targetVersion != "" && version != targetVersion {
 		atomic.AddInt64(&c.misses, 1)
 		return "", false
 	}

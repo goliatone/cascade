@@ -76,7 +76,7 @@ func (r *remoteDependencyChecker) NeedsUpdate(
 
 	// 3. Check cache first
 	if r.options.CacheEnabled {
-		currentVersion, cached := r.cache.Get(cloneURL, ref, target.Module)
+		currentVersion, cached := r.cache.Get(cloneURL, ref, target.Module, target.Version)
 		if cached {
 			if r.logger != nil {
 				r.logger.Debug("cache hit for dependency check",
