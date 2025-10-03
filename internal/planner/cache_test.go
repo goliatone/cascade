@@ -202,8 +202,8 @@ func TestDependencyCache_Stats(t *testing.T) {
 		t.Errorf("Expected 4 misses, got %d", stats.Misses)
 	}
 
-	if stats.Size != 1 {
-		t.Errorf("Expected cache size 1, got %d", stats.Size)
+	if stats.Size != 0 {
+		t.Errorf("Expected cache size 0 after mismatch eviction, got %d", stats.Size)
 	}
 }
 

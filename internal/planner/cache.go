@@ -29,42 +29,52 @@ func newDependencyCache(ttl time.Duration) *dependencyCache {
 // Returns the version and true if found, not expired, and matches the requested target version (when provided).
 // Returns empty string and false otherwise which signals callers to perform a fresh fetch.
 func (c *dependencyCache) Get(cloneURL, ref, modulePath, targetVersion string) (string, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	key := cacheKey{cloneURL: cloneURL, ref: ref}
+
+	c.mu.RLock()
 	entry, exists := c.entries[key]
-
-	// Cache miss: entry doesn't exist
 	if !exists {
+		c.mu.RUnlock()
 		atomic.AddInt64(&c.misses, 1)
 		return "", false
 	}
 
-	// Cache miss: entry expired
-	if time.Since(entry.cachedAt) > entry.ttl {
+	expired := time.Since(entry.cachedAt) > entry.ttl
+	version, hasModule := entry.dependencies[modulePath]
+	c.mu.RUnlock()
+
+	if expired {
+		atomic.AddInt64(&c.misses, 1)
+		c.deleteEntryIfUnchanged(key, entry)
+		return "", false
+	}
+
+	if !hasModule {
 		atomic.AddInt64(&c.misses, 1)
 		return "", false
 	}
 
-	// Check if the specific module exists in the dependencies
-	version, exists := entry.dependencies[modulePath]
-	if !exists {
-		atomic.AddInt64(&c.misses, 1)
-		return "", false
+	if targetVersion != "" {
+		cachedNorm := normalizeVersion(version)
+		targetNorm := normalizeVersion(targetVersion)
+		if cachedNorm != targetNorm {
+			atomic.AddInt64(&c.misses, 1)
+			c.deleteEntryIfUnchanged(key, entry)
+			return "", false
+		}
 	}
 
-	// If the target version is provided and the cached version differs, treat as a miss so that
-	// callers re-validate against the remote repository. This prevents stale cache entries from
-	// masking newer releases of the target module.
-	if targetVersion != "" && version != targetVersion {
-		atomic.AddInt64(&c.misses, 1)
-		return "", false
-	}
-
-	// Cache hit
 	atomic.AddInt64(&c.hits, 1)
 	return version, true
+}
+
+func (c *dependencyCache) deleteEntryIfUnchanged(key cacheKey, snapshot *cacheEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if current, ok := c.entries[key]; ok && current == snapshot {
+		delete(c.entries, key)
+	}
 }
 
 // Set stores all dependencies for a repository at a specific ref.
