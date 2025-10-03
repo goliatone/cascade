@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -135,6 +136,8 @@ func TestCLISmokeTests(t *testing.T) {
 		expectedExit int
 		contains     []string
 		notContains  []string
+		setupFiles   func(string) error
+		description  string
 	}{
 		{
 			name:         "plan command missing arguments",
@@ -156,6 +159,18 @@ func TestCLISmokeTests(t *testing.T) {
 			expectError:  false, // Should succeed with explicit flags
 			expectedExit: 0,
 			contains:     []string{"DRY RUN", "Planning updates", "github.com/example/lib@v1.2.3"},
+		},
+		{
+			name:         "plan command uses dependent overrides",
+			args:         []string{"plan", "testdata/dependent_overrides_manifest.yaml", "--module", "github.com/example/module-a", "--version", "v1.2.3", "--dry-run"},
+			setupFiles:   setupDependentOverridesWorkspace,
+			expectError:  false,
+			expectedExit: 0,
+			contains: []string{
+				"task dependent:test",
+				"task dependent:lint",
+			},
+			description: "Plan output should surface commands defined in dependent overrides",
 		},
 		{
 			name:         "release command missing manifest",
@@ -189,8 +204,16 @@ func TestCLISmokeTests(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := exec.Command("go", append([]string{"run", "."}, tt.args...)...)
 			workspace := t.TempDir()
+
+			if tt.setupFiles != nil {
+				if err := tt.setupFiles(workspace); err != nil {
+					t.Fatalf("failed to setup workspace: %v", err)
+				}
+			}
+
+			argsWithWorkspace := append(tt.args, "--workspace="+workspace)
+			cmd := exec.Command("go", append([]string{"run", "."}, argsWithWorkspace...)...)
 			env := append(os.Environ(),
 				"CASCADE_WORKSPACE="+workspace,
 				"CASCADE_STATE_DIR="+workspace,
@@ -477,19 +500,24 @@ func TestCLIManifestGenerateDiscovery(t *testing.T) {
 				t.Fatalf("Command failed unexpectedly: %v, stderr: %s, stdout: %s", err, stderr.String(), stdout.String())
 			}
 
+			desc := tt.description
+			if desc == "" {
+				desc = tt.name
+			}
+
 			output := stdout.String() + stderr.String()
 
 			// Check expected content
 			for _, expected := range tt.contains {
 				if !strings.Contains(output, expected) {
-					t.Errorf("%s: Expected output to contain %q, got:\n%s", tt.description, expected, output)
+					t.Errorf("%s: expected output to contain %q, got:\n%s", desc, expected, output)
 				}
 			}
 
 			// Check content that should not be present
 			for _, notExpected := range tt.notContains {
 				if strings.Contains(output, notExpected) {
-					t.Errorf("%s: Expected output to NOT contain %q, got:\n%s", tt.description, notExpected, output)
+					t.Errorf("%s: expected output to NOT contain %q, got:\n%s", desc, notExpected, output)
 				}
 			}
 		})
@@ -542,6 +570,45 @@ require github.com/target/module v1.0.0
 		if err := os.WriteFile(sumPath, []byte(""), 0644); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func setupDependentOverridesWorkspace(workspace string) error {
+	depPath := filepath.Join(workspace, "module-b")
+	if err := os.MkdirAll(depPath, 0o755); err != nil {
+		return err
+	}
+
+	goMod := `module github.com/example/module-b
+
+ go 1.21
+
+ require github.com/example/module-a v1.0.0
+`
+	if err := os.WriteFile(filepath.Join(depPath, "go.mod"), []byte(goMod), 0o644); err != nil {
+		return err
+	}
+
+	dependentManifest := `manifest_version: 1
+module:
+  module: github.com/example/module-b
+  tests:
+    - cmd: [task, module:test]
+  extra_commands:
+    - cmd: [task, module:lint]
+dependents:
+  github.com/example/module-a:
+    tests:
+      - cmd: [task, dependent:test]
+    extra_commands:
+      - cmd: [task, dependent:lint]
+    env:
+      MODULE_B_ENV: "override"
+`
+	if err := os.WriteFile(filepath.Join(depPath, ".cascade.yaml"), []byte(dependentManifest), 0o644); err != nil {
+		return err
 	}
 
 	return nil
