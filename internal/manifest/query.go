@@ -1,5 +1,19 @@
 package manifest
 
+// FindModuleConfig returns the module metadata for the provided module path, if present.
+func FindModuleConfig(m *Manifest, modulePath string) (*ModuleConfig, bool) {
+	if m == nil || m.Module == nil {
+		return nil, false
+	}
+	if modulePath == "" {
+		return nil, false
+	}
+	if m.Module.Module == modulePath {
+		return m.Module, true
+	}
+	return nil, false
+}
+
 // FindModule returns the module with the provided name.
 func FindModule(m *Manifest, name string) (*Module, error) {
 	for i := range m.Modules {

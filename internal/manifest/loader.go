@@ -47,6 +47,21 @@ func normalizeManifest(m *Manifest) {
 		m.Modules = []Module{}
 	}
 
+	if m.Module != nil {
+		if m.Module.Tests == nil {
+			m.Module.Tests = []Command{}
+		}
+		if m.Module.ExtraCommands == nil {
+			m.Module.ExtraCommands = []Command{}
+		}
+		if m.Module.Labels == nil {
+			m.Module.Labels = []string{}
+		}
+		if m.Module.Env == nil {
+			m.Module.Env = map[string]string{}
+		}
+	}
+
 	for i := range m.Modules {
 		module := &m.Modules[i]
 
@@ -66,6 +81,26 @@ func normalizeManifest(m *Manifest) {
 			if dependent.Labels == nil {
 				dependent.Labels = []string{}
 			}
+		}
+	}
+
+	if m.Dependents == nil {
+		m.Dependents = make(map[string]DependentConfig)
+	} else {
+		for key, dep := range m.Dependents {
+			if dep.Tests == nil {
+				dep.Tests = []Command{}
+			}
+			if dep.ExtraCommands == nil {
+				dep.ExtraCommands = []Command{}
+			}
+			if dep.Labels == nil {
+				dep.Labels = []string{}
+			}
+			if dep.Env == nil {
+				dep.Env = map[string]string{}
+			}
+			m.Dependents[key] = dep
 		}
 	}
 

@@ -1,0 +1,16 @@
+manifest_version: 1
+
+defaults:
+  branch: main
+  tests:
+    - cmd: [go, test, ./...]
+
+modules:
+  - name: module-a
+    module: github.com/example/module-a
+    repo: example/module-a
+    dependents:
+      - repo: example/module-b
+        module: github.com/example/module-b
+        module_path: .
+        branch: main

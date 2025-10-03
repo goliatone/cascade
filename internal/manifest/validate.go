@@ -17,6 +17,21 @@ func Validate(m *Manifest) error {
 		issues = append(issues, fmt.Sprintf("unsupported manifest version: %d (expected 1)", m.ManifestVersion))
 	}
 
+	if m.Module != nil {
+		if strings.TrimSpace(m.Module.Module) == "" {
+			issues = append(issues, "module.module cannot be empty")
+		}
+		if strings.TrimSpace(m.Module.ModulePath) == "" {
+			issues = append(issues, "module.module_path cannot be empty")
+		}
+	}
+
+	for modulePath := range m.Dependents {
+		if strings.TrimSpace(modulePath) == "" {
+			issues = append(issues, "dependents key cannot be empty")
+		}
+	}
+
 	if m.Modules == nil {
 		issues = append(issues, "modules cannot be nil")
 	} else {

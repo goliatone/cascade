@@ -4,9 +4,25 @@ import "time"
 
 // Manifest is the root structure parsed from .cascade.yaml.
 type Manifest struct {
-	ManifestVersion int      `yaml:"manifest_version"`
-	Defaults        Defaults `yaml:"defaults"`
-	Modules         []Module `yaml:"modules"`
+	ManifestVersion int                        `yaml:"manifest_version"`
+	Module          *ModuleConfig              `yaml:"module,omitempty"`
+	Defaults        Defaults                   `yaml:"defaults"`
+	Modules         []Module                   `yaml:"modules"`
+	Dependents      map[string]DependentConfig `yaml:"dependents,omitempty"`
+}
+
+// ModuleConfig captures metadata and behaviours for the manifest's own module.
+type ModuleConfig struct {
+	Module        string            `yaml:"module"`
+	ModulePath    string            `yaml:"module_path,omitempty"`
+	Branch        string            `yaml:"branch,omitempty"`
+	Tests         []Command         `yaml:"tests,omitempty"`
+	ExtraCommands []Command         `yaml:"extra_commands,omitempty"`
+	Labels        []string          `yaml:"labels,omitempty"`
+	Notifications Notifications     `yaml:"notifications,omitempty"`
+	PR            PRConfig          `yaml:"pr,omitempty"`
+	Env           map[string]string `yaml:"env,omitempty"`
+	Timeout       time.Duration     `yaml:"timeout,omitempty"`
 }
 
 // Defaults captures project-wide defaults inherited by dependents.
@@ -27,6 +43,20 @@ type Module struct {
 	Repo            string      `yaml:"repo"`
 	ReleaseArtifact string      `yaml:"release_artifact"`
 	Dependents      []Dependent `yaml:"dependents"`
+}
+
+// DependentConfig captures dependent-specific overrides keyed by upstream module path.
+type DependentConfig struct {
+	Branch        string            `yaml:"branch,omitempty"`
+	Tests         []Command         `yaml:"tests,omitempty"`
+	ExtraCommands []Command         `yaml:"extra_commands,omitempty"`
+	Labels        []string          `yaml:"labels,omitempty"`
+	Notifications Notifications     `yaml:"notifications,omitempty"`
+	PR            PRConfig          `yaml:"pr,omitempty"`
+	Env           map[string]string `yaml:"env,omitempty"`
+	Timeout       time.Duration     `yaml:"timeout,omitempty"`
+	Canary        bool              `yaml:"canary,omitempty"`
+	Skip          bool              `yaml:"skip,omitempty"`
 }
 
 // Dependent defines a repo that consumes a module.
