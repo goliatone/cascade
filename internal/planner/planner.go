@@ -29,6 +29,13 @@ func WithWorkspace(workspace string) Option {
 	}
 }
 
+// WithLogger attaches a logger for debug output.
+func WithLogger(logger Logger) Option {
+	return func(p *planner) {
+		p.logger = logger
+	}
+}
+
 // New returns a planner with optional configuration.
 func New(opts ...Option) Planner {
 	p := &planner{}
@@ -41,6 +48,7 @@ func New(opts ...Option) Planner {
 type planner struct {
 	checker   DependencyChecker
 	workspace string
+	logger    Logger
 }
 
 func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target) (*Plan, error) {
@@ -90,8 +98,66 @@ func (p *planner) Plan(ctx context.Context, m *manifest.Manifest, target Target)
 			}
 		}
 
+		var (
+			repoPath          string
+			moduleDefaults    *manifest.ModuleConfig
+			dependentOverride *manifest.DependentConfig
+		)
+
+		if p.workspace != "" {
+			dc := &dependencyChecker{logger: p.logger}
+			path, err := dc.locateRepository(dependent, p.workspace)
+			if err != nil {
+				if p.logger != nil {
+					p.logger.Debug("dependent repository not found for overrides",
+						"repo", dependent.Repo,
+						"workspace", p.workspace,
+						"error", err.Error())
+				}
+			} else {
+				repoPath = path
+				cfg, err := manifest.LoadDependentOverrides(ctx, repoPath, target.Module)
+				if err != nil {
+					if p.logger != nil {
+						p.logger.Warn("failed to load dependent overrides",
+							"repo", dependent.Repo,
+							"module", target.Module,
+							"error", err.Error())
+					}
+				} else {
+					dependentOverride = cfg
+					if dependentOverride != nil && p.logger != nil {
+						p.logger.Debug("applying dependent override",
+							"repo", dependent.Repo,
+							"module", target.Module)
+					}
+				}
+
+				if repoPath != "" {
+					depManifest, err := manifest.LoadDependentManifest(ctx, repoPath)
+					if err != nil {
+						if p.logger != nil {
+							p.logger.Warn("failed to load dependent manifest",
+								"repo", dependent.Repo,
+								"error", err.Error())
+						}
+					} else if depManifest != nil {
+						moduleDefaults = depManifest.Module
+					}
+				}
+			}
+		}
+
 		// Apply defaults to the dependent, with metadata about original PR config
 		expanded, hadOriginalPR := manifest.ExpandDefaultsWithMetadata(dependent, m.Defaults)
+
+		if moduleDefaults != nil {
+			expanded = applyDependentConfig(expanded, convertModuleConfig(moduleDefaults))
+		}
+
+		if dependentOverride != nil {
+			expanded = applyDependentConfig(expanded, dependentOverride)
+		}
 
 		// If the dependent had no original PR config, use empty templates instead of defaults
 		if !hadOriginalPR {
