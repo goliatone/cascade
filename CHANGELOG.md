@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.1.32](https://github.com/goliatone/cascade/compare/v0.1.31...v0.1.32) - (2025-10-05)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.32 ([771dc6f](https://github.com/goliatone/cascade/commit/771dc6f48f82149a4b758d38d387fd62b64d0e10))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Logger to planner ([0aec550](https://github.com/goliatone/cascade/commit/0aec550ea77a298d5128390c9e676862ff7d5bfe))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.31 ([314fb34](https://github.com/goliatone/cascade/commit/314fb3404905f7f20162a055bb9acf166ee661a7))  - (goliatone)
+
 # [0.1.31](https://github.com/goliatone/cascade/compare/v0.1.30...v0.1.31) - (2025-10-03)
 
 ## <!-- 1 -->🐛 Bug Fixes
