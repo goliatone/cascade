@@ -139,6 +139,32 @@ cascade resume go-errors@v1.4.0
 cascade revert go-errors@v1.4.0
 ```
 
+### Workflow Generation
+
+`cascade workflow generate` scaffolds a GitHub Actions workflow that runs Cascade whenever a release tag is pushed. The command creates `.github/workflows/cascade-release.yml` by default, infers repository metadata, and can be re-run safely to overwrite the workflow when templates change.
+
+```bash
+cascade workflow generate --output .github/workflows/cascade-release.yml
+```
+
+**Flags:**
+- `--output` (default `.github/workflows/cascade-release.yml`) – choose a different path or filename
+- `--template` – render an alternate Go `text/template` file instead of the embedded default
+- `--module` – override the module detected from `go.mod` (handy for tests or monorepos)
+- Global flags like `--dry-run`, `--yes`, and `--force` control preview and confirmation behaviour
+
+**Secrets and tokens:**
+- The generated workflow expects a repository secret named `CASCADE_GITHUB_TOKEN`. Map this to a personal access token with the repository scopes Cascade requires (cross-repo cloning, PR creation).
+- GitHub automatically exposes `GITHUB_TOKEN`, but it is limited to the current repository. If you only need repo-scoped permissions you can define a secret named `CASCADE_GITHUB_TOKEN` that references `${{ secrets.GITHUB_TOKEN }}`.
+- Slack notifications (optional) read from `CASCADE_SLACK_TOKEN`; omit the secret if Slack is not used.
+
+**Custom templates:**
+1. Copy `cmd/cascade/templates/workflow/github_actions.yaml.tmpl` to a location you control.
+2. Adjust steps, matrix definitions, or secrets as needed.
+3. Run `cascade workflow generate --template custom-workflow.tmpl --output .github/workflows/cascade-release.yml` to render your version.
+
+Use `--dry-run` to print the rendered YAML to stdout without touching the filesystem. The command always creates missing parent directories, so it is safe to run in a fresh repository.
+
 ## CI/CD Mode
 
 Cascade supports running in CI/CD environments without requiring a local workspace. This enables dependency checking and PR automation directly from your CI pipeline.
