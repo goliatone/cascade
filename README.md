@@ -350,62 +350,75 @@ See the `examples/` directory for complete manifests:
 
 ### GitHub Actions
 
-Create `.github/workflows/cascade-release.yml`:
+Create `.github/workflows/cascade-release.yml` to run whenever a new tag matching `v*.*.*` is pushed. The workflow builds Cascade from the tagged source, resolves the module/version automatically, and keeps the state directory aligned with the uploaded artifact.
 
 ```yaml
 name: Cascade Dependency Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      module:
-        description: 'Module to update (e.g., github.com/goliatone/go-errors)'
-        required: true
-      version:
-        description: 'Target version (e.g., v1.4.0)'
-        required: true
+  push:
+    tags:
+      - 'v*.*.*'
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      TARGET_VERSION: ${{ github.ref_name }}
+      CASCADE_STATE_DIR: ${{ github.workspace }}/.cascade/state
+      CASCADE_GITHUB_TOKEN: ${{ secrets.CASCADE_GITHUB_TOKEN }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
 
-      - name: Install Cascade
-        run: go install github.com/goliatone/cascade@latest
+      - name: Discover module path
+        id: module
+        run: echo "module=$(go list -m)" >> "$GITHUB_OUTPUT"
+
+      - name: Build Cascade CLI from tag
+        run: go build -o /usr/local/bin/cascade ./cmd/cascade
 
       - name: Generate Manifest
+        env:
+          GITHUB_OWNER: ${{ github.repository_owner }}
         run: |
           cascade manifest generate \
-            --module-path="${{ inputs.module }}" \
-            --version="${{ inputs.version }}" \
-            --github-org=${{ github.repository_owner }} \
+            --module-path="${{ steps.module.outputs.module }}" \
+            --version="${TARGET_VERSION}" \
+            --github-org="${GITHUB_OWNER}" \
             --yes \
             --output=.cascade.yaml
-        env:
-          CASCADE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Plan Release
         run: |
           cascade plan \
             --manifest=.cascade.yaml \
+            --module="${{ steps.module.outputs.module }}" \
+            --version="${TARGET_VERSION}" \
             --check-strategy=remote \
             --check-parallel=8 \
             --skip-up-to-date \
             --quiet
-        env:
-          CASCADE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Execute Release
+        env:
+          CASCADE_SLACK_TOKEN: ${{ secrets.CASCADE_SLACK_TOKEN }}
         run: |
           cascade release \
             --manifest=.cascade.yaml \
+            --module="${{ steps.module.outputs.module }}" \
+            --version="${TARGET_VERSION}" \
             --check-strategy=remote \
             --check-parallel=8 \
             --check-cache-ttl=10m \
@@ -413,17 +426,16 @@ jobs:
             --parallel=4 \
             --timeout=20m \
             --verbose
-        env:
-          CASCADE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CASCADE_SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
 
-      - name: Upload State
+      - name: Upload Cascade state
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cascade-state
-          path: .cascade/state/
+          path: ${{ env.CASCADE_STATE_DIR }}
 ```
+
+> **Secrets:** Provision `CASCADE_GITHUB_TOKEN` with a PAT that can push branches and open PRs across dependent repositories. `CASCADE_SLACK_TOKEN` remains optional.
 
 ### GitLab CI
 
