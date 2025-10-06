@@ -1,0 +1,89 @@
+# {{ .TriggerDescription }}
+name: Cascade Dependency Release
+
+on:
+  push:
+    tags:
+      - '{{ .TagPattern }}'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      TARGET_VERSION: ${{ github.ref_name }}
+      CASCADE_STATE_DIR: {{ .StateDir }}
+      {{- $ghToken := .Secrets.GitHubToken }}
+      {{- if $ghToken }}
+      {{$ghToken}}: {{ printf "${{ secrets.%s }}" $ghToken }}
+      {{- end }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '{{ .GoVersion }}'
+
+      - name: Discover module path
+        id: module
+        run: echo "module=$(go list -m)" >> "$GITHUB_OUTPUT"
+
+      - name: Build Cascade CLI from tag
+        run: go build -o {{ .BinaryPath }} ./cmd/cascade
+
+      - name: Generate Manifest
+        env:
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          {{- if $ghToken }}
+          {{$ghToken}}: {{ printf "${{ secrets.%s }}" $ghToken }}
+          {{- end }}
+        run: |
+          cascade manifest generate \
+            --module-path="${{ steps.module.outputs.module }}" \
+            --version="${TARGET_VERSION}" \
+            --github-org="${GITHUB_OWNER}" \
+            --yes \
+            --output=.cascade.yaml
+
+      - name: Plan Release
+        run: |
+          cascade plan \
+            --manifest=.cascade.yaml \
+            --module="${{ steps.module.outputs.module }}" \
+            --version="${TARGET_VERSION}" \
+            --check-strategy=remote \
+            --check-parallel=8 \
+            --skip-up-to-date \
+            --quiet
+
+      - name: Execute Release
+        env:
+          {{- $slackToken := .Secrets.SlackToken }}
+          {{- if $slackToken }}
+          {{$slackToken}}: {{ printf "${{ secrets.%s }}" $slackToken }}
+          {{- end }}
+        run: |
+          cascade release \
+            --manifest=.cascade.yaml \
+            --module="${{ steps.module.outputs.module }}" \
+            --version="${TARGET_VERSION}" \
+            --check-strategy=remote \
+            --check-parallel=8 \
+            --check-cache-ttl=10m \
+            --skip-up-to-date \
+            --parallel=4 \
+            --timeout=20m \
+            --verbose
+
+      - name: Upload Cascade state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cascade-state
+          path: ${{ env.CASCADE_STATE_DIR }}
