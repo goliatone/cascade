@@ -13,7 +13,7 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      TARGET_VERSION: ${{ github.ref_name }}
+      TARGET_VERSION: ${{ "{{ github.ref_name }}" }}
       CASCADE_STATE_DIR: {{ .StateDir }}
       {{- $ghToken := .Secrets.GitHubToken }}
       {{- if $ghToken }}
@@ -39,13 +39,13 @@ jobs:
 
       - name: Generate Manifest
         env:
-          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_OWNER: ${{ "{{ github.repository_owner }}" }}
           {{- if $ghToken }}
           {{$ghToken}}: {{ printf "${{ secrets.%s }}" $ghToken }}
           {{- end }}
         run: |
           cascade manifest generate \
-            --module-path="${{ steps.module.outputs.module }}" \
+            --module-path="{{ "{{ steps.module.outputs.module }}" }}" \
             --version="${TARGET_VERSION}" \
             --github-org="${GITHUB_OWNER}" \
             --yes \
@@ -55,7 +55,7 @@ jobs:
         run: |
           cascade plan \
             --manifest=.cascade.yaml \
-            --module="${{ steps.module.outputs.module }}" \
+            --module="{{ "{{ steps.module.outputs.module }}" }}" \
             --version="${TARGET_VERSION}" \
             --check-strategy=remote \
             --check-parallel=8 \
@@ -71,7 +71,7 @@ jobs:
         run: |
           cascade release \
             --manifest=.cascade.yaml \
-            --module="${{ steps.module.outputs.module }}" \
+            --module="{{ "{{ steps.module.outputs.module }}" }}" \
             --version="${TARGET_VERSION}" \
             --check-strategy=remote \
             --check-parallel=8 \
@@ -86,4 +86,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cascade-state
-          path: ${{ env.CASCADE_STATE_DIR }}
+          path: ${{ "{{ env.CASCADE_STATE_DIR }}" }}
