@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.1.33](https://github.com/goliatone/cascade/compare/v0.1.32...v0.1.33) - (2025-10-06)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.33 ([ab377a7](https://github.com/goliatone/cascade/commit/ab377a71f35a0273422e490571dc012cbd6d4fbe))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- New cascade template generate command ([cb0537a](https://github.com/goliatone/cascade/commit/cb0537a63deb4e102d39b0a7ac044e96c36d7f48))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.32 ([0dd4f9a](https://github.com/goliatone/cascade/commit/0dd4f9af65f47438052ee1aa86b7d676036b9c30))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([ce2a1ae](https://github.com/goliatone/cascade/commit/ce2a1ae4dfc46a7648746bfb3edf77155fa064ff))  - (goliatone)
+
 # [0.1.32](https://github.com/goliatone/cascade/compare/v0.1.31...v0.1.32) - (2025-10-05)
 
 ## <!-- 13 -->📦 Bumps
