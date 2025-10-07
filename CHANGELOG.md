@@ -1,5 +1,15 @@
 # Changelog
 
+# [0.1.40](https://github.com/goliatone/cascade/compare/v0.1.39...v0.1.40) - (2025-10-07)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.40 ([8f0a961](https://github.com/goliatone/cascade/commit/8f0a9614e6d6f2ade12cf872c153bb09e4c1593d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.39 ([96de4b0](https://github.com/goliatone/cascade/commit/96de4b06022955c94cc207ddbbb149e4815329d4))  - (goliatone)
+
 # [0.1.39](https://github.com/goliatone/cascade/compare/v0.1.38...v0.1.39) - (2025-10-07)
 
 ## <!-- 1 -->🐛 Bug Fixes
