@@ -4,7 +4,17 @@
 
 ## <!-- 1 -->🐛 Bug Fixes
 
+- Update logic for tagging ([61b3ffc](https://github.com/goliatone/cascade/commit/61b3ffc0aa38958535918e05b351cf7031ab9bc6))  - (goliatone)
+
+# [0.1.42](https://github.com/goliatone/cascade/compare/v0.1.41...v0.1.42) - (2025-10-07)
+
+## <!-- 1 -->🐛 Bug Fixes
+
 - Release script should release before pushing ([a191cb4](https://github.com/goliatone/cascade/commit/a191cb4ecde9450e290b9594e99bfec06d338bf5))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.1.42 ([8bb981f](https://github.com/goliatone/cascade/commit/8bb981f4441c7d0907575262a04fbce2366563ca))  - (goliatone)
 
 ## <!-- 3 -->📚 Documentation
 
