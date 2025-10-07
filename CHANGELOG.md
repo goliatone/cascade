@@ -1,5 +1,15 @@
 # Changelog
 
+# [unreleased]
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Release script should release before pushing ([a191cb4](https://github.com/goliatone/cascade/commit/a191cb4ecde9450e290b9594e99bfec06d338bf5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.41 ([0da2d36](https://github.com/goliatone/cascade/commit/0da2d3648e3d122a7f4e4711832e8c7d2f1fd639))  - (goliatone)
+
 # [0.1.41](https://github.com/goliatone/cascade/compare/v0.1.39...v0.1.41) - (2025-10-07)
 
 ## <!-- 13 -->📦 Bumps
