@@ -4,7 +4,17 @@
 
 ## <!-- 1 -->🐛 Bug Fixes
 
+- Goreleaser artifact name ([3b77ece](https://github.com/goliatone/cascade/commit/3b77ecef3045d3dbdf27d95aae5aec6905ee6419))  - (goliatone)
+
+# [0.1.46](https://github.com/goliatone/cascade/compare/v0.1.45...v0.1.46) - (2025-10-07)
+
+## <!-- 1 -->🐛 Bug Fixes
+
 - Goreleaser artifact name ([6471ad1](https://github.com/goliatone/cascade/commit/6471ad1887731dd2be3f2e802692b4e5e94c5525))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.1.46 ([65dff00](https://github.com/goliatone/cascade/commit/65dff00a47535bb72ead416455dd8150b2ff607c))  - (goliatone)
 
 # [0.1.45](https://github.com/goliatone/cascade/compare/v0.1.44...v0.1.45) - (2025-10-07)
 
