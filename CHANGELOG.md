@@ -1,10 +1,14 @@
 # Changelog
 
-# [unreleased]
+# [0.1.43](https://github.com/goliatone/cascade/compare/v0.1.42...v0.1.43) - (2025-10-07)
 
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Update logic for tagging ([61b3ffc](https://github.com/goliatone/cascade/commit/61b3ffc0aa38958535918e05b351cf7031ab9bc6))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.1.43 ([aef7a7f](https://github.com/goliatone/cascade/commit/aef7a7fa8cdf86533f1bf92470255e11c1d8b60b))  - (goliatone)
 
 # [0.1.42](https://github.com/goliatone/cascade/compare/v0.1.41...v0.1.42) - (2025-10-07)
 
