@@ -28,9 +28,20 @@ Packages are segmented by responsibility:
 
 ## Installation
 
+### Go install
+
 ```bash
 go install github.com/goliatone/cascade@latest
 ```
+
+### Homebrew (macOS)
+
+```bash
+brew tap goliatone/homebrew-tap
+brew install cascade
+```
+
+> Homebrew downloads the latest formula from `goliatone/homebrew-tap`. Each GoReleaser publication updates that tap automatically, so after a release you can run `brew update && brew upgrade cascade` to pull the new build.
 
 ## Usage
 
