@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.1.38](https://github.com/goliatone/cascade/compare/v0.1.37...v0.1.38) - (2025-10-07)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Goreleaser v2 specify target deploy on tap ([d22e14f](https://github.com/goliatone/cascade/commit/d22e14f8d81d21c50997453a0ec13bb85382d983))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.38 ([50dc0ef](https://github.com/goliatone/cascade/commit/50dc0ef0f15099848f7365e4e602f2b95f1d979f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.37 ([5b2563b](https://github.com/goliatone/cascade/commit/5b2563b6f50a8eead202188237109466000ffbec))  - (goliatone)
+
 # [0.1.37](https://github.com/goliatone/cascade/compare/v0.1.36...v0.1.37) - (2025-10-07)
 
 ## <!-- 1 -->🐛 Bug Fixes
