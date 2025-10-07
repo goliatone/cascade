@@ -1,5 +1,17 @@
 # Changelog
 
+# [unreleased]
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update name template for artifacts ([8fa14a7](https://github.com/goliatone/cascade/commit/8fa14a7f624a89184c288c50014393124e613438))  - (goliatone)
+
+# [0.1.44](https://github.com/goliatone/cascade/compare/v0.1.43...v0.1.44) - (2025-10-07)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.1.44 ([03e6ece](https://github.com/goliatone/cascade/commit/03e6ecebaf7fef00cf4e17a83391e202cf99fb81))  - (goliatone)
+
 # [0.1.43](https://github.com/goliatone/cascade/compare/v0.1.42...v0.1.43) - (2025-10-07)
 
 ## <!-- 1 -->🐛 Bug Fixes
