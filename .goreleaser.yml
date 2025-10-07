@@ -28,13 +28,7 @@ builds:
       - -X github.com/goliatone/cascade/pkg/version.User=goliatone
 archives:
   - id: cascade
-    name_template: >-
-      {{- .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if and (eq .Arch "arm") (ne .Arm "64") .Arm }}v{{ .Arm }}{{ end -}}
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 checksum:
   name_template: "checksums.txt"
 snapshot:
@@ -64,13 +58,7 @@ brews:
       system "#{bin}/cascade -version"
 nfpms:
   - id: cascade
-    file_name_template: >-
-      {{- .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if and (eq .Arch "arm") (ne .Arm "64") .Arm }}v{{ .Arm }}{{ end -}}
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     bindir: /usr/local/bin/
     maintainer: goliatone <cascade@goliatone.com>
     description: managed release cycles.
