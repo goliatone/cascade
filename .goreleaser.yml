@@ -56,7 +56,7 @@ brews:
     repository:
       owner: goliatone
       name: homebrew-tap
-    folder: Formula
+    directory: Formula
     description: managed release cycles.
     homepage: https://github.com/goliatone/cascade
     license: "MIT"
