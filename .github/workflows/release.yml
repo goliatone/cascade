@@ -6,6 +6,8 @@ on:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
       - name: "Unshallow Fetch"
@@ -23,3 +25,4 @@ jobs:
         uses: EndBug/latest-tag@latest
         with:
           description: "cascade latest release"
+          token: ${{ secrets.GITHUB_TOKEN }}
