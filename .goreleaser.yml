@@ -28,7 +28,15 @@ builds:
       - -X github.com/goliatone/cascade/pkg/version.User=goliatone
 archives:
   - id: cascade
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      amd64: x86_64
+      386: i386
+      arm: armv6
+      arm64: arm64
 checksum:
   name_template: "checksums.txt"
 snapshot:
@@ -47,6 +55,8 @@ changelog:
   format: '{{ .SHA }}: {{ .Message }} ({{ with .AuthorUsername }}@{{ . }}{{ else }}{{ .AuthorName }} <{{ .AuthorEmail }}>{{ end }})'
 brews:
   - name: cascade
+    ids:
+      - cascade
     repository:
       owner: goliatone
       name: homebrew-tap
@@ -58,7 +68,15 @@ brews:
       system "#{bin}/cascade -version"
 nfpms:
   - id: cascade
-    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    file_name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      amd64: x86_64
+      386: i386
+      arm: armv6
+      arm64: arm64
     bindir: /usr/local/bin/
     maintainer: goliatone <cascade@goliatone.com>
     description: managed release cycles.
