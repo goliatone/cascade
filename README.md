@@ -339,7 +339,7 @@ Populate `manifest_generator` in `config.yaml` to predefine discovery behavior, 
 
 ```yaml
 manifest_generator:
-  default_workspace: /Users/you/.cache/cascade
+  default_workspace: ~/.cache/cascade
   default_branch: main
   tests:
     command: go test ./... -race -count=1
