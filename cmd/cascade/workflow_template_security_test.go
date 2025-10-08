@@ -8,7 +8,7 @@ import (
 )
 
 func TestDependencyWorkflowTemplateSecurityGuards(t *testing.T) {
-	path := filepath.Join("..", ".github", "workflows", "dependency-registration.yml.tpl")
+	path := filepath.Join("..", "data", "workflows", "dependency-registration.yml.tpl")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read template: %v", err)
