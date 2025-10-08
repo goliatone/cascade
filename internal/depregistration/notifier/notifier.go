@@ -259,3 +259,27 @@ func sanitizeBranch(repo string) string {
 	replacer := strings.NewReplacer(" ", "-", ".", "-", ":", "-", "@", "-", "#", "-", "?", "-", "=", "-", "+", "-", ",", "-", "*", "-", "[", "-", "]", "-")
 	return replacer.Replace(strings.ToLower(repo))
 }
+
+func buildPullRequestBody(req Request) string {
+	var builder strings.Builder
+	builder.WriteString("## Dependency Registration\n\n")
+	builder.WriteString("We detected a new internal consumer via Cascade.\n\n")
+	builder.WriteString("- Consuming repository: ")
+	builder.WriteString(req.ConsumingRepo)
+	builder.WriteString("\n")
+	if req.ConsumingModule != "" {
+		builder.WriteString("- Consuming module: ")
+		builder.WriteString(req.ConsumingModule)
+		builder.WriteString("\n")
+	}
+	builder.WriteString("- Dependency module: ")
+	builder.WriteString(req.Dependency.Module)
+	if req.Dependency.Version != "" {
+		builder.WriteString(" (version ")
+		builder.WriteString(req.Dependency.Version)
+		builder.WriteString(")")
+	}
+	builder.WriteString("\n\n")
+	builder.WriteString("Please ensure `.cascade.yaml` lists this repository so cascade can orchestrate future releases.")
+	return builder.String()
+}

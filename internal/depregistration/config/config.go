@@ -13,16 +13,16 @@ import (
 type Config struct {
 	// SkipPatterns are regex patterns for modules that should be ignored by the
 	// detector (e.g., internal tooling modules).
-	SkipPatterns []string `yaml:"skip_patterns"`
+	SkipPatterns []string `yaml:"skip_patterns" json:"skip_patterns"`
 	// Workflow identifies the workflow file in the dependency repository to
 	// dispatch when `.cascade.yaml` exists. Defaults to `cascade-release.yml`.
-	Workflow string `yaml:"workflow"`
+	Workflow string `yaml:"workflow" json:"workflow"`
 	// DryRun toggles notification behaviour; when true, the workflow should
 	// detect changes but avoid GitHub mutations.
-	DryRun bool `yaml:"dry_run"`
+	DryRun bool `yaml:"dry_run" json:"dry_run"`
 	// Workspaces lists additional go.work entries or module directories to scan
 	// when detecting dependency changes in multi-module repositories.
-	Workspaces []string `yaml:"workspaces"`
+	Workspaces []string `yaml:"workspaces" json:"workspaces"`
 }
 
 // Defaults returns a Config populated with default values.
