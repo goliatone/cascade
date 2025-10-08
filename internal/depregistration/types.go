@@ -8,6 +8,11 @@ type Detector interface {
 	Detect(ctx context.Context, baseRef, headRef string) ([]DependencyDelta, error)
 }
 
+// DiffFetcher provides git diff content between two references.
+type DiffFetcher interface {
+	Diff(ctx context.Context, baseRef, headRef string) ([]byte, error)
+}
+
 // ChangeType captures the kind of dependency change identified by the detector.
 type ChangeType string
 
