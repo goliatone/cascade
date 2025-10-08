@@ -23,6 +23,9 @@ type Config struct {
 	// Workspaces lists additional go.work entries or module directories to scan
 	// when detecting dependency changes in multi-module repositories.
 	Workspaces []string `yaml:"workspaces" json:"workspaces"`
+	// DefaultBranch overrides the branch used when dispatching dependency
+	// workflows. When empty, `main` is assumed.
+	DefaultBranch string `yaml:"default_branch" json:"default_branch"`
 }
 
 // Defaults returns a Config populated with default values.
