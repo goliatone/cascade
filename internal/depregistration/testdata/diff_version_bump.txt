@@ -1,0 +1,11 @@
+diff --git a/go.mod b/go.mod
+index 5555555..6666666 100644
+--- a/go.mod
++++ b/go.mod
+@@
+-require (
+-	github.com/goliatone/go-logger v1.2.0
+-)
++require (
++	github.com/goliatone/go-logger v1.3.0
++)
