@@ -26,6 +26,8 @@ const (
 	ActionIssueUpdated ActionType = "issue_updated"
 	// ActionDryRun indicates no action was taken due to dry-run mode.
 	ActionDryRun ActionType = "dry_run"
+	// ActionNotificationFailed indicates notification could not be completed.
+	ActionNotificationFailed ActionType = "notification_failed"
 )
 
 // Request captures the information required to notify a dependency repository.
