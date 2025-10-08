@@ -76,6 +76,7 @@ Examples:
 	cmd.Flags().StringSliceVar(&req.Dependents, "dependents", []string{}, "Dependent repositories (format: owner/repo). If omitted, discovers dependents in workspace")
 	cmd.Flags().StringVar(&req.SlackChannel, "slack-channel", "", "Default Slack notification channel")
 	cmd.Flags().StringVar(&req.Webhook, "webhook", "", "Default webhook URL for notifications")
+	cmd.Flags().BoolVar(&req.WithDependencyRegistration, "with-dependency-registration", false, "Generate dependency registration workflow and config stubs")
 
 	addConfirmationFlags(cmd, &req)
 	addWorkspaceDiscoveryFlags(cmd, &req)

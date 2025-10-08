@@ -5,35 +5,38 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/goliatone/cascade/internal/manifest"
 	"github.com/goliatone/cascade/internal/manifest/persist"
 	"github.com/goliatone/cascade/pkg/config"
+	"github.com/goliatone/cascade/pkg/di"
 	"github.com/goliatone/cascade/pkg/util/modpath"
 	workspacepkg "github.com/goliatone/cascade/pkg/workspace"
 )
 
 type manifestGenerateRequest struct {
-	ModuleName      string
-	ModulePath      string
-	Repository      string
-	Version         string
-	OutputPath      string
-	Dependents      []string
-	SlackChannel    string
-	Webhook         string
-	Force           bool
-	Yes             bool
-	NonInteractive  bool
-	Workspace       string
-	MaxDepth        int
-	IncludePatterns []string
-	ExcludePatterns []string
-	GitHubOrg       string
-	GitHubInclude   []string
-	GitHubExclude   []string
+	ModuleName                 string
+	ModulePath                 string
+	Repository                 string
+	Version                    string
+	OutputPath                 string
+	Dependents                 []string
+	SlackChannel               string
+	Webhook                    string
+	Force                      bool
+	Yes                        bool
+	NonInteractive             bool
+	Workspace                  string
+	MaxDepth                   int
+	IncludePatterns            []string
+	ExcludePatterns            []string
+	GitHubOrg                  string
+	GitHubInclude              []string
+	GitHubExclude              []string
+	WithDependencyRegistration bool
 }
 
 func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *config.Config) error {
@@ -208,6 +211,12 @@ func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *con
 		if module.Repo == "" {
 			module.Repo = req.Repository
 		}
+		if req.WithDependencyRegistration {
+			if module.Env == nil {
+				module.Env = map[string]string{}
+			}
+			module.Env["CASCADE_DEPENDENCY_REGISTRATION"] = "enabled"
+		}
 	}
 
 	fileExists := false
@@ -270,6 +279,12 @@ func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *con
 		}
 	}
 
+	if req.WithDependencyRegistration {
+		if err := ensureDependencyRegistrationAssets(req, shouldWrite, logger); err != nil {
+			return err
+		}
+	}
+
 	if !shouldWrite {
 		fmt.Printf("DRY RUN: Would write manifest to %s\n", finalOutputPath)
 		fmt.Printf("--- Generated Manifest ---\n%s", string(result.YAML))
@@ -277,5 +292,48 @@ func manifestGenerate(ctx context.Context, req manifestGenerateRequest, cfg *con
 	}
 
 	fmt.Printf("Manifest generated successfully: %s\n", finalOutputPath)
+	return nil
+}
+
+func ensureDependencyRegistrationAssets(req manifestGenerateRequest, shouldWrite bool, logger di.Logger) error {
+	assets := []struct {
+		path        string
+		description string
+		data        []byte
+		mode        os.FileMode
+	}{
+		{path: ".github/workflows/dependency-registration.yml", description: "dependency registration workflow", data: dependencyRegistrationWorkflow, mode: 0o644},
+		{path: ".github/dependency-registration.yml", description: "dependency registration config", data: dependencyRegistrationConfig, mode: 0o644},
+		{path: "docs/automation/dependency-registration.md", description: "dependency registration guide", data: dependencyRegistrationReadme, mode: 0o644},
+		{path: "scripts/detect-new-goliatone-deps.sh", description: "dependency detector script", data: dependencyRegistrationScript, mode: 0o755},
+	}
+
+	for _, asset := range assets {
+		if !shouldWrite {
+			fmt.Printf("DRY RUN: Would write %s to %s\n", asset.description, asset.path)
+			continue
+		}
+
+		if !req.Force {
+			if info, err := os.Stat(asset.path); err == nil && !info.IsDir() {
+				fmt.Printf("Skipping existing dependency registration asset %s (use --force to overwrite)\n", asset.path)
+				continue
+			}
+		}
+
+		dir := filepath.Dir(asset.path)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return newFileError(fmt.Sprintf("failed to create directory %s", dir), err)
+		}
+
+		if err := os.WriteFile(asset.path, asset.data, asset.mode); err != nil {
+			return newFileError(fmt.Sprintf("failed to write %s", asset.path), err)
+		}
+
+		if logger != nil {
+			logger.Info("Wrote dependency registration asset", "path", asset.path)
+		}
+	}
+
 	return nil
 }
