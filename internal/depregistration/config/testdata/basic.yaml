@@ -1,0 +1,8 @@
+# Default dependency-registration configuration.
+# skip_patterns: regular expressions of module paths to ignore.
+skip_patterns:
+  - "^github.com/goliatone/internal"
+workflow: "custom-workflow.yml"
+workspaces:
+  - services/api
+  - tools/tasks

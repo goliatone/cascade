@@ -1,0 +1,11 @@
+{
+  "skip_patterns": [
+    "^github.com/goliatone/internal"
+  ],
+  "workflow": "custom-workflow.yml",
+  "dry_run": false,
+  "workspaces": [
+    "services/api",
+    "tools/tasks"
+  ]
+}
