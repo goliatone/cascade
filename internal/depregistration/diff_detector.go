@@ -154,6 +154,10 @@ func (d *DiffDetector) Detect(ctx context.Context, baseRef, headRef string) ([]D
 		return results[i].GoModPath < results[j].GoModPath
 	})
 
+	if results == nil {
+		results = []DependencyDelta{}
+	}
+
 	return results, nil
 }
 
