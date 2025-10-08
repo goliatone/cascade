@@ -10,7 +10,7 @@ Cascade generated this file to explain the dependency-registration workflow file
 
 ## Usage
 
-1. Update `.github/dependency-registration.yml` if you need to ignore specific modules or customize the dependent workflow name.
+1. Update `.github/dependency-registration.yml` if you need to ignore specific modules, customize the dependent workflow name, or override the branch used for workflow dispatches.
 2. Ensure `CASCADE_DEP_NOTIFY_TOKEN` is configured in repo secrets with `repo`, `workflow`, and `issues:write` scopes.
 3. On every PR that touches `go.mod`, the workflow will detect new `github.com/goliatone/*` dependencies and notify the owning repository.
 4. Use the shell script during development to preview detection output:
