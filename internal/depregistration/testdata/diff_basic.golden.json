@@ -1,0 +1,8 @@
+[
+  {
+    "module": "github.com/goliatone/go-logger",
+    "version": "v1.3.0",
+    "go_mod_path": "go.mod",
+    "change_type": "added"
+  }
+]

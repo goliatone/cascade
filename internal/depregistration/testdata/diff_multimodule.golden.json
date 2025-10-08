@@ -1,0 +1,14 @@
+[
+  {
+    "module": "github.com/goliatone/go-router",
+    "version": "v1.4.0",
+    "go_mod_path": "go.mod",
+    "change_type": "added"
+  },
+  {
+    "module": "github.com/goliatone/go-auth",
+    "version": "v1.1.0",
+    "go_mod_path": "services/api/go.mod",
+    "change_type": "added"
+  }
+]

@@ -1,0 +1,18 @@
+diff --git a/go.mod b/go.mod
+index 1111111..2222222 100644
+--- a/go.mod
++++ b/go.mod
+@@
+ require (
+ 	github.com/goliatone/go-errors v1.2.0
++	github.com/goliatone/go-router v1.4.0
+ )
+diff --git a/services/api/go.mod b/services/api/go.mod
+index 3333333..4444444 100644
+--- a/services/api/go.mod
++++ b/services/api/go.mod
+@@
+ require (
+ 	github.com/goliatone/go-errors v1.2.0
++	github.com/goliatone/go-auth v1.1.0
+ )
