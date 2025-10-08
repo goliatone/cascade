@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,14 +18,19 @@ import (
 
 	"github.com/goliatone/cascade/internal/depregistration"
 	"github.com/goliatone/cascade/internal/depregistration/commenter"
+	depconfig "github.com/goliatone/cascade/internal/depregistration/config"
 	"github.com/goliatone/cascade/internal/depregistration/notifier"
 )
 
 type detectionSummary struct {
-	BaseRef      string                            `json:"base_ref"`
-	HeadRef      string                            `json:"head_ref"`
-	GeneratedAt  time.Time                         `json:"generated_at"`
-	Dependencies []depregistration.DependencyDelta `json:"dependencies"`
+	BaseRef       string                            `json:"base_ref"`
+	HeadRef       string                            `json:"head_ref"`
+	BaseBranch    string                            `json:"base_branch"`
+	GeneratedAt   time.Time                         `json:"generated_at"`
+	Dependencies  []depregistration.DependencyDelta `json:"dependencies"`
+	DryRun        bool                              `json:"dry_run"`
+	Workflow      string                            `json:"workflow"`
+	DefaultBranch string                            `json:"default_branch"`
 }
 
 func main() {
@@ -35,6 +41,7 @@ func main() {
 		runURL      = flag.String("run-url", "", "optional workflow run URL for comment")
 		prNumber    = flag.String("pr", "", "pull request number to comment on")
 		dryRun      = flag.Bool("dry-run", false, "skip GitHub mutations")
+		configPath  = flag.String("config", "", "optional dependency-registration config file")
 	)
 
 	flag.Parse()
@@ -53,10 +60,22 @@ func main() {
 		fatal("GITHUB_REPOSITORY not set")
 	}
 
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" && !*dryRun {
-		fatal("GITHUB_TOKEN not provided")
+	root, err := os.Getwd()
+	if err != nil {
+		root = "."
 	}
+
+	cfgPath := *configPath
+	if cfgPath == "" {
+		cfgPath = filepath.Join(root, ".github", "dependency-registration.yml")
+	}
+
+	cfg, err := depconfig.Load(cfgPath)
+	if err != nil {
+		fatal(fmt.Sprintf("load config: %v", err))
+	}
+
+	token := os.Getenv("GITHUB_TOKEN")
 
 	ctx := context.Background()
 	mlog := log.New(os.Stdout, "", 0)
@@ -78,6 +97,30 @@ func main() {
 
 	results := make([]notifier.ActionResult, 0, len(summary.Dependencies))
 
+	workflowFile := cfg.Workflow
+	if workflowFile == "" {
+		workflowFile = summary.Workflow
+	}
+	if workflowFile == "" {
+		workflowFile = "cascade-release.yml"
+	}
+
+	branch := cfg.DefaultBranch
+	if branch == "" {
+		branch = summary.DefaultBranch
+	}
+	if branch == "" {
+		branch = summary.BaseBranch
+	}
+	if branch == "" {
+		branch = "main"
+	}
+
+	effectiveDryRun := summary.DryRun || cfg.DryRun || *dryRun
+	if token == "" && !effectiveDryRun {
+		fatal("GITHUB_TOKEN not provided")
+	}
+
 	for _, dep := range summary.Dependencies {
 		req := notifier.Request{
 			Dependency:      dep,
@@ -88,8 +131,10 @@ func main() {
 				"base_ref": summary.BaseRef,
 				"head_ref": summary.HeadRef,
 			},
-			DryRun:     *dryRun,
-			CommentTag: commenterTag(),
+			WorkflowFile: workflowFile,
+			BaseBranch:   branch,
+			DryRun:       effectiveDryRun,
+			CommentTag:   commenterTag(),
 		}
 
 		res, err := notifierSvc.Notify(ctx, req)
@@ -97,7 +142,7 @@ func main() {
 			mlog.Printf("warn: notify %s: %v", dep.Module, err)
 			results = append(results, notifier.ActionResult{
 				Dependency: dep,
-				Action:     notifier.ActionIssueCreated,
+				Action:     notifier.ActionNotificationFailed,
 				Notes:      fmt.Sprintf("notification failed: %v", err),
 			})
 			continue

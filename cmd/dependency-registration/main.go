@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/goliatone/cascade/internal/depregistration"
+	depconfig "github.com/goliatone/cascade/internal/depregistration/config"
 )
 
 type stringList []string
@@ -27,10 +28,14 @@ func (s *stringList) Set(value string) error {
 }
 
 type detectionSummary struct {
-	BaseRef      string                            `json:"base_ref"`
-	HeadRef      string                            `json:"head_ref"`
-	GeneratedAt  time.Time                         `json:"generated_at"`
-	Dependencies []depregistration.DependencyDelta `json:"dependencies"`
+	BaseRef       string                            `json:"base_ref"`
+	HeadRef       string                            `json:"head_ref"`
+	BaseBranch    string                            `json:"base_branch,omitempty"`
+	GeneratedAt   time.Time                         `json:"generated_at"`
+	Dependencies  []depregistration.DependencyDelta `json:"dependencies"`
+	DryRun        bool                              `json:"dry_run"`
+	Workflow      string                            `json:"workflow,omitempty"`
+	DefaultBranch string                            `json:"default_branch,omitempty"`
 }
 
 func main() {
@@ -39,6 +44,7 @@ func main() {
 	var (
 		baseRef    = flag.String("base", "", "git reference serving as diff base (required)")
 		headRef    = flag.String("head", "HEAD", "git reference serving as diff head")
+		baseBranch = flag.String("base-branch", "", "git branch associated with the base ref (optional)")
 		configPath = flag.String("config", "", "optional dependency-registration config file")
 		outputPath = flag.String("output", "dependency-registration.json", "path to write detection summary")
 	)
@@ -52,17 +58,29 @@ func main() {
 		logFatal("missing required --base ref")
 	}
 
-	if *configPath != "" {
-		if err := ensureConfigReadable(*configPath); err != nil {
+	ctx := context.Background()
+	root := repoRoot()
+
+	cfgPath := *configPath
+	if cfgPath != "" {
+		if err := ensureConfigReadable(cfgPath); err != nil {
 			logFatal(err.Error())
 		}
+	} else {
+		cfgPath = filepath.Join(root, ".github", "dependency-registration.yml")
 	}
 
-	ctx := context.Background()
-	fetcher := depregistration.NewGitDiffFetcher(repoRoot())
+	cfg, err := depconfig.Load(cfgPath)
+	if err != nil {
+		logFatal(fmt.Sprintf("load config: %v", err))
+	}
+
+	fetcher := depregistration.NewGitDiffFetcher(root)
 	opts := []depregistration.DiffDetectorOption{}
-	if len(skipPatterns) > 0 {
-		opts = append(opts, depregistration.WithSkipPatterns(skipPatterns...))
+	patterns := append([]string{}, cfg.SkipPatterns...)
+	patterns = append(patterns, skipPatterns...)
+	if len(patterns) > 0 {
+		opts = append(opts, depregistration.WithSkipPatterns(patterns...))
 	}
 
 	detector := depregistration.NewDiffDetector(fetcher, opts...)
@@ -73,10 +91,14 @@ func main() {
 	}
 
 	summary := detectionSummary{
-		BaseRef:      *baseRef,
-		HeadRef:      *headRef,
-		GeneratedAt:  time.Now().UTC(),
-		Dependencies: deltas,
+		BaseRef:       *baseRef,
+		HeadRef:       *headRef,
+		BaseBranch:    *baseBranch,
+		GeneratedAt:   time.Now().UTC(),
+		Dependencies:  deltas,
+		DryRun:        cfg.DryRun,
+		Workflow:      cfg.Workflow,
+		DefaultBranch: cfg.DefaultBranch,
 	}
 
 	if err := writeSummary(*outputPath, summary); err != nil {
