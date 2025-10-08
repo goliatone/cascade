@@ -4,6 +4,7 @@
   ],
   "workflow": "custom-workflow.yml",
   "dry_run": false,
+  "default_branch": "release",
   "workspaces": [
     "services/api",
     "tools/tasks"

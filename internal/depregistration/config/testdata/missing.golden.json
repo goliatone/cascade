@@ -2,5 +2,6 @@
   "skip_patterns": null,
   "workflow": "cascade-release.yml",
   "dry_run": false,
+  "default_branch": "",
   "workspaces": null
 }
