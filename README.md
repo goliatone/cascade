@@ -555,3 +555,4 @@ This is an early-stage project. Core interfaces are defined and the CLI supports
 ## License
 
 MIT License — see LICENSE for details.
+- `cascade manifest generate --with-dependency-registration` – scaffold dependency registration workflow/config alongside the manifest
