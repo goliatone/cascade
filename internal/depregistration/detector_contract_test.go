@@ -65,6 +65,24 @@ func TestDetectorContract_MultiModule(t *testing.T) {
 	}
 }
 
+func TestDetectorContract_VersionBumpIgnored(t *testing.T) {
+	detector := newTestDetector(t, "diff_version_bump.txt")
+
+	deltas, err := detector.Detect(context.Background(), "refs/base", "refs/head")
+	if err != nil {
+		t.Fatalf("detect: %v", err)
+	}
+
+	var want []depregistration.DependencyDelta
+	if err := testsupport.LoadGolden(goldenPath("diff_version_bump.golden.json"), &want); err != nil {
+		t.Fatalf("load golden: %v", err)
+	}
+
+	if diff := cmp.Diff(want, deltas); diff != "" {
+		t.Fatalf("unexpected diff (-want +got):\n%s", diff)
+	}
+}
+
 func newTestDetector(t *testing.T, diffFixture string) depregistration.Detector {
 	t.Helper()
 
