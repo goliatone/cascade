@@ -65,6 +65,7 @@ func (d *DiffDetector) Detect(ctx context.Context, baseRef, headRef string) ([]D
 
 	currentPath := ""
 	moduleSeen := make(map[string]struct{})
+	removedModules := make(map[string]map[string]struct{})
 	var results []DependencyDelta
 
 	diffHeader := regexp.MustCompile(`^diff --git a/(.+) b/(.+)$`)
@@ -83,6 +84,42 @@ func (d *DiffDetector) Detect(ctx context.Context, baseRef, headRef string) ([]D
 		}
 
 		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "@@") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "-") {
+			trimmed := strings.TrimSpace(strings.TrimPrefix(line, "-"))
+			if trimmed == "" {
+				continue
+			}
+
+			if strings.HasPrefix(trimmed, "replace ") {
+				continue
+			}
+
+			if strings.HasPrefix(trimmed, "require (") || strings.HasPrefix(trimmed, "require(") {
+				continue
+			}
+
+			if strings.HasPrefix(trimmed, "require ") {
+				trimmed = strings.TrimPrefix(trimmed, "require ")
+			}
+
+			match := d.matchExpr.FindString(trimmed)
+			if match == "" {
+				continue
+			}
+
+			fields := strings.Fields(trimmed)
+			if len(fields) == 0 {
+				continue
+			}
+
+			modulePath := fields[0]
+			if _, ok := removedModules[currentPath]; !ok {
+				removedModules[currentPath] = make(map[string]struct{})
+			}
+			removedModules[currentPath][modulePath] = struct{}{}
 			continue
 		}
 
@@ -127,6 +164,12 @@ func (d *DiffDetector) Detect(ctx context.Context, baseRef, headRef string) ([]D
 
 		if idx := strings.Index(version, "//"); idx >= 0 {
 			version = strings.TrimSpace(version[:idx])
+		}
+
+		if removed, ok := removedModules[currentPath]; ok {
+			if _, existed := removed[modulePath]; existed {
+				continue
+			}
 		}
 
 		key := fmt.Sprintf("%s@%s#%s", currentPath, modulePath, version)
