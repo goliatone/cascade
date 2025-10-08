@@ -12,17 +12,9 @@ import (
 )
 
 func TestDetectorContract_Basic(t *testing.T) {
-	t.Skip("pending detector implementation")
+	detector := newTestDetector(t, "diff_basic.txt")
 
-	detector := requireDetector(t)
-
-	ctx := context.Background()
-
-	if _, err := testsupport.LoadFixture(fixturePath("diff_basic.txt")); err != nil {
-		t.Fatalf("load diff fixture: %v", err)
-	}
-
-	deltas, err := detector.Detect(ctx, "refs/base", "refs/head")
+	deltas, err := detector.Detect(context.Background(), "refs/base", "refs/head")
 	if err != nil {
 		t.Fatalf("detect: %v", err)
 	}
@@ -38,17 +30,9 @@ func TestDetectorContract_Basic(t *testing.T) {
 }
 
 func TestDetectorContract_ReplaceIgnored(t *testing.T) {
-	t.Skip("pending detector implementation")
+	detector := newTestDetector(t, "diff_replace.txt")
 
-	detector := requireDetector(t)
-
-	ctx := context.Background()
-
-	if _, err := testsupport.LoadFixture(fixturePath("diff_replace.txt")); err != nil {
-		t.Fatalf("load diff fixture: %v", err)
-	}
-
-	deltas, err := detector.Detect(ctx, "refs/base", "refs/head")
+	deltas, err := detector.Detect(context.Background(), "refs/base", "refs/head")
 	if err != nil {
 		t.Fatalf("detect: %v", err)
 	}
@@ -64,17 +48,9 @@ func TestDetectorContract_ReplaceIgnored(t *testing.T) {
 }
 
 func TestDetectorContract_MultiModule(t *testing.T) {
-	t.Skip("pending detector implementation")
+	detector := newTestDetector(t, "diff_multimodule.txt")
 
-	detector := requireDetector(t)
-
-	ctx := context.Background()
-
-	if _, err := testsupport.LoadFixture(fixturePath("diff_multimodule.txt")); err != nil {
-		t.Fatalf("load diff fixture: %v", err)
-	}
-
-	deltas, err := detector.Detect(ctx, "refs/base", "refs/head")
+	deltas, err := detector.Detect(context.Background(), "refs/base", "refs/head")
 	if err != nil {
 		t.Fatalf("detect: %v", err)
 	}
@@ -89,10 +65,25 @@ func TestDetectorContract_MultiModule(t *testing.T) {
 	}
 }
 
-func requireDetector(t *testing.T) depregistration.Detector {
+func newTestDetector(t *testing.T, diffFixture string) depregistration.Detector {
 	t.Helper()
-	t.Fatalf("detector implementation not wired for contract tests")
-	return nil
+
+	data, err := testsupport.LoadFixture(fixturePath(diffFixture))
+	if err != nil {
+		t.Fatalf("load fixture %s: %v", diffFixture, err)
+	}
+
+	fetcher := &staticDiffFetcher{data: data}
+
+	return depregistration.NewDiffDetector(fetcher)
+}
+
+type staticDiffFetcher struct {
+	data []byte
+}
+
+func (f *staticDiffFetcher) Diff(ctx context.Context, baseRef, headRef string) ([]byte, error) {
+	return append([]byte(nil), f.data...), nil
 }
 
 func goldenPath(name string) string {
