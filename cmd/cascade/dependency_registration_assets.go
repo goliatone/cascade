@@ -13,5 +13,5 @@ var dependencyRegistrationConfig []byte
 //go:embed templates/dependency_registration/README.md
 var dependencyRegistrationReadme []byte
 
-//go:embed ../.github/workflows/dependency-registration.yml.tpl
+//go:embed ../data/workflows/dependency-registration.yml.tpl
 var dependencyRegistrationWorkflow []byte
