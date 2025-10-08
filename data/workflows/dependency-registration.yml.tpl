@@ -30,23 +30,14 @@ permissions:
 env:
   CASCADE_DEP_NOTIFY_TOKEN: ${{ secrets.CASCADE_DEP_NOTIFY_TOKEN }}
   DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+  BASE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.base_ref || github.event.pull_request.base.sha }}
+  HEAD_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.head_ref || github.event.pull_request.head.sha }}
+  BASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.base_ref || github.event.pull_request.base.ref }}
 
 jobs:
   detect:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate secret
-        env:
-          TOKEN: ${{ secrets.CASCADE_DEP_NOTIFY_TOKEN }}
-        run: |
-          if [[ "${DRY_RUN}" != "true" && -z "${TOKEN}" ]]; then
-            echo "::error::CASCADE_DEP_NOTIFY_TOKEN is required when dry_run is false."
-            exit 1
-          fi
-          if [[ -n "${TOKEN}" ]]; then
-            echo "::add-mask::${TOKEN}"
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -63,10 +54,9 @@ jobs:
           go run ./cmd/dependency-registration \
             --base "${BASE_REF}" \
             --head "${HEAD_REF}" \
+            --base-branch "${BASE_BRANCH}" \
+            --config .github/dependency-registration.yml \
             --output dependency-registration.json
-        env:
-          BASE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.base_ref || github.event.pull_request.base.ref }}
-          HEAD_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.head_ref || github.event.pull_request.head.sha }}
 
       - name: Upload detection summary
         uses: actions/upload-artifact@v4
@@ -74,21 +64,37 @@ jobs:
           name: dependency-registration-${{ github.run_id }}
           path: dependency-registration.json
 
-      - name: Notify dependencies
-        if: env.DRY_RUN != 'true'
+      - name: Export config settings
         run: |
-          go run ./cmd/dependency-registration-notify \
-            --summary dependency-registration.json \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          CONFIG_DRY_RUN=$(jq -r '.dry_run // false' dependency-registration.json)
+          echo "CONFIG_DRY_RUN=${CONFIG_DRY_RUN}" >> "${GITHUB_ENV}"
+          if [[ "${DRY_RUN}" == "true" || "${CONFIG_DRY_RUN}" == "true" ]]; then
+            echo "EFFECTIVE_DRY_RUN=true" >> "${GITHUB_ENV}"
+          else
+            echo "EFFECTIVE_DRY_RUN=false" >> "${GITHUB_ENV}"
+          fi
+          if [[ -n "${CASCADE_DEP_NOTIFY_TOKEN}" ]]; then
+            echo "::add-mask::${CASCADE_DEP_NOTIFY_TOKEN}"
+          fi
+
+      - name: Validate secret
+        run: |
+          if [[ "${EFFECTIVE_DRY_RUN}" != "true" && -z "${CASCADE_DEP_NOTIFY_TOKEN}" ]]; then
+            echo "::error::CASCADE_DEP_NOTIFY_TOKEN is required when dry_run is false."
+            exit 1
+          fi
+
+      - name: Notify dependencies
+        run: |
+          ARGS=(
+            --summary dependency-registration.json
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             --pr "${{ github.event.pull_request.number || '' }}"
+            --config .github/dependency-registration.yml
+          )
+          if [[ "${EFFECTIVE_DRY_RUN}" == "true" ]]; then
+            ARGS+=(--dry-run)
+          fi
+          go run ./cmd/dependency-registration-notify "${ARGS[@]}"
         env:
           GITHUB_TOKEN: ${{ env.CASCADE_DEP_NOTIFY_TOKEN }}
-
-      - name: Comment summary (dry-run path)
-        if: env.DRY_RUN == 'true'
-        run: |
-          go run ./cmd/dependency-registration-notify \
-            --summary dependency-registration.json \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --pr "${{ github.event.pull_request.number || '' }}" \
-            --dry-run
