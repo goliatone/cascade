@@ -2,9 +2,24 @@
 
 # [unreleased]
 
+## <!-- 29 -->👷 CI/CD
+
+- Pass Homebrew tap token to GoReleaser ([0c8d842](https://github.com/goliatone/cascade/commit/0c8d842abb75749228773d25d2a46ec7eaf71016))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Migrate Homebrew release to cask ([40c398e](https://github.com/goliatone/cascade/commit/40c398ef614a81d177e031e5f5dce99fb14035b8))  - (goliatone)
+- Update readme ([eb33dcd](https://github.com/goliatone/cascade/commit/eb33dcd57a3decaa0db8bae405509332642a4ad4))  - (goliatone)
+
+# [0.1.47](https://github.com/goliatone/cascade/compare/v0.1.46...v0.1.47) - (2025-10-07)
+
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Goreleaser artifact name ([3b77ece](https://github.com/goliatone/cascade/commit/3b77ecef3045d3dbdf27d95aae5aec6905ee6419))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.1.47 ([a4b8461](https://github.com/goliatone/cascade/commit/a4b84617c6e5098ea0415d09d524ea510a0e336f))  - (goliatone)
 
 # [0.1.46](https://github.com/goliatone/cascade/compare/v0.1.45...v0.1.46) - (2025-10-07)
 
