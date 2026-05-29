@@ -520,6 +520,17 @@ Configure these secrets in your CI environment:
 - `CASCADE_SLACK_TOKEN` - Slack notifications (optional)
 - `SSH_KEY_PATH` - Custom SSH key path (optional)
 
+## Dependency Registration Workflow
+
+Repositories generated with `cascade manifest generate --with-dependency-registration` ship an automation bundle that detects new `github.com/goliatone/*` dependencies and notifies the owning repo.
+
+- Generated assets: `.github/workflows/dependency-registration.yml`, `.github/dependency-registration.yml`, `scripts/detect-new-goliatone-deps.sh`, and `docs/automation/dependency-registration.md`.
+- Configure behaviour in `.github/dependency-registration.yml` (skip regexes, alternate workflow name, `default_branch`, `dry_run`). The CLI auto-loads this file and the workflow passes it through.
+- GitHub Action behaviour: diffs the PR against the base commit, writes `dependency-registration.json`, respects dry-run from either the workflow input or config, and calls `cmd/dependency-registration-notify` to dispatch the dependency repo workflow/PR/issue while updating a tagged PR comment.
+- Local preview: run `./scripts/detect-new-goliatone-deps.sh --base origin/main --head HEAD` to inspect detection results without GitHub Actions.
+
+See `docs/automation/dependency-registration.md` for detailed setup, required secrets, and rollout guidance.
+
 ## Development
 
 ### Prerequisites
