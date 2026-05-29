@@ -22,10 +22,12 @@ builds:
     main: "./cmd/cascade"
     binary: "cascade"
     ldflags:
-      - -s -w
-      - -X github.com/goliatone/cascade/pkg/version.Tag=v{{.Version}}
-      - -X github.com/goliatone/cascade/pkg/version.Time={{.Date}}
-      - -X github.com/goliatone/cascade/pkg/version.User=goliatone
+      - >-
+        -s -w
+        -X github.com/goliatone/cascade/pkg/version.Tag={{ .Version }}
+        -X github.com/goliatone/cascade/pkg/version.Time={{ .Date }}
+        -X github.com/goliatone/cascade/pkg/version.User=goreleaser
+        -X github.com/goliatone/cascade/pkg/version.Commit={{ .FullCommit }}
 archives:
   - id: cascade
     name_template: >-
@@ -39,7 +41,7 @@ archives:
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  version_template: "{{ .Tag }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 changelog:
   use: github
   sort: asc
@@ -52,19 +54,23 @@ changelog:
       - "^Update README"
       - "merge fix"
   format: '{{ .SHA }}: {{ .Message }} ({{ with .AuthorUsername }}@{{ . }}{{ else }}{{ .AuthorName }} <{{ .AuthorEmail }}>{{ end }})'
-brews:
+homebrew_casks:
   - name: cascade
-    ids:
+    binaries:
       - cascade
     repository:
       owner: goliatone
       name: homebrew-tap
-    directory: Formula
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
     description: managed release cycles.
     homepage: https://github.com/goliatone/cascade
-    license: "MIT"
-    test: |
-      system "#{bin}/cascade -version"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/cascade"]
+          end
 nfpms:
   - id: cascade
     file_name_template: >-
