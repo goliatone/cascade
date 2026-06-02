@@ -45,6 +45,9 @@ Examples:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if isLocalOnlyCommand(cmd) {
+				return initializeLocalCommandConfig(cmd)
+			}
 			return initializeContainer(cmd)
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
@@ -87,22 +90,10 @@ Examples:
 // initializeContainer sets up the dependency injection container with configuration
 func initializeContainer(cmd *cobra.Command) error {
 	start := time.Now()
-	// Build configuration from flags, environment, and files
-	// First extract config file path from flags if provided
-	var configFile string
-	if cmd.Flags().Changed("config") {
-		configFile, _ = cmd.Flags().GetString("config")
-	}
-
-	builder := config.NewBuilder().
-		FromFile(configFile). // Use explicit config file or auto-discover
-		FromEnv().            // Load from environment
-		FromFlags(cmd)        // Load from command flags (highest precedence)
-
 	var err error
-	cfg, err = builder.Build()
+	cfg, err = buildCLIConfig(cmd)
 	if err != nil {
-		return newConfigError("failed to build configuration", err)
+		return err
 	}
 
 	// Determine if this is a production command that requires credentials
@@ -139,6 +130,36 @@ func initializeContainer(cmd *cobra.Command) error {
 	return nil
 }
 
+func initializeLocalCommandConfig(cmd *cobra.Command) error {
+	var err error
+	cfg, err = buildCLIConfig(cmd)
+	if err != nil {
+		return err
+	}
+	container = nil
+	return nil
+}
+
+func buildCLIConfig(cmd *cobra.Command) (*config.Config, error) {
+	// Build configuration from flags, environment, and files.
+	// First extract config file path from flags if provided.
+	var configFile string
+	if cmd.Flags().Changed("config") {
+		configFile, _ = cmd.Flags().GetString("config")
+	}
+
+	builder := config.NewBuilder().
+		FromFile(configFile). // Use explicit config file or auto-discover
+		FromEnv().            // Load from environment
+		FromFlags(cmd)        // Load from command flags (highest precedence)
+
+	cfg, err := builder.Build()
+	if err != nil {
+		return nil, newConfigError("failed to build configuration", err)
+	}
+	return cfg, nil
+}
+
 // isProductionCommand determines if the given command requires production credentials.
 // Production commands (release, resume, revert) create PRs and make API calls that require GitHub tokens.
 // The plan command can work with stub implementations for dry-run scenarios.
@@ -164,6 +185,39 @@ func isProductionCommand(cmd *cobra.Command) bool {
 	}
 
 	return false
+}
+
+func isLocalOnlyCommand(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+
+	names := commandPathNames(cmd)
+	if len(names) < 3 || names[0] != "cascade" {
+		return false
+	}
+
+	switch {
+	case names[1] == "plan" && names[2] == "local":
+		return true
+	case names[1] == "update" && names[2] == "local":
+		return true
+	default:
+		return false
+	}
+}
+
+func commandPathNames(cmd *cobra.Command) []string {
+	var reversed []string
+	for current := cmd; current != nil; current = current.Parent() {
+		reversed = append(reversed, current.Name())
+	}
+
+	names := make([]string, 0, len(reversed))
+	for i := len(reversed) - 1; i >= 0; i-- {
+		names = append(names, reversed[i])
+	}
+	return names
 }
 
 // cleanupContainer performs cleanup of container resources

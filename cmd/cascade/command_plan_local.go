@@ -10,6 +10,7 @@ import (
 
 	"github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/localupdate"
+	"github.com/goliatone/cascade/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -61,9 +62,8 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	}
 
 	dryRun := false
-	if container != nil && container.Config() != nil {
-		cfg := container.Config()
-		dryRun = cfg.Executor.DryRun
+	if localCfg := localCommandConfig(); localCfg != nil {
+		dryRun = localCfg.Executor.DryRun
 	}
 	if dryRun {
 		renderLocalPlan(cmd.OutOrStdout(), plan, "DRY RUN: Local dependency update plan")
@@ -112,7 +112,20 @@ func localWorkspace(cmd *cobra.Command) (string, bool) {
 			return path, true
 		}
 	}
+	if localCfg := localCommandConfig(); localCfg != nil {
+		path := strings.TrimSpace(localCfg.Workspace.Path)
+		if path != "" && !isDefaultLocalCacheWorkspace(path) {
+			return path, true
+		}
+	}
 	return "", false
+}
+
+func localCommandConfig() *config.Config {
+	if container != nil && container.Config() != nil {
+		return container.Config()
+	}
+	return cfg
 }
 
 func flagChanged(cmd *cobra.Command, name string) bool {

@@ -7,6 +7,10 @@ func newUpdateCommand() *cobra.Command {
 		Use:   "update",
 		Short: "Apply dependency updates",
 		Long:  "Apply dependency updates for supported local workflows.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_ = cmd.Help()
+			return newValidationError("update requires a subcommand", nil)
+		},
 	}
 	cmd.AddCommand(newUpdateLocalCommand())
 	return cmd

@@ -123,6 +123,115 @@ func TestIsDefaultLocalCacheWorkspaceRecognizesXDG(t *testing.T) {
 	}
 }
 
+func TestRootPlanLocalDoesNotInitializeGitHubProvider(t *testing.T) {
+	withClearedGitHubEnv(t, func() {
+		moduleDir, workspace := writeLocalCommandWorkspace(t)
+		t.Chdir(moduleDir)
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+		originalContainer := container
+		originalCfg := cfg
+		container = nil
+		cfg = nil
+		defer func() {
+			container = originalContainer
+			cfg = originalCfg
+		}()
+
+		root := newRootCommand()
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&errOut)
+		root.SetArgs([]string{"plan", "local", "--workspace", workspace})
+
+		if err := root.Execute(); err != nil {
+			t.Fatalf("root plan local failed: %v", err)
+		}
+
+		combined := out.String() + errOut.String()
+		if strings.Contains(combined, "GitHub provider") || strings.Contains(combined, "github token") {
+			t.Fatalf("local-only command initialized GitHub provider:\n%s", combined)
+		}
+		if !strings.Contains(combined, "Local dependency plan") {
+			t.Fatalf("expected local plan output, got:\n%s", combined)
+		}
+		if container != nil {
+			t.Fatalf("expected local-only command to skip DI container initialization")
+		}
+	})
+}
+
+func TestRootUpdateLocalDryRunDoesNotInitializeGitHubProvider(t *testing.T) {
+	withClearedGitHubEnv(t, func() {
+		moduleDir, workspace := writeLocalCommandWorkspace(t)
+		t.Chdir(moduleDir)
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		before, err := os.ReadFile(filepath.Join(moduleDir, "go.mod"))
+		if err != nil {
+			t.Fatalf("read go.mod before dry-run: %v", err)
+		}
+
+		originalContainer := container
+		originalCfg := cfg
+		container = nil
+		cfg = nil
+		defer func() {
+			container = originalContainer
+			cfg = originalCfg
+		}()
+
+		root := newRootCommand()
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&errOut)
+		root.SetArgs([]string{"update", "local", "--workspace", workspace, "--dry-run"})
+
+		if err := root.Execute(); err != nil {
+			t.Fatalf("root update local dry-run failed: %v", err)
+		}
+		after, err := os.ReadFile(filepath.Join(moduleDir, "go.mod"))
+		if err != nil {
+			t.Fatalf("read go.mod after dry-run: %v", err)
+		}
+		if !bytes.Equal(before, after) {
+			t.Fatalf("root dry-run mutated go.mod")
+		}
+
+		combined := out.String() + errOut.String()
+		if strings.Contains(combined, "GitHub provider") || strings.Contains(combined, "github token") {
+			t.Fatalf("local-only command initialized GitHub provider:\n%s", combined)
+		}
+		if !strings.Contains(combined, "DRY RUN: Local dependency update plan") {
+			t.Fatalf("expected dry-run local update output, got:\n%s", combined)
+		}
+		if container != nil {
+			t.Fatalf("expected local-only command to skip DI container initialization")
+		}
+	})
+}
+
+func TestUpdateCommandRequiresSubcommand(t *testing.T) {
+	cmd := newUpdateCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected update without subcommand to fail")
+	}
+	if !strings.Contains(err.Error(), "update requires a subcommand") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), "local") {
+		t.Fatalf("expected help output to mention local subcommand, got:\n%s", out.String())
+	}
+}
+
 func writeLocalCommandWorkspace(t *testing.T) (moduleDir, workspace string) {
 	t.Helper()
 	workspace = t.TempDir()
