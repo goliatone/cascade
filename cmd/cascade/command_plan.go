@@ -76,6 +76,8 @@ Examples:
 	cmd.Flags().IntVar(&checkParallel, "check-parallel", 0, "Number of parallel checks (0 = auto-detect)")
 	cmd.Flags().DurationVar(&checkTimeout, "check-timeout", 30*time.Second, "Timeout for individual repository checks")
 
+	cmd.AddCommand(newPlanLocalCommand())
+
 	return cmd
 }
 
