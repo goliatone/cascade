@@ -2,6 +2,27 @@
 
 # [unreleased]
 
+## <!-- 1 -->🐛 Bug Fixes
+
+- Code quality ([451ad62](https://github.com/goliatone/cascade/commit/451ad627a75ace8245ef6a8b7ffd8512fefd4758))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Command update ([8e9bcaf](https://github.com/goliatone/cascade/commit/8e9bcaf9e7fde6b9729a1538ff62396794a368d8))  - (goliatone)
+- Plan local command ([5795b0d](https://github.com/goliatone/cascade/commit/5795b0d81c73d3e1ddf56efa0b57f508a246b056))  - (goliatone)
+- Local update ([8642877](https://github.com/goliatone/cascade/commit/86428779662cf66c623d42d3dd9d93dc2912046b))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([e35a959](https://github.com/goliatone/cascade/commit/e35a959559865b6eb3f36febee180da2e239529c))  - (goliatone)
+- Update tests ([2f776d1](https://github.com/goliatone/cascade/commit/2f776d173e0e2c9f63ef37746b115e73392d9adb))  - (goliatone)
+
+# [0.1.48](https://github.com/goliatone/cascade/compare/v0.1.47...v0.1.48) - (2026-05-29)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.1.48 ([833b644](https://github.com/goliatone/cascade/commit/833b644c70afce12e69d1275b7a7e0f6c3305e86))  - (goliatone)
+
 ## <!-- 29 -->👷 CI/CD
 
 - Pass Homebrew tap token to GoReleaser ([0c8d842](https://github.com/goliatone/cascade/commit/0c8d842abb75749228773d25d2a46ec7eaf71016))  - (goliatone)
