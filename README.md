@@ -106,6 +106,38 @@ cascade plan \
 
 The plan output lists repositories, branches, commands, and PR metadata without touching any repositories.
 
+### Local Dependency Updates
+
+Use the local workflow when the current Go module depends on sibling repositories in the same workspace and you want to update those dependencies from each sibling's local `.version` or `VERSION` file. This does not use manifests, GitHub, branches, pull requests, or release state.
+
+```bash
+# Preview outdated direct github.com/goliatone/* dependencies
+cascade plan local
+
+# Apply the same local plan from the current module
+cascade update local
+
+# Preview the update path without changing go.mod or go.sum
+cascade update local --dry-run
+```
+
+By default, local commands inspect direct `require` entries matching `github.com/goliatone/*`, skip indirect dependencies, and skip dependencies with `replace` directives. If the workspace cannot be detected from the current module location, pass it explicitly:
+
+```bash
+cascade plan local --workspace="$HOME/Development/GO/src/github.com/goliatone"
+cascade update local --workspace="$HOME/Development/GO/src/github.com/goliatone"
+```
+
+Useful filters:
+
+- `--prefix` - include module prefixes; repeat it or pass comma-separated values
+- `--include-indirect` - include indirect `require` entries
+- `--only` - include only specific module paths or basenames
+- `--exclude` - skip specific module paths or basenames
+- `--no-tidy` - for `update local`, skip the default `go mod tidy`
+
+`cascade update local` runs one `go get <module>@<local-version>` per outdated candidate and then runs `go mod tidy` once after at least one successful update unless `--no-tidy` is set. If one `go get` fails, later candidates are still attempted; the command prints the summary and exits with a failure.
+
 #### 4. Execute the Release
 
 ```bash
@@ -137,6 +169,8 @@ cascade revert go-errors@v1.4.0
 
 - `cascade manifest generate` – scaffold manifests with defaults, dependents, and notifications
 - `cascade plan` – preview work items from a manifest or flags
+- `cascade plan local` – preview local sibling dependency updates
+- `cascade update local` – apply local sibling dependency updates
 - `cascade release` – execute the plan (honors `--dry-run`)
 - `cascade resume` – resume an interrupted release using `module@version`
 - `cascade revert` – delete branches/PRs captured in state summaries
@@ -145,6 +179,8 @@ cascade revert go-errors@v1.4.0
 # Quick cheatsheet
 cascade manifest generate --module-path=$TARGET_MODULE --version=latest --github-org=goliatone --yes --dry-run
 cascade plan --manifest=.cascade.yaml --dry-run
+cascade plan local --workspace=$HOME/Development/GO/src/github.com/goliatone
+cascade update local --dry-run
 cascade release --manifest=.cascade.yaml
 cascade resume go-errors@v1.4.0
 cascade revert go-errors@v1.4.0
