@@ -580,12 +580,12 @@ func TestFilesystemLocker(t *testing.T) {
 		var successCount int32
 		var wg sync.WaitGroup
 
-		for i := 0; i < numWorkers; i++ {
+		for i := range numWorkers {
 			wg.Add(1)
 			go func(workerID int) {
 				defer wg.Done()
 
-				for attempt := 0; attempt < numAttempts; attempt++ {
+				for attempt := range numAttempts {
 					testMod := fmt.Sprintf("example.com/worker-%d", workerID)
 					testVer := fmt.Sprintf("v1.0.%d", attempt)
 
@@ -747,7 +747,7 @@ func TestLockRaceCondition(t *testing.T) {
 	var successCount int32
 	var wg sync.WaitGroup
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()

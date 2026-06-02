@@ -1,5 +1,7 @@
 package manifest
 
+import "slices"
+
 // FindModuleConfig returns the module metadata for the provided module path, if present.
 func FindModuleConfig(m *Manifest, modulePath string) (*ModuleConfig, bool) {
 	if m == nil || m.Module == nil {
@@ -156,12 +158,7 @@ func containsCommand(commands []Command, target Command) bool {
 
 // containsString checks if a string is already present in the slice
 func containsString(strings []string, target string) bool {
-	for _, s := range strings {
-		if s == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(strings, target)
 }
 
 // mergePRConfig merges PR configuration, preferring dependent values

@@ -161,9 +161,9 @@ func parseSelectionInput(input string, maxIndex int) ([]int, error) {
 	}
 
 	var indices []int
-	parts := strings.Split(input, ",")
+	parts := strings.SplitSeq(input, ",")
 
-	for _, part := range parts {
+	for part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue

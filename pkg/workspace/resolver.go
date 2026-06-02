@@ -151,7 +151,7 @@ func detectModuleInfo() (string, string, error) {
 }
 
 func parseGoModModulePath(content string) string {
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "module ") {
 			parts := strings.Fields(line)
@@ -195,7 +195,7 @@ func detectParentWorkspace(moduleDir, modulePath string) string {
 	current := moduleDir
 	var potential string
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		parent := filepath.Dir(current)
 		if parent == current || parent == "/" || parent == "." {
 			break

@@ -3,8 +3,10 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -328,9 +330,7 @@ func mergeConfig(dst, src *Config) {
 		if dst.ManifestGenerator.TemplateProfiles == nil {
 			dst.ManifestGenerator.TemplateProfiles = make(map[string]TemplateProfileConfig)
 		}
-		for name, profile := range src.ManifestGenerator.TemplateProfiles {
-			dst.ManifestGenerator.TemplateProfiles[name] = profile
-		}
+		maps.Copy(dst.ManifestGenerator.TemplateProfiles, src.ManifestGenerator.TemplateProfiles)
 	}
 }
 
@@ -342,13 +342,7 @@ func validateConfigFile(config *Config) error {
 	// Validate logging level
 	if config.Logging.Level != "" {
 		validLevels := []string{"debug", "info", "warn", "error"}
-		valid := false
-		for _, level := range validLevels {
-			if config.Logging.Level == level {
-				valid = true
-				break
-			}
-		}
+		valid := slices.Contains(validLevels, config.Logging.Level)
 		if !valid {
 			errors = append(errors, fmt.Sprintf("invalid logging level '%s', must be one of: %s",
 				config.Logging.Level, strings.Join(validLevels, ", ")))
@@ -358,13 +352,7 @@ func validateConfigFile(config *Config) error {
 	// Validate logging format
 	if config.Logging.Format != "" {
 		validFormats := []string{"text", "json"}
-		valid := false
-		for _, format := range validFormats {
-			if config.Logging.Format == format {
-				valid = true
-				break
-			}
-		}
+		valid := slices.Contains(validFormats, config.Logging.Format)
 		if !valid {
 			errors = append(errors, fmt.Sprintf("invalid logging format '%s', must be one of: %s",
 				config.Logging.Format, strings.Join(validFormats, ", ")))

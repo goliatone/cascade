@@ -107,7 +107,7 @@ func TestCLIIntegrationPlanDryRun(t *testing.T) {
 	}
 
 	// Create golden output structure
-	goldenData := map[string]interface{}{
+	goldenData := map[string]any{
 		"command":        "cascade plan " + manifestPath,
 		"output":         strings.TrimSpace(outputStr),
 		"exit_code":      1, // Expected failure due to config validation
@@ -201,7 +201,7 @@ func TestCLIHelpIntegration(t *testing.T) {
 	}
 
 	// Create golden output structure for help
-	goldenData := map[string]interface{}{
+	goldenData := map[string]any{
 		"command":     "cascade --help",
 		"output":      strings.TrimSpace(outputStr),
 		"exit_code":   0,
@@ -251,12 +251,12 @@ func TestCLIErrorScenarios(t *testing.T) {
 	testCases := []struct {
 		name     string
 		args     []string
-		expected map[string]interface{}
+		expected map[string]any
 	}{
 		{
 			name: "missing_manifest",
 			args: []string{"cascade", "plan", "nonexistent.yaml", "--module", "test", "--version", "v1.0.0"},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"error_type": "file_error",
 				"contains":   []string{"no such file or directory", "failed to load manifest"},
 			},
@@ -264,7 +264,7 @@ func TestCLIErrorScenarios(t *testing.T) {
 		{
 			name: "missing_required_args",
 			args: []string{"cascade", "plan", "testdata/minimal_manifest.yaml"},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"error_type": "validation_error",
 				"contains":   []string{"target module must be specified"},
 			},
@@ -278,7 +278,7 @@ func TestCLIErrorScenarios(t *testing.T) {
 
 			// The detailed error scenario testing is covered by TestCLISmokeTests
 			// This just creates a golden file structure for documentation
-			goldenData := map[string]interface{}{
+			goldenData := map[string]any{
 				"test_case":    tc.name,
 				"command_args": tc.args,
 				"expected":     tc.expected,

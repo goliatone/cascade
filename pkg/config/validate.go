@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -373,11 +374,7 @@ func applyExecutorDefaults(exec *ExecutorConfig) {
 	if exec.ConcurrentLimit == 0 {
 		// Default: CPU count or 4, whichever is smaller
 		cpuCount := runtime.NumCPU()
-		if cpuCount > 4 {
-			exec.ConcurrentLimit = 4
-		} else {
-			exec.ConcurrentLimit = cpuCount
-		}
+		exec.ConcurrentLimit = min(cpuCount, 4)
 		if exec.ConcurrentLimit < 1 {
 			exec.ConcurrentLimit = 1
 		}
@@ -513,10 +510,5 @@ func isValidSlackToken(token string) bool {
 
 // contains checks if a slice contains a specific string.
 func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }

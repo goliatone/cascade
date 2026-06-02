@@ -84,7 +84,7 @@ func BenchmarkPlanner_SkipEfficiency(b *testing.B) {
 		Module: "github.com/example/lib",
 	}
 
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		repoName := fmt.Sprintf("repo-%d", i)
 		repoPath := filepath.Join(tempWorkspace, repoName)
 		if err := os.MkdirAll(repoPath, 0755); err != nil {
@@ -175,7 +175,7 @@ func createLargeManifest(size int) *manifest.Manifest {
 		Dependents: make([]manifest.Dependent, size),
 	}
 
-	for i := 0; i < size; i++ {
+	for i := range size {
 		mod.Dependents[i] = manifest.Dependent{
 			Repo:       fmt.Sprintf("example/repo-%d", i),
 			Module:     fmt.Sprintf("github.com/example/repo-%d", i),

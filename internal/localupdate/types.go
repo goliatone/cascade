@@ -90,7 +90,7 @@ func splitValues(values []string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
+		for part := range strings.SplitSeq(value, ",") {
 			trimmed := strings.TrimSpace(part)
 			if trimmed == "" || seen[trimmed] {
 				continue

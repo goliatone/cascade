@@ -14,7 +14,7 @@ func TestFlagPrecedence(t *testing.T) {
 		name           string
 		args           []string
 		envVars        map[string]string
-		expectedValues map[string]interface{}
+		expectedValues map[string]any
 	}{
 		{
 			name: "flags override environment",
@@ -23,7 +23,7 @@ func TestFlagPrecedence(t *testing.T) {
 				"CASCADE_VERBOSE":   "false",
 				"CASCADE_WORKSPACE": "/tmp/other",
 			},
-			expectedValues: map[string]interface{}{
+			expectedValues: map[string]any{
 				"verbose":   true,
 				"workspace": "/tmp/test",
 			},
@@ -34,7 +34,7 @@ func TestFlagPrecedence(t *testing.T) {
 			envVars: map[string]string{
 				"CASCADE_DRY_RUN": "true",
 			},
-			expectedValues: map[string]interface{}{
+			expectedValues: map[string]any{
 				"dry_run": false,
 			},
 		},
@@ -44,7 +44,7 @@ func TestFlagPrecedence(t *testing.T) {
 			envVars: map[string]string{
 				"CASCADE_DRY_RUN": "false",
 			},
-			expectedValues: map[string]interface{}{
+			expectedValues: map[string]any{
 				"dry_run": true,
 			},
 		},

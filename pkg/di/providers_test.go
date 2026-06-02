@@ -25,52 +25,52 @@ func (testLogger) Error(string, ...any) {}
 func TestProviderFunctions(t *testing.T) {
 	tests := []struct {
 		name     string
-		provider func() interface{}
+		provider func() any
 		wantType string
 	}{
 		{
 			name:     "provideManifest returns manifest.Loader",
-			provider: func() interface{} { return provideManifest() },
+			provider: func() any { return provideManifest() },
 			wantType: "*manifest.loader",
 		},
 		{
 			name:     "provideManifestGenerator returns manifest.Generator",
-			provider: func() interface{} { return provideManifestGenerator() },
+			provider: func() any { return provideManifestGenerator() },
 			wantType: "*manifest.generator",
 		},
 		{
 			name:     "providePlanner returns planner.Planner",
-			provider: func() interface{} { return providePlanner() },
+			provider: func() any { return providePlanner() },
 			wantType: "*planner.planner",
 		},
 		{
 			name:     "provideExecutor returns executor.Executor",
-			provider: func() interface{} { return provideExecutor() },
+			provider: func() any { return provideExecutor() },
 			wantType: "*executor.executor",
 		},
 		{
 			name:     "provideBroker returns broker.Broker",
-			provider: func() interface{} { return provideBroker() },
+			provider: func() any { return provideBroker() },
 			wantType: "*broker.broker",
 		},
 		{
 			name:     "provideState returns state.Manager",
-			provider: func() interface{} { return provideState() },
+			provider: func() any { return provideState() },
 			wantType: "*state.manager",
 		},
 		{
 			name:     "provideConfig returns *config.Config",
-			provider: func() interface{} { return provideConfig() },
+			provider: func() any { return provideConfig() },
 			wantType: "*config.Config",
 		},
 		{
 			name:     "provideLogger returns Logger",
-			provider: func() interface{} { return provideLogger() },
+			provider: func() any { return provideLogger() },
 			wantType: "*di.slogAdapter",
 		},
 		{
 			name:     "provideHTTPClient returns *http.Client",
-			provider: func() interface{} { return provideHTTPClient() },
+			provider: func() any { return provideHTTPClient() },
 			wantType: "*http.Client",
 		},
 	}

@@ -158,8 +158,8 @@ func normalizeEnterpriseEndpoints(endpoint string) (string, string) {
 	}
 
 	trimmed := strings.TrimSuffix(base, "/")
-	if strings.HasSuffix(trimmed, "/api/v3") {
-		prefix := strings.TrimSuffix(trimmed, "/api/v3")
+	if before, ok := strings.CutSuffix(trimmed, "/api/v3"); ok {
+		prefix := before
 		if !strings.HasSuffix(prefix, "/") {
 			prefix += "/"
 		}

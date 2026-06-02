@@ -3,6 +3,7 @@ package executor_test
 import (
 	"context"
 	"fmt"
+	"maps"
 	"testing"
 	"time"
 
@@ -437,9 +438,7 @@ type commandCall struct {
 
 func (r *recordingCommandRunner) Run(ctx context.Context, repoPath string, cmd manifest.Command, env map[string]string, timeout time.Duration) (executor.CommandResult, error) {
 	envCopy := make(map[string]string, len(env))
-	for k, v := range env {
-		envCopy[k] = v
-	}
+	maps.Copy(envCopy, env)
 	r.calls = append(r.calls, commandCall{cmd: cmd, env: envCopy, timeout: timeout})
 	return executor.CommandResult{Command: cmd}, nil
 }

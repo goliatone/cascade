@@ -1,5 +1,7 @@
 package planner
 
+import "maps"
+
 import "github.com/goliatone/cascade/internal/manifest"
 
 // convertModuleConfig transforms a ModuleConfig into a DependentConfig so it can be merged
@@ -100,9 +102,7 @@ func cloneEnv(values map[string]string) map[string]string {
 		return nil
 	}
 	cloned := make(map[string]string, len(values))
-	for k, v := range values {
-		cloned[k] = v
-	}
+	maps.Copy(cloned, values)
 	return cloned
 }
 
@@ -112,12 +112,8 @@ func mergeEnv(base map[string]string, override map[string]string) map[string]str
 	}
 
 	result := make(map[string]string, len(base)+len(override))
-	for k, v := range base {
-		result[k] = v
-	}
-	for k, v := range override {
-		result[k] = v
-	}
+	maps.Copy(result, base)
+	maps.Copy(result, override)
 	return result
 }
 

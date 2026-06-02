@@ -198,7 +198,7 @@ type spyLogger struct {
 	buf *bytes.Buffer
 }
 
-func (s *spyLogger) Info(msg string, keysAndValues ...interface{}) {
+func (s *spyLogger) Info(msg string, keysAndValues ...any) {
 	s.buf.WriteString(msg)
 	for i := 0; i < len(keysAndValues); i += 2 {
 		if i+1 < len(keysAndValues) {
@@ -226,14 +226,14 @@ func (s *spyLogger) Info(msg string, keysAndValues ...interface{}) {
 	s.buf.WriteString("\n")
 }
 
-func (s *spyLogger) Debug(msg string, keysAndValues ...interface{}) {
+func (s *spyLogger) Debug(msg string, keysAndValues ...any) {
 	s.Info(msg, keysAndValues...)
 }
 
-func (s *spyLogger) Warn(msg string, keysAndValues ...interface{}) {
+func (s *spyLogger) Warn(msg string, keysAndValues ...any) {
 	s.Info(msg, keysAndValues...)
 }
 
-func (s *spyLogger) Error(msg string, keysAndValues ...interface{}) {
+func (s *spyLogger) Error(msg string, keysAndValues ...any) {
 	s.Info(msg, keysAndValues...)
 }

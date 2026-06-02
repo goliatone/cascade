@@ -150,9 +150,9 @@ func NormalizeURL(url string) string {
 	url = strings.TrimSuffix(url, ".git")
 
 	// Convert SSH to HTTPS format for comparison
-	if strings.HasPrefix(url, "git@") {
+	if after, ok := strings.CutPrefix(url, "git@"); ok {
 		// Convert git@github.com:user/repo to https://github.com/user/repo
-		url = strings.TrimPrefix(url, "git@")
+		url = after
 		url = strings.Replace(url, ":", "/", 1)
 		url = "https://" + url
 	}

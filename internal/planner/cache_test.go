@@ -217,10 +217,10 @@ func TestDependencyCache_ConcurrentAccess(t *testing.T) {
 	wg.Add(goroutines)
 
 	// Concurrent writers
-	for i := 0; i < goroutines/2; i++ {
+	for i := range goroutines / 2 {
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < operations; j++ {
+			for range operations {
 				deps := map[string]string{
 					"github.com/foo/bar": "v1.2.3",
 				}
@@ -230,10 +230,10 @@ func TestDependencyCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Concurrent readers
-	for i := 0; i < goroutines/2; i++ {
+	for i := range goroutines / 2 {
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < operations; j++ {
+			for range operations {
 				cache.Get("https://github.com/user/repo", "main", "github.com/foo/bar", "")
 			}
 		}(i)
@@ -264,7 +264,7 @@ func TestDependencyCache_ConcurrentPrune(t *testing.T) {
 	wg.Add(goroutines * 2)
 
 	// Add entries
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go func(id int) {
 			defer wg.Done()
 			deps := map[string]string{
@@ -278,7 +278,7 @@ func TestDependencyCache_ConcurrentPrune(t *testing.T) {
 	time.Sleep(shortTTL + 10*time.Millisecond)
 
 	// Concurrent prune operations
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			cache.Prune()

@@ -569,7 +569,7 @@ func equalStringSlices(a, b []string) bool {
 
 func generateManyLabels(count int) []string {
 	labels := make([]string, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		labels[i] = fmt.Sprintf("label-%d", i)
 	}
 	return labels

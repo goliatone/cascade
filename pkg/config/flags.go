@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -147,13 +148,7 @@ func (fc *FlagConfig) ValidateFlags() error {
 	// Validate log level if specified
 	if fc.logLevelSet {
 		validLevels := []string{"debug", "info", "warn", "error"}
-		isValid := false
-		for _, level := range validLevels {
-			if fc.LogLevel == level {
-				isValid = true
-				break
-			}
-		}
+		isValid := slices.Contains(validLevels, fc.LogLevel)
 		if !isValid {
 			errors = append(errors, fmt.Sprintf("log-level must be one of: %s", strings.Join(validLevels, ", ")))
 		}
@@ -162,13 +157,7 @@ func (fc *FlagConfig) ValidateFlags() error {
 	// Validate log format if specified
 	if fc.logFormatSet {
 		validFormats := []string{"text", "json"}
-		isValid := false
-		for _, format := range validFormats {
-			if fc.LogFormat == format {
-				isValid = true
-				break
-			}
-		}
+		isValid := slices.Contains(validFormats, fc.LogFormat)
 		if !isValid {
 			errors = append(errors, fmt.Sprintf("log-format must be one of: %s", strings.Join(validFormats, ", ")))
 		}

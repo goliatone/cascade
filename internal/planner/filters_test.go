@@ -180,7 +180,7 @@ func TestSortDependents(t *testing.T) {
 			}
 
 			// Verify ordering is deterministic - run multiple times
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				result2 := SortDependents(tt.input)
 				if !reflect.DeepEqual(result, result2) {
 					t.Errorf("Sort is not deterministic: first=%+v, iteration %d=%+v", result, i, result2)

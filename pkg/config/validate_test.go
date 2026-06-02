@@ -572,10 +572,7 @@ func TestApplyDefaults(t *testing.T) {
 		t.Errorf("expected timeout default of 5m, got: %v", cfg.Executor.Timeout)
 	}
 
-	expectedConcurrency := runtime.NumCPU()
-	if expectedConcurrency > 4 {
-		expectedConcurrency = 4
-	}
+	expectedConcurrency := min(runtime.NumCPU(), 4)
 	if cfg.Executor.ConcurrentLimit != expectedConcurrency {
 		t.Errorf("expected concurrent limit default of %d, got: %d", expectedConcurrency, cfg.Executor.ConcurrentLimit)
 	}

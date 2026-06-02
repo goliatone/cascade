@@ -747,8 +747,8 @@ func (g *gitHubDiscovery) resolveVersionFromGitRemote(ctx context.Context, repos
 		if len(parts) == 2 {
 			ref := parts[1]
 			// Extract tag name from refs/tags/<tag-name>
-			if strings.HasPrefix(ref, "refs/tags/") {
-				tagName := strings.TrimPrefix(ref, "refs/tags/")
+			if after, ok := strings.CutPrefix(ref, "refs/tags/"); ok {
+				tagName := after
 				tagNames = append(tagNames, tagName)
 			}
 		}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/goliatone/cascade/internal/broker"
@@ -350,8 +351,8 @@ func normalizeEnterpriseEndpoints(endpoint string) (string, string) {
 	}
 
 	trimmed := strings.TrimSuffix(base, "/")
-	if strings.HasSuffix(trimmed, "/api/v3") {
-		prefix := strings.TrimSuffix(trimmed, "/api/v3")
+	if before, ok := strings.CutSuffix(trimmed, "/api/v3"); ok {
+		prefix := before
 		if !strings.HasSuffix(prefix, "/") {
 			prefix += "/"
 		}
@@ -364,8 +365,8 @@ func normalizeEnterpriseEndpoints(endpoint string) (string, string) {
 func matchesRepoPatterns(fullName string, includePatterns, excludePatterns []string) bool {
 	repoLower := strings.ToLower(fullName)
 	repoName := repoLower
-	if idx := strings.Index(repoLower, "/"); idx >= 0 {
-		repoName = repoLower[idx+1:]
+	if _, after, ok := strings.Cut(repoLower, "/"); ok {
+		repoName = after
 	}
 
 	matchesPattern := func(pattern string) bool {
@@ -379,23 +380,15 @@ func matchesRepoPatterns(fullName string, includePatterns, excludePatterns []str
 		return false
 	}
 
-	for _, pattern := range excludePatterns {
-		if matchesPattern(pattern) {
-			return false
-		}
+	if slices.ContainsFunc(excludePatterns, matchesPattern) {
+		return false
 	}
 
 	if len(includePatterns) == 0 {
 		return true
 	}
 
-	for _, pattern := range includePatterns {
-		if matchesPattern(pattern) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(includePatterns, matchesPattern)
 }
 
 func fetchModuleInfoFromGitHub(ctx context.Context, client *gh.Client, repo *gh.Repository, goModPath string) (string, string, error) {

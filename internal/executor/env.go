@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,12 +11,8 @@ import (
 // PrepareEnv merges base and custom environment maps into a string slice.
 func PrepareEnv(base, custom map[string]string) []string {
 	result := make(map[string]string)
-	for k, v := range base {
-		result[k] = v
-	}
-	for k, v := range custom {
-		result[k] = v
-	}
+	maps.Copy(result, base)
+	maps.Copy(result, custom)
 
 	env := make([]string, 0, len(result))
 	for k, v := range result {

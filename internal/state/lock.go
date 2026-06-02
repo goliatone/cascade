@@ -109,10 +109,7 @@ func (fl *filesystemLocker) acquireLock(ctx context.Context, module, version str
 		}
 
 		// backoff before retrying
-		delay := time.Duration(100+attempt*50) * time.Millisecond
-		if delay > 500*time.Millisecond {
-			delay = 500 * time.Millisecond
-		}
+		delay := min(time.Duration(100+attempt*50)*time.Millisecond, 500*time.Millisecond)
 		attempt++
 		timer := time.NewTimer(delay)
 		select {

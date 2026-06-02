@@ -3,6 +3,7 @@ package manifest
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // LoadError represents an error that occurred during manifest loading.
@@ -119,9 +120,10 @@ func joinWithPrefix(items []string, prefix string) string {
 	if len(items) == 0 {
 		return ""
 	}
-	result := items[0]
+	var result strings.Builder
+	result.WriteString(items[0])
 	for i := 1; i < len(items); i++ {
-		result += prefix + items[i]
+		result.WriteString(prefix + items[i])
 	}
-	return result
+	return result.String()
 }

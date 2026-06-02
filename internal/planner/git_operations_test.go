@@ -376,13 +376,6 @@ func countCascadeCloneDirs(files []os.DirEntry) int {
 	return count
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func TestFetchGoModWithAuthentication(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")

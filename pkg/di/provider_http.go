@@ -34,10 +34,9 @@ func provideHTTPClientWithConfig(cfg *config.Config) *http.Client {
 	timeout := 30 * time.Second // Default timeout
 	if cfg.Executor.Timeout > 0 {
 		// Use 80% of executor timeout to leave buffer for retries
-		timeout = time.Duration(float64(cfg.Executor.Timeout) * 0.8)
-		if timeout < 10*time.Second {
-			timeout = 10 * time.Second // Minimum timeout
-		}
+		timeout = max(time.Duration(float64(cfg.Executor.Timeout)*0.8),
+			// Minimum timeout
+			10*time.Second)
 	}
 
 	return &http.Client{

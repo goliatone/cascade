@@ -78,7 +78,7 @@ func BenchmarkParallelChecking(b *testing.B) {
 
 	// Create test data
 	dependents := make([]manifest.Dependent, 20)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		dependents[i] = manifest.Dependent{
 			Repo:   fmt.Sprintf("example/repo-%d", i),
 			Branch: "main",
@@ -119,7 +119,7 @@ func BenchmarkCacheOperations(b *testing.B) {
 	cache := newDependencyCache(5 * time.Minute)
 
 	// Pre-populate cache with some entries
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		cloneURL := fmt.Sprintf("https://github.com/example/repo-%d.git", i)
 		deps := map[string]string{
 			"github.com/example/lib1": "v1.0.0",

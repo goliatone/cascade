@@ -167,7 +167,7 @@ func TestParallelDependencyChecker_Parallelism(t *testing.T) {
 
 	// Create 10 dependents - would take 1s sequentially, but much less in parallel
 	dependents := make([]manifest.Dependent, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		dependents[i] = manifest.Dependent{Repo: "repo" + string(rune('0'+i))}
 	}
 
@@ -215,7 +215,7 @@ func TestParallelDependencyChecker_ConcurrencyLimit(t *testing.T) {
 
 	// Create 20 dependents with concurrency limit of 3
 	dependents := make([]manifest.Dependent, 20)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		dependents[i] = manifest.Dependent{Repo: "repo" + string(rune('0'+i))}
 	}
 
@@ -248,7 +248,7 @@ func TestParallelDependencyChecker_ContextCancellation(t *testing.T) {
 	}
 
 	dependents := make([]manifest.Dependent, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		dependents[i] = manifest.Dependent{Repo: "repo" + string(rune('0'+i))}
 	}
 
@@ -352,7 +352,7 @@ func BenchmarkParallelChecker_Sequential(b *testing.B) {
 	}
 
 	dependents := make([]manifest.Dependent, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		dependents[i] = manifest.Dependent{Repo: "repo" + string(rune('0'+i))}
 	}
 
@@ -372,7 +372,7 @@ func BenchmarkParallelChecker_Parallel(b *testing.B) {
 	}
 
 	dependents := make([]manifest.Dependent, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		dependents[i] = manifest.Dependent{Repo: "repo" + string(rune('0'+i))}
 	}
 
