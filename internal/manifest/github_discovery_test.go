@@ -46,6 +46,9 @@ func TestNewGitHubDiscoveryFromToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.token == "" {
+				t.Setenv("GITHUB_TOKEN", "test-token")
+			}
 			discovery, err := NewGitHubDiscoveryFromToken(tt.token)
 
 			if tt.expectError {

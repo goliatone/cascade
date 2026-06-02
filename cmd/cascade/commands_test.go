@@ -401,6 +401,7 @@ func TestIsProductionCommand(t *testing.T) {
 		{"release command", "release", true},
 		{"resume command", "resume", true},
 		{"revert command", "revert", true},
+		{"update command", "update", false},
 		{"unknown command", "unknown", false},
 		{"nil command", "", false},
 	}
