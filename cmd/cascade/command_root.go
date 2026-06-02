@@ -76,6 +76,7 @@ Examples:
 		newReleaseCommand(),
 		newResumeCommand(),
 		newRevertCommand(),
+		newUpdateCommand(),
 		newWorkflowCommand(),
 		newVersionCommand(),
 	)
