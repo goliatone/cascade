@@ -11,7 +11,7 @@ BINNAME=cascade
 BINPATH=$(pwd)/"bin"
 VERSION_FILE="./.version"
 PROJECT="$(awk 'match($0, /module (.*)/) {print substr($2, RSTART, RLENGTH)}' go.mod)"
-ENTRYPOINT="cmd/${BINNAME}/main.go"
+ENTRYPOINT="./cmd/${BINNAME}"
 
 # If we have a .taskenv file load it as source
 if [ -f .taskenv ]; then
@@ -172,6 +172,7 @@ function ci:build {
     echo "building version: ${VERSION}"
     echo "go build -ldflags ${LDFLAGS}"
 
+    mkdir -p "${BINPATH}"
     go build -ldflags "${LDFLAGS}" -o "${BINPATH}/${BINNAME}" "${ENTRYPOINT}"
 }
 
