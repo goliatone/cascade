@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,7 @@ type Builder interface {
 	FromEnv() Builder
 	FromFlags(cmd *cobra.Command) Builder
 	FromFile(path string) Builder
+	FromLayeredFiles(path string) Builder
 	Build() (*Config, error)
 }
 
@@ -27,6 +29,7 @@ func NewBuilder() Builder {
 // builder implements the Builder interface with support for multiple configuration sources.
 type builder struct {
 	configs [](*Config)
+	layers  []ConfigLayer
 	errors  []error
 }
 
@@ -103,8 +106,37 @@ func (b *builder) FromFile(path string) Builder {
 
 	if fileConfig != nil {
 		b.configs = append(b.configs, fileConfig)
+		if path != "" {
+			absPath, _ := filepath.Abs(path)
+			b.layers = append(b.layers, ConfigLayer{
+				Scope:   ConfigLayerScopeExplicit,
+				Path:    absPath,
+				BaseDir: filepath.Dir(absPath),
+				Config:  fileConfig,
+			})
+		}
 	}
 
+	return b
+}
+
+// FromLayeredFiles loads configuration files in Cascade's layered precedence
+// order. If path is set, it is the only file layer. Otherwise global user
+// config is loaded first, followed by ancestor project configs from outermost
+// to nearest directory.
+func (b *builder) FromLayeredFiles(path string) Builder {
+	layers, err := LoadConfigLayers(path)
+	if err != nil {
+		b.errors = append(b.errors, fmt.Errorf("configuration layer error: %w", err))
+		return b
+	}
+	for _, layer := range layers {
+		if layer.Config == nil {
+			continue
+		}
+		b.configs = append(b.configs, layer.Config)
+		b.layers = append(b.layers, layer)
+	}
 	return b
 }
 
@@ -132,6 +164,7 @@ func (b *builder) Build() (*Config, error) {
 	configs = append(configs, b.configs...)
 
 	finalConfig := MergeConfigs(configs...)
+	finalConfig.layers = append([]ConfigLayer(nil), b.layers...)
 
 	// Apply defaults to fill in any missing values
 	if err := ApplyDefaults(finalConfig); err != nil {

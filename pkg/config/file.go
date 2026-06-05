@@ -13,6 +13,9 @@ import (
 )
 
 type rawFileConfig struct {
+	Workspace struct {
+		Path *string `json:"path" yaml:"path"`
+	} `json:"workspace" yaml:"workspace"`
 	Executor struct {
 		DryRun *bool `json:"dry_run" yaml:"dry_run"`
 	} `json:"executor" yaml:"executor"`
@@ -28,6 +31,10 @@ type rawFileConfig struct {
 func applyRawBoolFlags(cfg *Config, raw *rawFileConfig) {
 	if cfg == nil || raw == nil {
 		return
+	}
+
+	if raw.Workspace.Path != nil {
+		cfg.setWorkspacePath(*raw.Workspace.Path)
 	}
 
 	if raw.Executor.DryRun != nil {
@@ -82,18 +89,136 @@ func ConfigFileLocations() []string {
 	return locations
 }
 
+func globalConfigFileLocations() []string {
+	locations := ConfigFileLocations()
+	out := make([]string, 0, len(locations))
+	for _, path := range locations {
+		if filepath.IsAbs(path) {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
 // DiscoverConfigFile searches for configuration files in standard locations.
 // Returns the path to the first configuration file found, or empty string if none found.
 func DiscoverConfigFile() (string, error) {
-	locations := ConfigFileLocations()
+	if path, err := discoverLocalConfigFile(); err != nil {
+		return "", err
+	} else if path != "" {
+		return path, nil
+	}
 
-	for _, path := range locations {
+	for _, path := range ConfigFileLocations() {
+		if !filepath.IsAbs(path) {
+			continue
+		}
 		if _, err := os.Stat(path); err == nil {
 			return path, nil
 		}
 	}
 
 	return "", nil // No config file found, but not an error
+}
+
+func discoverLocalConfigFile() (string, error) {
+	paths, err := discoverLocalConfigFiles()
+	if err != nil {
+		return "", err
+	}
+	if len(paths) == 0 {
+		return "", nil
+	}
+	return paths[len(paths)-1], nil
+}
+
+func discoverLocalConfigFiles() ([]string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	names := []string{".cascade.yaml", ".cascade.yml", ".cascade.json"}
+	var paths []string
+	for dir := cwd; ; dir = filepath.Dir(dir) {
+		for _, name := range names {
+			path := filepath.Join(dir, name)
+			if _, err := os.Stat(path); err == nil {
+				paths = append(paths, path)
+				break
+			} else if err != nil && !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+
+	slices.Reverse(paths)
+	return paths, nil
+}
+
+// LoadConfigLayers loads file configuration layers in merge order.
+// If explicitPath is set, that file is the only file layer.
+func LoadConfigLayers(explicitPath string) ([]ConfigLayer, error) {
+	if strings.TrimSpace(explicitPath) != "" {
+		layer, err := loadConfigLayer(ConfigLayerScopeExplicit, explicitPath)
+		if err != nil {
+			return nil, err
+		}
+		return []ConfigLayer{layer}, nil
+	}
+
+	var layers []ConfigLayer
+	for _, path := range globalConfigFileLocations() {
+		if _, err := os.Stat(path); err == nil {
+			layer, err := loadConfigLayer(ConfigLayerScopeGlobal, path)
+			if err != nil {
+				return nil, err
+			}
+			layers = append(layers, layer)
+			break
+		} else if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+
+	localPaths, err := discoverLocalConfigFiles()
+	if err != nil {
+		return nil, err
+	}
+	for i, path := range localPaths {
+		scope := ConfigLayerScopeProject
+		if i < len(localPaths)-1 {
+			scope = ConfigLayerScopeWorkspace
+		}
+		layer, err := loadConfigLayer(scope, path)
+		if err != nil {
+			return nil, err
+		}
+		layers = append(layers, layer)
+	}
+	return layers, nil
+}
+
+func loadConfigLayer(scope ConfigLayerScope, path string) (ConfigLayer, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return ConfigLayer{}, err
+	}
+	cfg, err := LoadFromFile(absPath)
+	if err != nil {
+		return ConfigLayer{}, err
+	}
+	return ConfigLayer{
+		Scope:   scope,
+		Path:    absPath,
+		BaseDir: filepath.Dir(absPath),
+		Config:  cfg,
+	}, nil
 }
 
 // LoadFromFile reads configuration from the provided path.
@@ -186,6 +311,9 @@ func mergeConfig(dst, src *Config) {
 	// Workspace config
 	if src.Workspace.Path != "" {
 		dst.Workspace.Path = src.Workspace.Path
+		if src.workspacePathSet() {
+			dst.setFlags.workspacePath = true
+		}
 	}
 	if src.Workspace.TempDir != "" {
 		dst.Workspace.TempDir = src.Workspace.TempDir
@@ -332,6 +460,74 @@ func mergeConfig(dst, src *Config) {
 		}
 		maps.Copy(dst.ManifestGenerator.TemplateProfiles, src.ManifestGenerator.TemplateProfiles)
 	}
+
+	mergeLocalUpdateHooks(&dst.Hooks.Update.Local, src.Hooks.Update.Local)
+}
+
+func mergeLocalUpdateHooks(dst *LocalUpdateHooksConfig, src LocalUpdateHooksConfig) {
+	if hasUnconditionalLocalUpdateHooks(src) {
+		dst.After = cloneHookConfigs(src.After)
+		dst.AfterSuccess = cloneHookConfigs(src.AfterSuccess)
+		dst.AfterFailure = cloneHookConfigs(src.AfterFailure)
+		dst.Always = cloneHookConfigs(src.Always)
+	}
+	if len(src.Rules) > 0 {
+		dst.Rules = cloneLocalUpdateHookRules(src.Rules)
+	}
+	if len(src.DisabledRules) > 0 {
+		dst.DisabledRules = slices.Clone(src.DisabledRules)
+	}
+}
+
+func hasUnconditionalLocalUpdateHooks(hooks LocalUpdateHooksConfig) bool {
+	return len(hooks.After) > 0 ||
+		len(hooks.AfterSuccess) > 0 ||
+		len(hooks.AfterFailure) > 0 ||
+		len(hooks.Always) > 0
+}
+
+func cloneLocalUpdateHookRules(rules []LocalUpdateHookRule) []LocalUpdateHookRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]LocalUpdateHookRule, len(rules))
+	for i, rule := range rules {
+		out[i] = rule
+		out[i].Match = cloneLocalUpdateHookMatch(rule.Match)
+		out[i].After = cloneHookConfigs(rule.After)
+		out[i].AfterSuccess = cloneHookConfigs(rule.AfterSuccess)
+		out[i].AfterFailure = cloneHookConfigs(rule.AfterFailure)
+		out[i].Always = cloneHookConfigs(rule.Always)
+	}
+	return out
+}
+
+func cloneLocalUpdateHookMatch(match LocalUpdateHookMatch) LocalUpdateHookMatch {
+	return LocalUpdateHookMatch{
+		Modules:               slices.Clone(match.Modules),
+		ModulePrefixes:        slices.Clone(match.ModulePrefixes),
+		Workspaces:            slices.Clone(match.Workspaces),
+		WorkspacePrefixes:     slices.Clone(match.WorkspacePrefixes),
+		ModuleDirs:            slices.Clone(match.ModuleDirs),
+		ModuleDirPrefixes:     slices.Clone(match.ModuleDirPrefixes),
+		ExcludeModules:        slices.Clone(match.ExcludeModules),
+		ExcludeModulePrefixes: slices.Clone(match.ExcludeModulePrefixes),
+	}
+}
+
+func cloneHookConfigs(hooks []HookConfig) []HookConfig {
+	if len(hooks) == 0 {
+		return nil
+	}
+	out := make([]HookConfig, len(hooks))
+	for i, hook := range hooks {
+		out[i] = hook
+		out[i].Cmd = slices.Clone(hook.Cmd)
+		if hook.Env != nil {
+			out[i].Env = maps.Clone(hook.Env)
+		}
+	}
+	return out
 }
 
 // validateConfigFile performs basic validation on configuration loaded from files.
@@ -371,6 +567,10 @@ func validateConfigFile(config *Config) error {
 	// Validate state settings
 	if config.State.RetentionCount < 0 {
 		errors = append(errors, "state retention_count must be positive")
+	}
+
+	for _, validationErr := range validateHooks(&config.Hooks) {
+		errors = append(errors, fmt.Sprintf("%s: %s", validationErr.Field, validationErr.Message))
 	}
 
 	// Validate paths exist if specified (basic check)

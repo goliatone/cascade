@@ -148,10 +148,18 @@ func buildCLIConfig(cmd *cobra.Command) (*config.Config, error) {
 		configFile, _ = cmd.Flags().GetString("config")
 	}
 
-	builder := config.NewBuilder().
-		FromFile(configFile). // Use explicit config file or auto-discover
-		FromEnv().            // Load from environment
-		FromFlags(cmd)        // Load from command flags (highest precedence)
+	var builder config.Builder
+	if isLocalOnlyCommand(cmd) {
+		builder = config.NewBuilder().
+			FromLayeredFiles(configFile). // Use explicit config file or layered discovery
+			FromEnv().
+			FromFlags(cmd)
+	} else {
+		builder = config.NewBuilder().
+			FromFile(configFile). // Use explicit config file or auto-discover
+			FromEnv().
+			FromFlags(cmd)
+	}
 
 	cfg, err := builder.Build()
 	if err != nil {

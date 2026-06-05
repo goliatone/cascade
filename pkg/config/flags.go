@@ -177,7 +177,7 @@ func (fc *FlagConfig) ToConfig() (*Config, error) {
 	config := New()
 
 	if fc.Workspace != "" {
-		config.Workspace.Path = fc.Workspace
+		config.setWorkspacePath(fc.Workspace)
 	}
 
 	if fc.Manifest != "" {

@@ -77,7 +77,7 @@ func (p *EnvParser) ParseEnv() (*Config, error) {
 // parseWorkspace parses workspace-related environment variables
 func (p *EnvParser) parseWorkspace(config *Config) error {
 	if path := p.getEnv(EnvWorkspacePath); path != "" {
-		config.Workspace.Path = path
+		config.setWorkspacePath(path)
 	}
 
 	if tempDir := p.getEnv(EnvTempDir); tempDir != "" {

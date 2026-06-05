@@ -68,6 +68,9 @@ func Validate(cfg *Config) error {
 	// Validate state configuration
 	errors = append(errors, validateState(&cfg.State)...)
 
+	// Validate optional hook configuration
+	errors = append(errors, validateHooks(&cfg.Hooks)...)
+
 	if len(errors) > 0 {
 		return errors
 	}
@@ -197,6 +200,207 @@ func validateExecutor(exec *ExecutorConfig) []ValidationError {
 		})
 	}
 
+	return errors
+}
+
+func validateHooks(hooks *HooksConfig) []ValidationError {
+	if hooks == nil {
+		return nil
+	}
+
+	localHooks := hooks.Update.Local
+	var errors []ValidationError
+	errors = append(errors, validateHookList("hooks.update.local.after", localHooks.After)...)
+	errors = append(errors, validateHookList("hooks.update.local.after_success", localHooks.AfterSuccess)...)
+	errors = append(errors, validateHookList("hooks.update.local.after_failure", localHooks.AfterFailure)...)
+	errors = append(errors, validateHookList("hooks.update.local.always", localHooks.Always)...)
+	errors = append(errors, validateLocalUpdateHookRules(localHooks.Rules)...)
+	errors = append(errors, validateDisabledRuleNames(localHooks.DisabledRules)...)
+	return errors
+}
+
+func validateLocalUpdateHookRules(rules []LocalUpdateHookRule) []ValidationError {
+	var errors []ValidationError
+	seen := map[string]int{}
+	for index, rule := range rules {
+		field := fmt.Sprintf("hooks.update.local.rules[%d]", index)
+		name := strings.TrimSpace(rule.Name)
+		if name == "" {
+			errors = append(errors, ValidationError{
+				Field:   field + ".name",
+				Value:   rule.Name,
+				Message: "rule name is required",
+			})
+		} else {
+			if !validRuleName(name) {
+				errors = append(errors, ValidationError{
+					Field:   field + ".name",
+					Value:   rule.Name,
+					Message: "rule name may contain only letters, numbers, dash, underscore, dot, or slash",
+				})
+			}
+			if first, ok := seen[name]; ok {
+				errors = append(errors, ValidationError{
+					Field:   field + ".name",
+					Value:   rule.Name,
+					Message: fmt.Sprintf("duplicate rule name also defined at hooks.update.local.rules[%d]", first),
+				})
+			} else {
+				seen[name] = index
+			}
+		}
+
+		if !hasRuleHooks(rule) {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Value:   rule.Name,
+				Message: "rule must define at least one hook command in after, after_success, after_failure, or always",
+			})
+		}
+		errors = append(errors, validateHookList(field+".after", rule.After)...)
+		errors = append(errors, validateHookList(field+".after_success", rule.AfterSuccess)...)
+		errors = append(errors, validateHookList(field+".after_failure", rule.AfterFailure)...)
+		errors = append(errors, validateHookList(field+".always", rule.Always)...)
+		errors = append(errors, validateLocalUpdateHookMatch(field+".match", rule.Match)...)
+	}
+	return errors
+}
+
+func validateDisabledRuleNames(names []string) []ValidationError {
+	var errors []ValidationError
+	seen := map[string]int{}
+	for index, name := range names {
+		field := fmt.Sprintf("hooks.update.local.disabled_rules[%d]", index)
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Value:   name,
+				Message: "disabled rule name must not be empty",
+			})
+			continue
+		}
+		if !validRuleName(trimmed) {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Value:   name,
+				Message: "disabled rule name may contain only letters, numbers, dash, underscore, dot, or slash",
+			})
+		}
+		if first, ok := seen[trimmed]; ok {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Value:   name,
+				Message: fmt.Sprintf("duplicate disabled rule name also defined at hooks.update.local.disabled_rules[%d]", first),
+			})
+		} else {
+			seen[trimmed] = index
+		}
+	}
+	return errors
+}
+
+func validateLocalUpdateHookMatch(field string, match LocalUpdateHookMatch) []ValidationError {
+	var errors []ValidationError
+	checks := []struct {
+		name   string
+		values []string
+	}{
+		{"modules", match.Modules},
+		{"module_prefixes", match.ModulePrefixes},
+		{"workspaces", match.Workspaces},
+		{"workspace_prefixes", match.WorkspacePrefixes},
+		{"module_dirs", match.ModuleDirs},
+		{"module_dir_prefixes", match.ModuleDirPrefixes},
+		{"exclude_modules", match.ExcludeModules},
+		{"exclude_module_prefixes", match.ExcludeModulePrefixes},
+	}
+	for _, check := range checks {
+		for index, value := range check.values {
+			if strings.TrimSpace(value) == "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.%s[%d]", field, check.name, index),
+					Value:   value,
+					Message: "matcher entries must not be empty",
+				})
+			}
+		}
+	}
+	return errors
+}
+
+func hasRuleHooks(rule LocalUpdateHookRule) bool {
+	return len(rule.After) > 0 ||
+		len(rule.AfterSuccess) > 0 ||
+		len(rule.AfterFailure) > 0 ||
+		len(rule.Always) > 0
+}
+
+func validRuleName(name string) bool {
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.' || r == '/':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validateHookList(field string, hooks []HookConfig) []ValidationError {
+	var errors []ValidationError
+	for index, hook := range hooks {
+		label := fmt.Sprintf("%s[%d]", field, index)
+		if strings.TrimSpace(hook.Name) != "" {
+			label = fmt.Sprintf("%s[%d:%s]", field, index, strings.TrimSpace(hook.Name))
+		}
+
+		hasRun := strings.TrimSpace(hook.Run) != ""
+		hasCmd := len(hook.Cmd) > 0
+		switch {
+		case hasRun && hasCmd:
+			errors = append(errors, ValidationError{
+				Field:   label,
+				Value:   hook.Name,
+				Message: "hook must define exactly one of run or cmd",
+			})
+		case !hasRun && !hasCmd:
+			errors = append(errors, ValidationError{
+				Field:   label,
+				Value:   hook.Name,
+				Message: "hook must define run or a non-empty cmd",
+			})
+		}
+
+		if hasCmd {
+			for argIndex, arg := range hook.Cmd {
+				if strings.TrimSpace(arg) == "" {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("%s.cmd[%d]", label, argIndex),
+						Value:   arg,
+						Message: "cmd entries must not be empty",
+					})
+				}
+			}
+		}
+
+		if hook.Timeout < 0 {
+			errors = append(errors, ValidationError{
+				Field:   label + ".timeout",
+				Value:   hook.Timeout,
+				Message: "timeout must be positive",
+			})
+		} else if hook.Timeout > 24*time.Hour {
+			errors = append(errors, ValidationError{
+				Field:   label + ".timeout",
+				Value:   hook.Timeout,
+				Message: "timeout cannot exceed 24 hours",
+			})
+		}
+	}
 	return errors
 }
 

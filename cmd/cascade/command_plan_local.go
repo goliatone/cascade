@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/goliatone/cascade/internal/executor"
+	"github.com/goliatone/cascade/internal/hooks"
 	"github.com/goliatone/cascade/internal/localupdate"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/spf13/cobra"
@@ -20,6 +23,7 @@ type localCommandOptions struct {
 	Only            []string
 	Exclude         []string
 	NoTidy          bool
+	NoHooks         bool
 }
 
 func newPlanLocalCommand() *cobra.Command {
@@ -61,23 +65,70 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 		return newPlanningError("failed to plan local dependency updates", err)
 	}
 
+	localCfg := localCommandConfig()
 	dryRun := false
-	if localCfg := localCommandConfig(); localCfg != nil {
+	hookPlan := hooks.LocalUpdatePlan{}
+	executorTimeout := time.Duration(0)
+	if localCfg != nil {
 		dryRun = localCfg.Executor.DryRun
+		executorTimeout = localCfg.Executor.Timeout
+		hookPlan = hooks.ResolveLocalUpdatePlan(localCfg.Hooks.Update.Local, localHookContext(plan, nil, nil), localCfg.ConfigLayers())
 	}
 	if dryRun {
 		renderLocalPlan(cmd.OutOrStdout(), plan, "DRY RUN: Local dependency update plan")
+		if !hookPlan.Empty() && !opts.NoHooks {
+			renderLocalDryRunHookPlan(cmd.OutOrStdout(), hookPlan)
+		}
 		return nil
 	}
 
-	result, applyErr := localupdate.ApplyPlan(context.Background(), plan, executor.NewGoOperations(), localupdate.ApplyOptions{
+	ctx := commandContext(cmd)
+	result, applyErr := localupdate.ApplyPlan(ctx, plan, executor.NewGoOperations(), localupdate.ApplyOptions{
 		Tidy: !opts.NoTidy,
 	})
 	renderLocalApplyResult(cmd.OutOrStdout(), result)
+	var hookErr error
+	if !opts.NoHooks && !hookPlan.Empty() {
+		hookResults, err := hooks.NewRunner(executorTimeout).Run(ctx, hookPlan.SelectedPhases(applyErr == nil), localHookContext(plan, result, applyErr))
+		renderLocalHookResults(cmd.OutOrStdout(), hookResults)
+		hookErr = err
+	}
 	if applyErr != nil {
+		if hookErr != nil {
+			return newExecutionError("failed to apply local dependency updates and run local update hooks", errors.Join(applyErr, hookErr))
+		}
 		return newExecutionError("failed to apply local dependency updates", applyErr)
 	}
+	if hookErr != nil {
+		return newExecutionError("failed to run local update hooks", hookErr)
+	}
 	return nil
+}
+
+func commandContext(cmd *cobra.Command) context.Context {
+	if cmd == nil || cmd.Context() == nil {
+		return context.Background()
+	}
+	return cmd.Context()
+}
+
+func localHookContext(plan localupdate.Plan, result *localupdate.ApplyResult, applyErr error) hooks.Context {
+	hookCtx := hooks.Context{
+		Command:      "update local",
+		Module:       plan.CurrentModule,
+		ModuleDir:    plan.ModuleDir,
+		Workspace:    plan.Workspace,
+		UpdateStatus: "success",
+	}
+	if applyErr != nil {
+		hookCtx.UpdateStatus = "failure"
+	}
+	if result != nil {
+		hookCtx.UpdatedCount = result.GoGetCount
+		hookCtx.TidyRan = result.TidyRun
+		hookCtx.TidyFailed = result.TidyFailed
+	}
+	return hookCtx
 }
 
 func buildLocalRequest(cmd *cobra.Command, opts localCommandOptions) (localupdate.Request, error) {
@@ -107,16 +158,31 @@ func localWorkspace(cmd *cobra.Command) (string, bool) {
 		}
 	}
 	if container != nil && container.Config() != nil {
-		path := strings.TrimSpace(container.Config().Workspace.Path)
-		if path != "" && !isDefaultLocalCacheWorkspace(path) {
+		if path, explicit := configuredLocalWorkspace(container.Config()); explicit {
 			return path, true
 		}
 	}
 	if localCfg := localCommandConfig(); localCfg != nil {
-		path := strings.TrimSpace(localCfg.Workspace.Path)
-		if path != "" && !isDefaultLocalCacheWorkspace(path) {
+		if path, explicit := configuredLocalWorkspace(localCfg); explicit {
 			return path, true
 		}
+	}
+	return "", false
+}
+
+func configuredLocalWorkspace(cfg *config.Config) (string, bool) {
+	if cfg == nil {
+		return "", false
+	}
+	path := strings.TrimSpace(cfg.Workspace.Path)
+	if path == "" {
+		return "", false
+	}
+	if cfg.ExplicitlySetWorkspacePath() {
+		return path, true
+	}
+	if !isDefaultLocalCacheWorkspace(path) {
+		return path, true
 	}
 	return "", false
 }
@@ -208,6 +274,72 @@ func renderLocalApplyResult(out io.Writer, result *localupdate.ApplyResult) {
 		}
 	}
 	renderLocalSummary(out, result.Items)
+}
+
+func renderLocalHookResults(out io.Writer, results hooks.Results) {
+	if len(results) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nHooks:")
+	for _, result := range results {
+		status := "ok"
+		if result.Timeout {
+			status = "timeout"
+		} else if result.Failed() {
+			status = "failed"
+		}
+		fmt.Fprintf(out, "  - %s %s [%s] (%s)", result.Phase, result.DisplayName(), status, roundDuration(result.Duration))
+		if result.Err != nil {
+			fmt.Fprintf(out, " - %v", result.Err)
+		}
+		fmt.Fprintln(out)
+		if result.Failed() && strings.TrimSpace(result.Output) != "" {
+			fmt.Fprintln(out, "    output:")
+			for _, line := range strings.Split(truncateHookOutput(result.Output), "\n") {
+				if strings.TrimSpace(line) != "" {
+					fmt.Fprintf(out, "      %s\n", line)
+				}
+			}
+		}
+	}
+}
+
+func renderLocalDryRunHookPlan(out io.Writer, plan hooks.LocalUpdatePlan) {
+	fmt.Fprintln(out, "\nLocal update hooks configured; skipping hook execution during dry-run.")
+	if len(plan.MatchedRules) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "Matched hook rules:")
+	for _, rule := range plan.MatchedRules {
+		fmt.Fprintf(out, "  - %s [%s]\n", rule.Name, hookRuleSourceLabel(rule.Source))
+	}
+}
+
+func hookRuleSourceLabel(source hooks.RuleSource) string {
+	scope := string(source.Scope)
+	if strings.TrimSpace(scope) == "" {
+		scope = "merged"
+	}
+	if strings.TrimSpace(source.Path) == "" {
+		return scope
+	}
+	return fmt.Sprintf("%s %s", scope, source.Path)
+}
+
+func roundDuration(duration time.Duration) time.Duration {
+	if duration <= 0 {
+		return 0
+	}
+	return duration.Round(time.Millisecond)
+}
+
+func truncateHookOutput(output string) string {
+	const maxOutput = 4096
+	output = strings.TrimSpace(output)
+	if len(output) <= maxOutput {
+		return output
+	}
+	return output[:maxOutput] + "\n... output truncated ..."
 }
 
 func renderLocalItem(out io.Writer, item localupdate.Item) {

@@ -24,15 +24,48 @@ type Config struct {
 	// ManifestGenerator contains defaults for manifest generation operations
 	ManifestGenerator ManifestGeneratorConfig `json:"manifest_generator" yaml:"manifest_generator"`
 
+	// Hooks contains optional lifecycle hooks for local Cascade workflows.
+	Hooks HooksConfig `json:"hooks,omitempty" yaml:"hooks,omitempty"`
+
 	// Target module and version for cascade operations
 	// These are typically specified via command-line flags
 	Module  string `json:"module,omitempty" yaml:"module,omitempty"`
 	Version string `json:"version,omitempty" yaml:"version,omitempty"`
 
+	layers []ConfigLayer
+
 	setFlags boolFlags `json:"-" yaml:"-"`
 }
 
+type ConfigLayerScope string
+
+const (
+	ConfigLayerScopeExplicit  ConfigLayerScope = "explicit"
+	ConfigLayerScopeGlobal    ConfigLayerScope = "global"
+	ConfigLayerScopeWorkspace ConfigLayerScope = "workspace"
+	ConfigLayerScopeProject   ConfigLayerScope = "project"
+)
+
+// ConfigLayer records a loaded file layer and its source metadata.
+type ConfigLayer struct {
+	Scope   ConfigLayerScope
+	Path    string
+	BaseDir string
+	Config  *Config
+}
+
+// ConfigLayers returns loaded file layers in merge order.
+func (c *Config) ConfigLayers() []ConfigLayer {
+	if c == nil || len(c.layers) == 0 {
+		return nil
+	}
+	out := make([]ConfigLayer, len(c.layers))
+	copy(out, c.layers)
+	return out
+}
+
 type boolFlags struct {
+	workspacePath        bool
 	executorDryRun       bool
 	executorSkipUpToDate bool
 	executorForceAll     bool
@@ -203,6 +236,58 @@ type ManifestGeneratorConfig struct {
 
 	// DiscoverySettings contains settings for automatic dependent discovery.
 	Discovery DiscoveryConfig `json:"discovery" yaml:"discovery"`
+}
+
+// HooksConfig contains optional hook configuration for Cascade workflows.
+type HooksConfig struct {
+	Update UpdateHooksConfig `json:"update,omitempty" yaml:"update,omitempty"`
+}
+
+// UpdateHooksConfig contains hooks for update commands.
+type UpdateHooksConfig struct {
+	Local LocalUpdateHooksConfig `json:"local,omitempty" yaml:"local,omitempty"`
+}
+
+// LocalUpdateHooksConfig contains post-apply hooks for cascade update local.
+type LocalUpdateHooksConfig struct {
+	After         []HookConfig          `json:"after,omitempty" yaml:"after,omitempty"`
+	AfterSuccess  []HookConfig          `json:"after_success,omitempty" yaml:"after_success,omitempty"`
+	AfterFailure  []HookConfig          `json:"after_failure,omitempty" yaml:"after_failure,omitempty"`
+	Always        []HookConfig          `json:"always,omitempty" yaml:"always,omitempty"`
+	Rules         []LocalUpdateHookRule `json:"rules,omitempty" yaml:"rules,omitempty"`
+	DisabledRules []string              `json:"disabled_rules,omitempty" yaml:"disabled_rules,omitempty"`
+}
+
+// HookConfig describes a local hook command.
+type HookConfig struct {
+	Name    string            `json:"name,omitempty" yaml:"name,omitempty"`
+	Run     string            `json:"run,omitempty" yaml:"run,omitempty"`
+	Cmd     []string          `json:"cmd,omitempty" yaml:"cmd,omitempty"`
+	Dir     string            `json:"dir,omitempty" yaml:"dir,omitempty"`
+	Env     map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
+	Timeout time.Duration     `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+}
+
+// LocalUpdateHookRule describes a named hook rule that can match update-local context.
+type LocalUpdateHookRule struct {
+	Name         string               `json:"name" yaml:"name"`
+	Match        LocalUpdateHookMatch `json:"match,omitempty" yaml:"match,omitempty"`
+	After        []HookConfig         `json:"after,omitempty" yaml:"after,omitempty"`
+	AfterSuccess []HookConfig         `json:"after_success,omitempty" yaml:"after_success,omitempty"`
+	AfterFailure []HookConfig         `json:"after_failure,omitempty" yaml:"after_failure,omitempty"`
+	Always       []HookConfig         `json:"always,omitempty" yaml:"always,omitempty"`
+}
+
+// LocalUpdateHookMatch contains simple exact and prefix match criteria.
+type LocalUpdateHookMatch struct {
+	Modules               []string `json:"modules,omitempty" yaml:"modules,omitempty"`
+	ModulePrefixes        []string `json:"module_prefixes,omitempty" yaml:"module_prefixes,omitempty"`
+	Workspaces            []string `json:"workspaces,omitempty" yaml:"workspaces,omitempty"`
+	WorkspacePrefixes     []string `json:"workspace_prefixes,omitempty" yaml:"workspace_prefixes,omitempty"`
+	ModuleDirs            []string `json:"module_dirs,omitempty" yaml:"module_dirs,omitempty"`
+	ModuleDirPrefixes     []string `json:"module_dir_prefixes,omitempty" yaml:"module_dir_prefixes,omitempty"`
+	ExcludeModules        []string `json:"exclude_modules,omitempty" yaml:"exclude_modules,omitempty"`
+	ExcludeModulePrefixes []string `json:"exclude_module_prefixes,omitempty" yaml:"exclude_module_prefixes,omitempty"`
 }
 
 // TestsConfig contains default test command configurations.

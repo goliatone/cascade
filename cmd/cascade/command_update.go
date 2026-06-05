@@ -31,5 +31,6 @@ go get for outdated local candidates.`,
 	}
 	addLocalPlanFlags(cmd, &opts)
 	cmd.Flags().BoolVar(&opts.NoTidy, "no-tidy", false, "Do not run go mod tidy after successful updates")
+	cmd.Flags().BoolVar(&opts.NoHooks, "no-hooks", false, "Do not run configured local update hooks")
 	return cmd
 }

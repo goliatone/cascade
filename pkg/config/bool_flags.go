@@ -1,5 +1,27 @@
 package config
 
+// setWorkspacePath records an explicit workspace path originating from a configuration source.
+func (c *Config) setWorkspacePath(value string) {
+	if c == nil {
+		return
+	}
+	c.Workspace.Path = value
+	c.setFlags.workspacePath = true
+}
+
+func (c *Config) workspacePathSet() bool {
+	if c == nil {
+		return false
+	}
+	return c.setFlags.workspacePath
+}
+
+// ExplicitlySetWorkspacePath returns true if a configuration source explicitly
+// set workspace.path, CASCADE_WORKSPACE, or --workspace.
+func (c *Config) ExplicitlySetWorkspacePath() bool {
+	return c.workspacePathSet()
+}
+
 // setExecutorDryRun records an explicit dry-run value originating from a configuration source.
 func (c *Config) setExecutorDryRun(value bool) {
 	if c == nil {
