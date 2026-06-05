@@ -2,9 +2,26 @@
 
 # [unreleased]
 
+## <!-- 16 -->➕ Add
+
+- Hook support ([fcafa79](https://github.com/goliatone/cascade/commit/fcafa799b7e99be8a3acb41f1fab7d5b05318692))  - (goliatone)
+- Json and yaml hook rules ([47fab01](https://github.com/goliatone/cascade/commit/47fab0161fda91b1f456497ab25a35222e8de69a))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([a5827a0](https://github.com/goliatone/cascade/commit/a5827a0af2908d940385724283fed319d2a5e5eb))  - (goliatone)
+- Update tests ([bb732a5](https://github.com/goliatone/cascade/commit/bb732a50760670facebe7efae745b2ba67e64f58))  - (goliatone)
+- Update tasks ([bddd6d1](https://github.com/goliatone/cascade/commit/bddd6d14984380b431774a7939b751ce7111a2c4))  - (goliatone)
+
+# [0.2.0](https://github.com/goliatone/cascade/compare/v0.1.48...v0.2.0) - (2026-06-02)
+
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Code quality ([451ad62](https://github.com/goliatone/cascade/commit/451ad627a75ace8245ef6a8b7ffd8512fefd4758))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.2.0 ([6529ec2](https://github.com/goliatone/cascade/commit/6529ec219bb95d14e6bab63729761bdc616b5d92))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 
