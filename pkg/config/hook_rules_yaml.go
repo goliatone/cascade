@@ -6,6 +6,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func (l *LocalUpdateHooksConfig) UnmarshalYAML(value *yaml.Node) error {
+	allowed := map[string]bool{
+		"after":          true,
+		"after_success":  true,
+		"after_failure":  true,
+		"always":         true,
+		"rules":          true,
+		"disabled_rules": true,
+	}
+	if err := rejectUnknownYAMLFields(value, allowed, "local update hooks"); err != nil {
+		return err
+	}
+
+	type plain LocalUpdateHooksConfig
+	var out plain
+	if err := value.Decode(&out); err != nil {
+		return err
+	}
+	*l = LocalUpdateHooksConfig(out)
+	return nil
+}
+
 func (r *LocalUpdateHookRule) UnmarshalYAML(value *yaml.Node) error {
 	allowed := map[string]bool{
 		"name":          true,

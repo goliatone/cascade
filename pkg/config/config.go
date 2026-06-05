@@ -75,6 +75,8 @@ func (b *builder) FromFlags(cmd *cobra.Command) Builder {
 func (b *builder) FromFile(path string) Builder {
 	var fileConfig *Config
 	var err error
+	loadedPath := path
+	scope := ConfigLayerScopeExplicit
 
 	if path == "" {
 		// Attempt to discover configuration file
@@ -89,6 +91,8 @@ func (b *builder) FromFile(path string) Builder {
 			return b
 		}
 
+		loadedPath = discoveredPath
+		scope = discoveredConfigLayerScope(discoveredPath)
 		fileConfig, err = LoadFromFile(discoveredPath)
 	} else {
 		fileConfig, err = LoadFromFile(path)
@@ -106,10 +110,10 @@ func (b *builder) FromFile(path string) Builder {
 
 	if fileConfig != nil {
 		b.configs = append(b.configs, fileConfig)
-		if path != "" {
-			absPath, _ := filepath.Abs(path)
+		if loadedPath != "" {
+			absPath, _ := filepath.Abs(loadedPath)
 			b.layers = append(b.layers, ConfigLayer{
-				Scope:   ConfigLayerScopeExplicit,
+				Scope:   scope,
 				Path:    absPath,
 				BaseDir: filepath.Dir(absPath),
 				Config:  fileConfig,
@@ -118,6 +122,20 @@ func (b *builder) FromFile(path string) Builder {
 	}
 
 	return b
+}
+
+func discoveredConfigLayerScope(path string) ConfigLayerScope {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return ConfigLayerScopeProject
+	}
+	for _, globalPath := range globalConfigFileLocations() {
+		absGlobalPath, err := filepath.Abs(globalPath)
+		if err == nil && absPath == absGlobalPath {
+			return ConfigLayerScopeGlobal
+		}
+	}
+	return ConfigLayerScopeProject
 }
 
 // FromLayeredFiles loads configuration files in Cascade's layered precedence

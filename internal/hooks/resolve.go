@@ -127,14 +127,14 @@ func ruleMatches(match config.LocalUpdateHookMatch, hookCtx Context, baseDir str
 	if matchesAnyString(module, match.ExcludeModules) {
 		return false, "module excluded"
 	}
-	if matchesAnyPrefix(module, match.ExcludeModulePrefixes) {
+	if matchesAnyModulePrefix(module, match.ExcludeModulePrefixes) {
 		return false, "module prefix excluded"
 	}
 
 	if len(match.Modules) > 0 && !matchesAnyString(module, match.Modules) {
 		return false, "module did not match"
 	}
-	if len(match.ModulePrefixes) > 0 && !matchesAnyPrefix(module, match.ModulePrefixes) {
+	if len(match.ModulePrefixes) > 0 && !matchesAnyModulePrefix(module, match.ModulePrefixes) {
 		return false, "module prefix did not match"
 	}
 	if len(match.Workspaces) > 0 && !matchesAnyPath(workspace, match.Workspaces, baseDir) {
@@ -161,9 +161,13 @@ func matchesAnyString(value string, candidates []string) bool {
 	return false
 }
 
-func matchesAnyPrefix(value string, prefixes []string) bool {
+func matchesAnyModulePrefix(value string, prefixes []string) bool {
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(value, strings.TrimSpace(prefix)) {
+		prefix = strings.Trim(strings.TrimSpace(prefix), "/")
+		if prefix == "" {
+			continue
+		}
+		if value == prefix || strings.HasPrefix(value, prefix+"/") {
 			return true
 		}
 	}

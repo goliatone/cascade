@@ -6,6 +6,31 @@ import (
 	"fmt"
 )
 
+func (l *LocalUpdateHooksConfig) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil
+	}
+	allowed := map[string]bool{
+		"after":          true,
+		"after_success":  true,
+		"after_failure":  true,
+		"always":         true,
+		"rules":          true,
+		"disabled_rules": true,
+	}
+	if err := rejectUnknownJSONFields(data, allowed, "local update hooks"); err != nil {
+		return err
+	}
+
+	type plain LocalUpdateHooksConfig
+	var out plain
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+	*l = LocalUpdateHooksConfig(out)
+	return nil
+}
+
 func (r *LocalUpdateHookRule) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return nil
