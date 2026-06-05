@@ -121,7 +121,7 @@ cascade update local
 cascade update local --dry-run
 ```
 
-By default, local commands inspect direct `require` entries matching `github.com/goliatone/*`, skip indirect dependencies, and skip dependencies with `replace` directives. If the workspace cannot be detected from the current module location, pass it explicitly:
+By default, local commands inspect direct `require` entries matching `github.com/goliatone/*`, skip indirect dependencies, and skip dependencies with `replace` directives. Workspace resolution uses `--workspace`, `CASCADE_WORKSPACE`, config file `workspace.path`, then local detection. If the workspace cannot be detected from the current module location, pass it explicitly:
 
 ```bash
 cascade plan local --workspace="$HOME/Development/GO/src/github.com/goliatone"
@@ -135,8 +135,75 @@ Useful filters:
 - `--only` - include only specific module paths or basenames
 - `--exclude` - skip specific module paths or basenames
 - `--no-tidy` - for `update local`, skip the default `go mod tidy`
+- `--no-hooks` - for `update local`, skip configured local update hooks
 
 `cascade update local` runs one `go get <module>@<local-version>` per outdated candidate and then runs `go mod tidy` once after at least one successful update unless `--no-tidy` is set. If one `go get` fails, later candidates are still attempted; the command prints the summary and exits with a failure.
+
+#### Local Update Hooks
+
+Configure optional post-update hooks in `.cascade.yaml` under `hooks.update.local`. Hooks run from the current module directory by default, in the order listed for each phase:
+
+```yaml
+hooks:
+  update:
+    local:
+      after:
+        - name: test
+          run: go test ./...
+      after_failure:
+        - name: report
+          cmd: [./scripts/report-local-update-failure.sh]
+      always:
+        - name: cleanup
+          run: ./scripts/cleanup.sh
+```
+
+`after` is accepted as an alias for `after_success` and runs before explicit `after_success` hooks. Successful updates run `after_success` and `always`; failed updates run `after_failure` and `always`.
+
+Use `run` for shell commands and `cmd` for direct argv execution without shell interpretation. A hook can also set `dir`, `env`, and `timeout`:
+
+```yaml
+hooks:
+  update:
+    local:
+      after_success:
+        - name: generated-check
+          cmd: [go, test, ./...]
+          dir: ./services/api
+          env:
+            CASCADE_LOCAL_CHECK: "1"
+          timeout: 2m
+```
+
+Hooks can also be defined as named rules in a user config such as `~/.config/cascade/config.yaml`. Global config loads before ancestor workspace configs and project `.cascade.yaml` files. When multiple ancestor `.cascade.*` files exist, Cascade loads them from outermost to nearest, so the nearest project config has the highest file precedence:
+
+```yaml
+hooks:
+  update:
+    local:
+      rules:
+        - name: goliatone/test-local
+          match:
+            module_prefixes: [github.com/goliatone/]
+            workspace_prefixes: ["~/Development/GO/src/github.com/goliatone"]
+          after_success:
+            - name: test
+              run: go test ./...
+```
+
+Rule matchers support `modules`, `module_prefixes`, `workspaces`, `workspace_prefixes`, `module_dirs`, `module_dir_prefixes`, `exclude_modules`, and `exclude_module_prefixes`. Empty `match` criteria are unconditional for that rule. A project can override an inherited rule by reusing the same `name`, or disable inherited rules by name:
+
+```yaml
+hooks:
+  update:
+    local:
+      disabled_rules:
+        - goliatone/test-local
+```
+
+If the same config layer defines a rule and lists that rule in `disabled_rules`, the disable wins and the rule is not evaluated. Keep disables in the nearest project config when the goal is to suppress inherited global or workspace rules.
+
+Dry runs do not execute hooks and print a skip note when hooks are configured, including matched rule names and source scopes for rule-based hooks. Use `cascade update local --no-hooks` to apply local updates without running hooks. A failed hook stops later hooks in the same phase, still allows later selected phases such as `always` to run, and makes `cascade update local` exit with an execution error after hook results are printed.
 
 #### 4. Execute the Release
 
