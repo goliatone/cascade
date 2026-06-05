@@ -84,6 +84,57 @@ func TestResolveLocalUpdatePlan_ExcludesWin(t *testing.T) {
 	}
 }
 
+func TestResolveLocalUpdatePlan_ModulePrefixRequiresSegmentBoundary(t *testing.T) {
+	local := config.LocalUpdateHooksConfig{
+		Rules: []config.LocalUpdateHookRule{{
+			Name: "bounded-prefix",
+			Match: config.LocalUpdateHookMatch{
+				ModulePrefixes: []string{"github.com/goliatone/app"},
+			},
+			AfterSuccess: []config.HookConfig{hookRun("rule", "echo rule")},
+		}},
+	}
+
+	plan := ResolveLocalUpdatePlan(local, Context{Module: "github.com/goliatone/application"}, nil)
+	if len(plan.MatchedRules) != 0 {
+		t.Fatalf("expected adjacent module path not to match, got %#v", plan.MatchedRules)
+	}
+	if len(plan.SkippedRules) != 1 || plan.SkippedRules[0].Reason != "module prefix did not match" {
+		t.Fatalf("unexpected skipped metadata: %#v", plan.SkippedRules)
+	}
+
+	plan = ResolveLocalUpdatePlan(local, Context{Module: "github.com/goliatone/app/pkg"}, nil)
+	if len(plan.MatchedRules) != 1 || plan.MatchedRules[0].Name != "bounded-prefix" {
+		t.Fatalf("expected child module path to match, got %#v", plan.MatchedRules)
+	}
+}
+
+func TestResolveLocalUpdatePlan_ExcludeModulePrefixRequiresSegmentBoundary(t *testing.T) {
+	local := config.LocalUpdateHooksConfig{
+		Rules: []config.LocalUpdateHookRule{{
+			Name: "bounded-exclude",
+			Match: config.LocalUpdateHookMatch{
+				ModulePrefixes:        []string{"github.com/goliatone"},
+				ExcludeModulePrefixes: []string{"github.com/goliatone/legacy"},
+			},
+			AfterSuccess: []config.HookConfig{hookRun("rule", "echo rule")},
+		}},
+	}
+
+	plan := ResolveLocalUpdatePlan(local, Context{Module: "github.com/goliatone/legacy-tools"}, nil)
+	if len(plan.MatchedRules) != 1 || plan.MatchedRules[0].Name != "bounded-exclude" {
+		t.Fatalf("expected adjacent excluded module path not to be excluded, got matched=%#v skipped=%#v", plan.MatchedRules, plan.SkippedRules)
+	}
+
+	plan = ResolveLocalUpdatePlan(local, Context{Module: "github.com/goliatone/legacy/tools"}, nil)
+	if len(plan.MatchedRules) != 0 {
+		t.Fatalf("expected child excluded module path to be excluded, got %#v", plan.MatchedRules)
+	}
+	if len(plan.SkippedRules) != 1 || plan.SkippedRules[0].Reason != "module prefix excluded" {
+		t.Fatalf("unexpected skipped metadata: %#v", plan.SkippedRules)
+	}
+}
+
 func TestResolveLocalUpdatePlan_AllPositiveCategoriesMustMatch(t *testing.T) {
 	local := config.LocalUpdateHooksConfig{
 		Rules: []config.LocalUpdateHookRule{{

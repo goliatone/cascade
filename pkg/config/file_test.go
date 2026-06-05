@@ -233,6 +233,33 @@ hooks:
 	}
 }
 
+func TestLoadFromFile_YAMLLocalUpdateHooksRejectsUnknownField(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	yamlContent := `
+hooks:
+  update:
+    local:
+      before:
+        - run: echo nope
+      after_success:
+        - run: echo ok
+`
+
+	if err := os.WriteFile(configFile, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	_, err := config.LoadFromFile(configFile)
+	if err == nil {
+		t.Fatal("expected unsupported field error")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "before") {
+		t.Fatalf("expected unsupported field error for before, got %v", err)
+	}
+}
+
 func TestLoadFromFile_YAMLLocalUpdateHookMatchRejectsUnknownField(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -373,6 +400,34 @@ func TestLoadFromFile_JSONLocalUpdateHookRuleRejectsUnknownField(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "before") {
 		t.Fatalf("expected unsupported field error for before, got %v", err)
+	}
+}
+
+func TestLoadFromFile_JSONLocalUpdateHooksRejectsUnknownField(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+
+	jsonContent := `{
+  "hooks": {
+    "update": {
+      "local": {
+        "disabled_rulez": ["global/lint"],
+        "after_success": [{"run": "echo ok"}]
+      }
+    }
+  }
+}`
+
+	if err := os.WriteFile(configFile, []byte(jsonContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	_, err := config.LoadFromFile(configFile)
+	if err == nil {
+		t.Fatal("expected unsupported field error")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "disabled_rulez") {
+		t.Fatalf("expected unsupported field error for disabled_rulez, got %v", err)
 	}
 }
 

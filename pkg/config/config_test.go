@@ -139,6 +139,43 @@ func TestBuilder_FromFile_EmptyPath(t *testing.T) {
 	}
 }
 
+func TestBuilder_FromFile_EmptyPathRecordsDiscoveredLayer(t *testing.T) {
+	tmpDir := t.TempDir()
+	home := filepath.Join(tmpDir, "home")
+	xdg := filepath.Join(home, ".config")
+	project := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Chdir(project)
+
+	configPath := filepath.Join(project, ".cascade.yaml")
+	if err := os.WriteFile(configPath, []byte("workspace:\n  path: \"/tmp/project\"\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := config.NewBuilder().FromFile("").Build()
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	layers := cfg.ConfigLayers()
+	if len(layers) != 1 {
+		t.Fatalf("expected one discovered layer, got %d", len(layers))
+	}
+	if layers[0].Scope != config.ConfigLayerScopeProject {
+		t.Fatalf("expected project scope, got %q", layers[0].Scope)
+	}
+	if layers[0].Path != configPath {
+		t.Fatalf("expected discovered path %q, got %q", configPath, layers[0].Path)
+	}
+	if layers[0].BaseDir != project {
+		t.Fatalf("expected base dir %q, got %q", project, layers[0].BaseDir)
+	}
+}
+
 func TestBuilder_FromFlags(t *testing.T) {
 	cmd := &cobra.Command{}
 	fc := config.AddFlags(cmd)
