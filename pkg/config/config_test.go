@@ -223,6 +223,48 @@ logging:
 	}
 }
 
+func TestBuilder_FromLayeredFilesKeepsLayerMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	home := filepath.Join(tmpDir, "home")
+	xdg := filepath.Join(home, ".config")
+	project := filepath.Join(tmpDir, "project")
+	for _, dir := range []string{filepath.Join(xdg, "cascade"), project} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Chdir(project)
+
+	globalPath := filepath.Join(xdg, "cascade", "config.yaml")
+	projectPath := filepath.Join(project, ".cascade.yaml")
+	if err := os.WriteFile(globalPath, []byte("workspace:\n  path: \"/tmp/global\"\nlogging:\n  level: warn\n"), 0o644); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+	if err := os.WriteFile(projectPath, []byte("workspace:\n  path: \"/tmp/project\"\n"), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	cfg, err := config.NewBuilder().FromLayeredFiles("").Build()
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	if cfg.Workspace.Path != "/tmp/project" {
+		t.Fatalf("expected project workspace to win, got %q", cfg.Workspace.Path)
+	}
+	if cfg.Logging.Level != "warn" {
+		t.Fatalf("expected global logging to remain, got %q", cfg.Logging.Level)
+	}
+	layers := cfg.ConfigLayers()
+	if len(layers) != 2 {
+		t.Fatalf("expected two file layers, got %d", len(layers))
+	}
+	if layers[0].Scope != config.ConfigLayerScopeGlobal || layers[1].Scope != config.ConfigLayerScopeProject {
+		t.Fatalf("unexpected layer scopes: %#v", layers)
+	}
+}
+
 func TestBuilder_ValidationFailure(t *testing.T) {
 	// Set up environment with invalid values
 	oldVar := os.Getenv(config.EnvTimeout)
@@ -342,4 +384,69 @@ func TestConvenienceFunctions(t *testing.T) {
 			t.Errorf("Expected workspace path /tmp/second, got %s", merged.Workspace.Path)
 		}
 	})
+}
+
+func TestMerge_LocalUpdateHooks(t *testing.T) {
+	low := config.New()
+	low.Workspace.Path = "/tmp/low"
+	low.Hooks.Update.Local.After = []config.HookConfig{{
+		Name: "low",
+		Run:  "echo low",
+	}}
+
+	high := config.New()
+	high.Workspace.Path = "/tmp/high"
+	high.Hooks.Update.Local.AfterSuccess = []config.HookConfig{{
+		Name: "high",
+		Cmd:  []string{"echo", "high"},
+		Env:  map[string]string{"LEVEL": "high"},
+	}}
+
+	merged, err := config.Merge(low, high)
+	if err != nil {
+		t.Fatalf("Merge failed: %v", err)
+	}
+
+	local := merged.Hooks.Update.Local
+	if len(local.After) != 0 {
+		t.Fatalf("expected high precedence hooks to replace lower hooks, got after=%#v", local.After)
+	}
+	if len(local.AfterSuccess) != 1 || local.AfterSuccess[0].Name != "high" {
+		t.Fatalf("unexpected merged hooks: %#v", local.AfterSuccess)
+	}
+
+	high.Hooks.Update.Local.AfterSuccess[0].Cmd[0] = "mutated"
+	high.Hooks.Update.Local.AfterSuccess[0].Env["LEVEL"] = "mutated"
+	if local.AfterSuccess[0].Cmd[0] != "echo" {
+		t.Errorf("expected merged cmd to be cloned, got %#v", local.AfterSuccess[0].Cmd)
+	}
+	if local.AfterSuccess[0].Env["LEVEL"] != "high" {
+		t.Errorf("expected merged env to be cloned, got %#v", local.AfterSuccess[0].Env)
+	}
+}
+
+func TestMerge_LocalUpdateHookDisabledRulesDoNotClearUnconditionalHooks(t *testing.T) {
+	low := config.New()
+	low.Workspace.Path = "/tmp/low"
+	low.Hooks.Update.Local.After = []config.HookConfig{{
+		Name: "low",
+		Run:  "echo low",
+	}}
+
+	high := config.New()
+	high.Workspace.Path = "/tmp/high"
+	high.Hooks.Update.Local.DisabledRules = []string{"global/test"}
+
+	merged, err := config.Merge(low, high)
+	if err != nil {
+		t.Fatalf("Merge failed: %v", err)
+	}
+
+	local := merged.Hooks.Update.Local
+	if len(local.After) != 1 || local.After[0].Name != "low" {
+		t.Fatalf("expected lower unconditional hook to remain, got %#v", local.After)
+	}
+	if len(local.DisabledRules) != 1 || local.DisabledRules[0] != "global/test" {
+		t.Fatalf("expected disabled rule metadata, got %#v", local.DisabledRules)
+	}
 }

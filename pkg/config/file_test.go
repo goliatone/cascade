@@ -100,6 +100,168 @@ state:
 	}
 }
 
+func TestLoadFromFile_YAMLLocalUpdateHooks(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	yamlContent := `
+hooks:
+  update:
+    local:
+      after:
+        - name: test
+          run: go test ./...
+          dir: services/api
+          env:
+            FOO: bar
+          timeout: 2s
+      after_failure:
+        - name: report
+          cmd: [sh, -c, echo failed]
+      always:
+        - run: echo done
+`
+
+	if err := os.WriteFile(configFile, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	cfg, err := config.LoadFromFile(configFile)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+
+	local := cfg.Hooks.Update.Local
+	if len(local.After) != 1 {
+		t.Fatalf("expected one after hook, got %d", len(local.After))
+	}
+	if local.After[0].Name != "test" || local.After[0].Run != "go test ./..." {
+		t.Fatalf("unexpected after hook: %+v", local.After[0])
+	}
+	if local.After[0].Dir != "services/api" {
+		t.Errorf("expected hook dir services/api, got %q", local.After[0].Dir)
+	}
+	if local.After[0].Env["FOO"] != "bar" {
+		t.Errorf("expected hook env FOO=bar, got %q", local.After[0].Env["FOO"])
+	}
+	if local.After[0].Timeout != 2*time.Second {
+		t.Errorf("expected hook timeout 2s, got %v", local.After[0].Timeout)
+	}
+	if got := local.AfterFailure[0].Cmd; len(got) != 3 || got[0] != "sh" {
+		t.Fatalf("unexpected after_failure cmd: %#v", got)
+	}
+	if len(local.Always) != 1 || local.Always[0].Run != "echo done" {
+		t.Fatalf("unexpected always hooks: %#v", local.Always)
+	}
+}
+
+func TestLoadFromFile_YAMLLocalUpdateHookRules(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	yamlContent := `
+hooks:
+  update:
+    local:
+      disabled_rules: [global/lint]
+      rules:
+        - name: global/test
+          match:
+            modules: [github.com/goliatone/app]
+            module_prefixes: [github.com/goliatone/]
+            workspaces: [/tmp/workspace]
+            workspace_prefixes: [/tmp]
+            module_dirs: [/tmp/workspace/app]
+            module_dir_prefixes: [/tmp/workspace]
+            exclude_modules: [github.com/goliatone/skip]
+            exclude_module_prefixes: [github.com/goliatone/legacy]
+          after_success:
+            - run: go test ./...
+`
+
+	if err := os.WriteFile(configFile, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	cfg, err := config.LoadFromFile(configFile)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+	local := cfg.Hooks.Update.Local
+	if len(local.DisabledRules) != 1 || local.DisabledRules[0] != "global/lint" {
+		t.Fatalf("unexpected disabled rules: %#v", local.DisabledRules)
+	}
+	if len(local.Rules) != 1 {
+		t.Fatalf("expected one rule, got %d", len(local.Rules))
+	}
+	rule := local.Rules[0]
+	if rule.Name != "global/test" {
+		t.Fatalf("unexpected rule name: %q", rule.Name)
+	}
+	if len(rule.AfterSuccess) != 1 || rule.AfterSuccess[0].Run != "go test ./..." {
+		t.Fatalf("unexpected rule hooks: %#v", rule.AfterSuccess)
+	}
+	if rule.Match.Modules[0] != "github.com/goliatone/app" || rule.Match.ExcludeModulePrefixes[0] != "github.com/goliatone/legacy" {
+		t.Fatalf("unexpected matcher: %#v", rule.Match)
+	}
+}
+
+func TestLoadFromFile_YAMLLocalUpdateHookRuleRejectsUnknownField(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	yamlContent := `
+hooks:
+  update:
+    local:
+      rules:
+        - name: bad
+          before:
+            - run: echo nope
+`
+
+	if err := os.WriteFile(configFile, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	_, err := config.LoadFromFile(configFile)
+	if err == nil {
+		t.Fatal("expected unsupported field error")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "before") {
+		t.Fatalf("expected unsupported field error for before, got %v", err)
+	}
+}
+
+func TestLoadFromFile_YAMLLocalUpdateHookMatchRejectsUnknownField(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	yamlContent := `
+hooks:
+  update:
+    local:
+      rules:
+        - name: bad
+          match:
+            branch: main
+          after_success:
+            - run: echo ok
+`
+
+	if err := os.WriteFile(configFile, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	_, err := config.LoadFromFile(configFile)
+	if err == nil {
+		t.Fatal("expected unsupported matcher field error")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "branch") {
+		t.Fatalf("expected unsupported field error for branch, got %v", err)
+	}
+}
+
 func TestLoadFromFile_JSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.json")
@@ -141,6 +303,111 @@ func TestLoadFromFile_JSON(t *testing.T) {
 	}
 	if loadedCfg.Logging.Level != "info" {
 		t.Errorf("Expected log level 'info', got '%s'", loadedCfg.Logging.Level)
+	}
+}
+
+func TestLoadFromFile_JSONLocalUpdateHooks(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+
+	cfg := &config.Config{
+		Hooks: config.HooksConfig{
+			Update: config.UpdateHooksConfig{
+				Local: config.LocalUpdateHooksConfig{
+					AfterSuccess: []config.HookConfig{{
+						Name: "test",
+						Cmd:  []string{"go", "test", "./..."},
+					}},
+				},
+			},
+		},
+	}
+
+	jsonData, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal config: %v", err)
+	}
+
+	if err := os.WriteFile(configFile, jsonData, 0644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	loadedCfg, err := config.LoadFromFile(configFile)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+
+	hooks := loadedCfg.Hooks.Update.Local.AfterSuccess
+	if len(hooks) != 1 || hooks[0].Cmd[0] != "go" {
+		t.Fatalf("unexpected hooks: %#v", hooks)
+	}
+}
+
+func TestLoadFromFile_JSONLocalUpdateHookRuleRejectsUnknownField(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+
+	jsonContent := `{
+  "hooks": {
+    "update": {
+      "local": {
+        "rules": [
+          {
+            "name": "bad",
+            "before": [{"run": "echo nope"}],
+            "after_success": [{"run": "echo ok"}]
+          }
+        ]
+      }
+    }
+  }
+}`
+
+	if err := os.WriteFile(configFile, []byte(jsonContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	_, err := config.LoadFromFile(configFile)
+	if err == nil {
+		t.Fatal("expected unsupported field error")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "before") {
+		t.Fatalf("expected unsupported field error for before, got %v", err)
+	}
+}
+
+func TestLoadFromFile_JSONLocalUpdateHookMatchRejectsUnknownField(t *testing.T) {
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+
+	jsonContent := `{
+  "hooks": {
+    "update": {
+      "local": {
+        "rules": [
+          {
+            "name": "bad",
+            "match": {
+              "branch": "main"
+            },
+            "after_success": [{"run": "echo ok"}]
+          }
+        ]
+      }
+    }
+  }
+}`
+
+	if err := os.WriteFile(configFile, []byte(jsonContent), 0o644); err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	_, err := config.LoadFromFile(configFile)
+	if err == nil {
+		t.Fatal("expected unsupported matcher field error")
+	}
+	if !strings.Contains(err.Error(), "unsupported field") || !strings.Contains(err.Error(), "branch") {
+		t.Fatalf("expected unsupported field error for branch, got %v", err)
 	}
 }
 
@@ -358,8 +625,12 @@ func TestDiscoverConfigFile(t *testing.T) {
 		t.Fatalf("DiscoverConfigFile failed: %v", err)
 	}
 
-	if found != configFile {
-		t.Errorf("Expected to find '%s', got '%s'", configFile, found)
+	expected, err := filepath.Abs(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found != expected {
+		t.Errorf("Expected to find '%s', got '%s'", expected, found)
 	}
 }
 
@@ -438,6 +709,111 @@ func TestLoadFromFileOrDiscover_Discovery(t *testing.T) {
 
 	if cfg.Workspace.Path != "/discovered/workspace" {
 		t.Errorf("Expected workspace path '/discovered/workspace', got '%s'", cfg.Workspace.Path)
+	}
+}
+
+func TestLoadConfigLayers_ExplicitPathOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	home := filepath.Join(tmpDir, "home")
+	xdg := filepath.Join(home, ".config")
+	project := filepath.Join(tmpDir, "project")
+	for _, dir := range []string{
+		filepath.Join(xdg, "cascade"),
+		project,
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Chdir(project)
+
+	globalPath := filepath.Join(xdg, "cascade", "config.yaml")
+	projectPath := filepath.Join(project, ".cascade.yaml")
+	explicitPath := filepath.Join(tmpDir, "explicit.yaml")
+	for path, workspace := range map[string]string{
+		globalPath:   "/tmp/global",
+		projectPath:  "/tmp/project",
+		explicitPath: "/tmp/explicit",
+	} {
+		if err := os.WriteFile(path, []byte("workspace:\n  path: \""+workspace+"\"\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	layers, err := config.LoadConfigLayers(explicitPath)
+	if err != nil {
+		t.Fatalf("LoadConfigLayers failed: %v", err)
+	}
+	if len(layers) != 1 {
+		t.Fatalf("expected one explicit layer, got %d", len(layers))
+	}
+	if layers[0].Scope != config.ConfigLayerScopeExplicit {
+		t.Fatalf("expected explicit scope, got %q", layers[0].Scope)
+	}
+	if layers[0].Config.Workspace.Path != "/tmp/explicit" {
+		t.Fatalf("expected explicit config, got %q", layers[0].Config.Workspace.Path)
+	}
+}
+
+func TestLoadConfigLayers_GlobalWorkspaceProjectOrder(t *testing.T) {
+	tmpDir := t.TempDir()
+	home := filepath.Join(tmpDir, "home")
+	xdg := filepath.Join(home, ".config")
+	workspace := filepath.Join(tmpDir, "workspace")
+	project := filepath.Join(workspace, "services", "api")
+	for _, dir := range []string{
+		filepath.Join(xdg, "cascade"),
+		workspace,
+		project,
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Chdir(project)
+
+	files := []struct {
+		path      string
+		workspace string
+	}{
+		{filepath.Join(xdg, "cascade", "config.yaml"), "/tmp/global"},
+		{filepath.Join(workspace, ".cascade.yaml"), "/tmp/workspace"},
+		{filepath.Join(project, ".cascade.yaml"), "/tmp/project"},
+	}
+	for _, file := range files {
+		if err := os.WriteFile(file.path, []byte("workspace:\n  path: \""+file.workspace+"\"\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", file.path, err)
+		}
+	}
+
+	layers, err := config.LoadConfigLayers("")
+	if err != nil {
+		t.Fatalf("LoadConfigLayers failed: %v", err)
+	}
+	if len(layers) != 3 {
+		t.Fatalf("expected three layers, got %d: %#v", len(layers), layers)
+	}
+	wantScopes := []config.ConfigLayerScope{
+		config.ConfigLayerScopeGlobal,
+		config.ConfigLayerScopeWorkspace,
+		config.ConfigLayerScopeProject,
+	}
+	for i, want := range wantScopes {
+		if layers[i].Scope != want {
+			t.Fatalf("layer %d scope: want %q got %q", i, want, layers[i].Scope)
+		}
+		if layers[i].BaseDir != filepath.Dir(layers[i].Path) {
+			t.Fatalf("layer %d base dir mismatch: %#v", i, layers[i])
+		}
+	}
+
+	merged := config.MergeConfigs(layers[0].Config, layers[1].Config, layers[2].Config)
+	if merged.Workspace.Path != "/tmp/project" {
+		t.Fatalf("expected project config to win, got %q", merged.Workspace.Path)
 	}
 }
 

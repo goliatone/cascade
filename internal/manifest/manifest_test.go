@@ -67,6 +67,38 @@ func TestLoader_Load_ModuleAndDependentOverrides(t *testing.T) {
 	}
 }
 
+func TestLoader_Load_IgnoresTopLevelHooksConfig(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("testdata", "basic.yaml"))
+	if err != nil {
+		t.Fatalf("read source manifest: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), ".cascade.yaml")
+	data := append([]byte{}, source...)
+	data = append(data, []byte(`
+hooks:
+  update:
+    local:
+      after:
+        - name: test
+          run: go test ./...
+`)...)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	got, err := manifest.NewLoader().Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if got.Module == nil || got.Module.Module == "" {
+		t.Fatalf("expected manifest module to load despite top-level hooks: %#v", got.Module)
+	}
+	if err := manifest.Validate(got); err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+}
+
 func TestValidate_BasicManifest(t *testing.T) {
 
 	var m manifest.Manifest

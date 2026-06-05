@@ -237,6 +237,250 @@ func TestValidateExecutor(t *testing.T) {
 	}
 }
 
+func TestValidateLocalUpdateHooks(t *testing.T) {
+	tests := []struct {
+		name      string
+		hook      config.HookConfig
+		wantError bool
+		errorMsg  string
+	}{
+		{
+			name: "valid run",
+			hook: config.HookConfig{
+				Name: "test",
+				Run:  "go test ./...",
+			},
+		},
+		{
+			name: "valid cmd",
+			hook: config.HookConfig{
+				Name: "test",
+				Cmd:  []string{"go", "test", "./..."},
+			},
+		},
+		{
+			name:      "missing command",
+			hook:      config.HookConfig{Name: "missing"},
+			wantError: true,
+			errorMsg:  "hook must define run or a non-empty cmd",
+		},
+		{
+			name: "both run and cmd",
+			hook: config.HookConfig{
+				Name: "both",
+				Run:  "go test ./...",
+				Cmd:  []string{"go", "test", "./..."},
+			},
+			wantError: true,
+			errorMsg:  "hook must define exactly one of run or cmd",
+		},
+		{
+			name: "empty cmd entry",
+			hook: config.HookConfig{
+				Name: "empty",
+				Cmd:  []string{"go", ""},
+			},
+			wantError: true,
+			errorMsg:  "cmd entries must not be empty",
+		},
+		{
+			name: "negative timeout",
+			hook: config.HookConfig{
+				Name:    "timeout",
+				Run:     "echo ok",
+				Timeout: -time.Second,
+			},
+			wantError: true,
+			errorMsg:  "timeout must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Workspace: config.WorkspaceConfig{Path: "/tmp/cascade"},
+				Executor: config.ExecutorConfig{
+					Timeout:         5 * time.Minute,
+					ConcurrentLimit: 4,
+				},
+				Logging: config.LoggingConfig{
+					Level:  "info",
+					Format: "text",
+				},
+				State: config.StateConfig{
+					Dir:            "/tmp/cascade-state",
+					RetentionCount: 10,
+				},
+				Hooks: config.HooksConfig{
+					Update: config.UpdateHooksConfig{
+						Local: config.LocalUpdateHooksConfig{
+							After: []config.HookConfig{tt.hook},
+						},
+					},
+				},
+			}
+
+			err := config.Validate(cfg)
+			if tt.wantError {
+				if err == nil {
+					t.Fatal("expected validation error")
+				}
+				if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("expected error containing %q, got %v", tt.errorMsg, err)
+				}
+			} else if err != nil {
+				t.Errorf("unexpected validation error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateLocalUpdateHookRules(t *testing.T) {
+	validHook := config.HookConfig{Run: "go test ./..."}
+	tests := []struct {
+		name      string
+		local     config.LocalUpdateHooksConfig
+		wantError bool
+		errorMsg  string
+	}{
+		{
+			name: "valid rule with empty match",
+			local: config.LocalUpdateHooksConfig{
+				Rules: []config.LocalUpdateHookRule{{
+					Name:         "global/test",
+					AfterSuccess: []config.HookConfig{validHook},
+				}},
+			},
+		},
+		{
+			name: "missing name",
+			local: config.LocalUpdateHooksConfig{
+				Rules: []config.LocalUpdateHookRule{{
+					AfterSuccess: []config.HookConfig{validHook},
+				}},
+			},
+			wantError: true,
+			errorMsg:  "rule name is required",
+		},
+		{
+			name: "invalid name",
+			local: config.LocalUpdateHooksConfig{
+				Rules: []config.LocalUpdateHookRule{{
+					Name:         "bad name",
+					AfterSuccess: []config.HookConfig{validHook},
+				}},
+			},
+			wantError: true,
+			errorMsg:  "rule name may contain only",
+		},
+		{
+			name: "duplicate names",
+			local: config.LocalUpdateHooksConfig{
+				Rules: []config.LocalUpdateHookRule{
+					{Name: "same", AfterSuccess: []config.HookConfig{validHook}},
+					{Name: "same", Always: []config.HookConfig{validHook}},
+				},
+			},
+			wantError: true,
+			errorMsg:  "duplicate rule name",
+		},
+		{
+			name: "missing hooks",
+			local: config.LocalUpdateHooksConfig{
+				Rules: []config.LocalUpdateHookRule{{
+					Name: "empty",
+				}},
+			},
+			wantError: true,
+			errorMsg:  "rule must define at least one hook command",
+		},
+		{
+			name: "invalid rule hook",
+			local: config.LocalUpdateHooksConfig{
+				Rules: []config.LocalUpdateHookRule{{
+					Name:         "invalid-hook",
+					AfterSuccess: []config.HookConfig{{Name: "missing"}},
+				}},
+			},
+			wantError: true,
+			errorMsg:  "hook must define run or a non-empty cmd",
+		},
+		{
+			name: "empty matcher entry",
+			local: config.LocalUpdateHooksConfig{
+				Rules: []config.LocalUpdateHookRule{{
+					Name:         "empty-match",
+					Match:        config.LocalUpdateHookMatch{ModulePrefixes: []string{"github.com/", ""}},
+					AfterSuccess: []config.HookConfig{validHook},
+				}},
+			},
+			wantError: true,
+			errorMsg:  "matcher entries must not be empty",
+		},
+		{
+			name: "invalid disabled rule name",
+			local: config.LocalUpdateHooksConfig{
+				DisabledRules: []string{"global/test", "bad name"},
+			},
+			wantError: true,
+			errorMsg:  "disabled rule name may contain only",
+		},
+		{
+			name: "duplicate disabled rule name",
+			local: config.LocalUpdateHooksConfig{
+				DisabledRules: []string{"global/test", "global/test"},
+			},
+			wantError: true,
+			errorMsg:  "duplicate disabled rule name",
+		},
+		{
+			name: "empty disabled rule name",
+			local: config.LocalUpdateHooksConfig{
+				DisabledRules: []string{""},
+			},
+			wantError: true,
+			errorMsg:  "disabled rule name must not be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Workspace: config.WorkspaceConfig{Path: "/tmp/cascade"},
+				Executor: config.ExecutorConfig{
+					Timeout:         5 * time.Minute,
+					ConcurrentLimit: 4,
+				},
+				Logging: config.LoggingConfig{
+					Level:  "info",
+					Format: "text",
+				},
+				State: config.StateConfig{
+					Dir:            "/tmp/cascade-state",
+					RetentionCount: 10,
+				},
+				Hooks: config.HooksConfig{
+					Update: config.UpdateHooksConfig{
+						Local: tt.local,
+					},
+				},
+			}
+
+			err := config.Validate(cfg)
+			if tt.wantError {
+				if err == nil {
+					t.Fatal("expected validation error")
+				}
+				if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Fatalf("expected error containing %q, got %v", tt.errorMsg, err)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected validation error: %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateIntegration(t *testing.T) {
 	tests := []struct {
 		name        string
