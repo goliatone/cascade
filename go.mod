@@ -6,6 +6,7 @@ toolchain go1.24.7
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-github/v66 v66.0.0
