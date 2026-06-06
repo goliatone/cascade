@@ -80,6 +80,7 @@ Examples:
 		newResumeCommand(),
 		newRevertCommand(),
 		newUpdateCommand(),
+		newWatchCommand(),
 		newWorkflowCommand(),
 		newVersionCommand(),
 	)
@@ -201,14 +202,16 @@ func isLocalOnlyCommand(cmd *cobra.Command) bool {
 	}
 
 	names := commandPathNames(cmd)
-	if len(names) < 3 || names[0] != "cascade" {
+	if len(names) < 2 || names[0] != "cascade" {
 		return false
 	}
 
 	switch {
-	case names[1] == "plan" && names[2] == "local":
+	case names[1] == "watch":
 		return true
-	case names[1] == "update" && names[2] == "local":
+	case len(names) >= 3 && names[1] == "plan" && names[2] == "local":
+		return true
+	case len(names) >= 3 && names[1] == "update" && names[2] == "local":
 		return true
 	default:
 		return false
