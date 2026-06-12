@@ -4,6 +4,25 @@
 
 ## <!-- 16 -->➕ Add
 
+- Locale update resolver ([e1c7523](https://github.com/goliatone/cascade/commit/e1c7523cc1043f8ee6c599e7496da0eb43af9104))  - (goliatone)
+- Automation package ([0702fb6](https://github.com/goliatone/cascade/commit/0702fb6c08ebd4135dc88b345f6ad3387239a7cb))  - (goliatone)
+- Command watch ([7013a6f](https://github.com/goliatone/cascade/commit/7013a6feaeff65bb16d321325e5a4e133d9fe720))  - (goliatone)
+- Updated resolver and hook rules ([9dd4ee1](https://github.com/goliatone/cascade/commit/9dd4ee10d08085955c34171f448eeed80b744177))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([1a602c3](https://github.com/goliatone/cascade/commit/1a602c30d78a24f0e6ababd9410ff85067cc8fca))  - (goliatone)
+- Update deps ([bf46412](https://github.com/goliatone/cascade/commit/bf4641223fcd535ec34a26f34d002d7a20dadcec))  - (goliatone)
+- Update tests ([fc6e2ab](https://github.com/goliatone/cascade/commit/fc6e2abe95d8bce9a9131170fba418ca960dcbdd))  - (goliatone)
+
+# [0.3.0](https://github.com/goliatone/cascade/compare/v0.2.0...v0.3.0) - (2026-06-05)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.3.0 ([91bd294](https://github.com/goliatone/cascade/commit/91bd294fcf1a156c95a1dd2cfdc5da31e30f4dc3))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Hook support ([fcafa79](https://github.com/goliatone/cascade/commit/fcafa799b7e99be8a3acb41f1fab7d5b05318692))  - (goliatone)
 - Json and yaml hook rules ([47fab01](https://github.com/goliatone/cascade/commit/47fab0161fda91b1f456497ab25a35222e8de69a))  - (goliatone)
 
