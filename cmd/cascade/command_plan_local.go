@@ -368,6 +368,8 @@ func renderLocalSummary(out io.Writer, items []localupdate.Item) {
 		localupdate.StatusMissingLocalRepo,
 		localupdate.StatusMissingVersionFile,
 		localupdate.StatusInvalidVersion,
+		localupdate.StatusInvalidLocalModule,
+		localupdate.StatusAmbiguousLocalModule,
 		localupdate.StatusComparisonFailed,
 		localupdate.StatusApplyFailed,
 	} {
