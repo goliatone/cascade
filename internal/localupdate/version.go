@@ -1,13 +1,47 @@
 package localupdate
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func readLocalVersion(repoPath string) (string, error) {
+var errLocalVersionNotFound = errors.New("local version file not found")
+
+func readLocalVersion(module localModule) (string, error) {
+	for _, dir := range versionLookupDirs(module) {
+		version, err := readVersionFromDir(dir)
+		if err != nil {
+			if errors.Is(err, errLocalVersionNotFound) {
+				continue
+			}
+			return "", err
+		}
+		return version, nil
+	}
+	return "", errLocalVersionNotFound
+}
+
+func versionLookupDirs(module localModule) []string {
+	dirs := []string{}
+	seen := map[string]bool{}
+	for _, dir := range []string{module.ModuleDir, module.RepoRoot} {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		clean := filepath.Clean(dir)
+		if seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		dirs = append(dirs, clean)
+	}
+	return dirs
+}
+
+func readVersionFromDir(repoPath string) (string, error) {
 	for _, name := range []string{".version", "VERSION"} {
 		candidate := filepath.Join(repoPath, name)
 		data, err := os.ReadFile(candidate)
@@ -21,7 +55,7 @@ func readLocalVersion(repoPath string) (string, error) {
 			return version, nil
 		}
 	}
-	return "", fmt.Errorf("local version file not found")
+	return "", errLocalVersionNotFound
 }
 
 func normalizeGoVersion(input string) string {

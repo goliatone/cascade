@@ -20,17 +20,19 @@ type Request struct {
 type Status string
 
 const (
-	StatusUpdate             Status = "update"
-	StatusCurrent            Status = "current"
-	StatusSkippedIndirect    Status = "skipped-indirect"
-	StatusSkippedFilter      Status = "skipped-filter"
-	StatusSkippedReplace     Status = "skipped-replace"
-	StatusMissingLocalRepo   Status = "missing-local-repo"
-	StatusMissingVersionFile Status = "missing-version-file"
-	StatusInvalidVersion     Status = "invalid-version"
-	StatusComparisonFailed   Status = "comparison-failed"
-	StatusApplyFailed        Status = "apply-failed"
-	StatusApplied            Status = "applied"
+	StatusUpdate               Status = "update"
+	StatusCurrent              Status = "current"
+	StatusSkippedIndirect      Status = "skipped-indirect"
+	StatusSkippedFilter        Status = "skipped-filter"
+	StatusSkippedReplace       Status = "skipped-replace"
+	StatusMissingLocalRepo     Status = "missing-local-repo"
+	StatusMissingVersionFile   Status = "missing-version-file"
+	StatusInvalidVersion       Status = "invalid-version"
+	StatusInvalidLocalModule   Status = "invalid-local-module"
+	StatusAmbiguousLocalModule Status = "ambiguous-local-module"
+	StatusComparisonFailed     Status = "comparison-failed"
+	StatusApplyFailed          Status = "apply-failed"
+	StatusApplied              Status = "applied"
 )
 
 type Item struct {

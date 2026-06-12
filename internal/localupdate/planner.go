@@ -113,20 +113,21 @@ func (p *Planner) Plan(req Request) (Plan, error) {
 			continue
 		}
 
-		item.LocalPath = filepath.Join(resolved.Path, path.Base(modulePath))
-		if _, err := os.Stat(item.LocalPath); err != nil {
-			if os.IsNotExist(err) {
-				item.Status = StatusMissingLocalRepo
-				item.Reason = "local sibling repository not found"
+		localModule, err := resolveLocalModule(resolved.Path, modulePath)
+		if err != nil {
+			if moduleErr, ok := err.(localModuleError); ok {
+				item.Status = moduleErr.Status
+				item.Reason = moduleErr.Reason
 			} else {
 				item.Status = StatusMissingLocalRepo
-				item.Reason = fmt.Sprintf("local sibling repository unavailable: %v", err)
+				item.Reason = err.Error()
 			}
 			items = append(items, item)
 			continue
 		}
+		item.LocalPath = localModule.ModuleDir
 
-		localVersion, err := readLocalVersion(item.LocalPath)
+		localVersion, err := readLocalVersion(localModule)
 		if err != nil {
 			item.Status = StatusMissingVersionFile
 			item.Reason = err.Error()
