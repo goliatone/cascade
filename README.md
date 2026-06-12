@@ -128,6 +128,8 @@ cascade plan local --workspace="$HOME/Development/GO/src/github.com/goliatone"
 cascade update local --workspace="$HOME/Development/GO/src/github.com/goliatone"
 ```
 
+Local module discovery validates candidate directories by their `go.mod` module declaration. Simple siblings such as `github.com/goliatone/go-router` resolve to `<workspace>/go-router`, while nested modules such as `github.com/goliatone/go-admin/quickstart` can resolve to `<workspace>/go-admin/quickstart` and use the parent repo's version file when the nested module does not have one.
+
 Useful filters:
 
 - `--prefix` - include module prefixes; repeat it or pass comma-separated values
@@ -191,7 +193,9 @@ hooks:
               run: go test ./...
 ```
 
-Rule matchers support `modules`, `module_prefixes`, `workspaces`, `workspace_prefixes`, `module_dirs`, `module_dir_prefixes`, `exclude_modules`, and `exclude_module_prefixes`. Empty `match` criteria are unconditional for that rule. A project can override an inherited rule by reusing the same `name`, or disable inherited rules by name:
+Rule matchers support `modules`, `module_prefixes`, `workspaces`, `workspace_prefixes`, `module_dirs`, `module_dir_prefixes`, `exclude_modules`, and `exclude_module_prefixes`. Module prefixes match complete module path segments, so `github.com/acme/app` matches `github.com/acme/app/pkg` but not `github.com/acme/application`. Empty `match` criteria are unconditional for that rule. Unsupported local hook fields or phases are rejected during config loading instead of being ignored.
+
+A project can override an inherited rule by reusing the same `name`, or disable inherited rules by name:
 
 ```yaml
 hooks:
@@ -204,6 +208,21 @@ hooks:
 If the same config layer defines a rule and lists that rule in `disabled_rules`, the disable wins and the rule is not evaluated. Keep disables in the nearest project config when the goal is to suppress inherited global or workspace rules.
 
 Dry runs do not execute hooks and print a skip note when hooks are configured, including matched rule names and source scopes for rule-based hooks. Use `cascade update local --no-hooks` to apply local updates without running hooks. A failed hook stops later hooks in the same phase, still allows later selected phases such as `always` to run, and makes `cascade update local` exit with an execution error after hook results are printed.
+
+### Local File Watch Automation
+
+Use `cascade watch` for foreground local automation when files change. It is useful for workspace tasks that should react to sibling package `.version` updates without adding hooks to every package `taskfile`.
+
+```bash
+WORKSPACE=$HOME/Development/GO/src/github.com/goliatone
+
+cascade watch "$WORKSPACE"/*/.version \
+  --debounce=750ms \
+  --dir="$WORKSPACE" \
+  --exec 'codex "Update ../GOLIATONE.md from the changed package version files"'
+```
+
+The command runs through the system shell, streams stdout and stderr, and receives event metadata such as `AUTOMATION_EVENT_PATH`, `AUTOMATION_EVENT_OP`, `AUTOMATION_WATCH_ROOT`, and `AUTOMATION_RUN_ID`. By default, Cascade debounces bursty editor writes and avoids overlapping executions by queueing at most one follow-up run while a command is active. Use `--allow-concurrent` only when overlapping runs are intentional.
 
 #### 4. Execute the Release
 
@@ -238,6 +257,7 @@ cascade revert go-errors@v1.4.0
 - `cascade plan` – preview work items from a manifest or flags
 - `cascade plan local` – preview local sibling dependency updates
 - `cascade update local` – apply local sibling dependency updates
+- `cascade watch` – run a local shell command when watched files change
 - `cascade release` – execute the plan (honors `--dry-run`)
 - `cascade resume` – resume an interrupted release using `module@version`
 - `cascade revert` – delete branches/PRs captured in state summaries
@@ -248,6 +268,7 @@ cascade manifest generate --module-path=$TARGET_MODULE --version=latest --github
 cascade plan --manifest=.cascade.yaml --dry-run
 cascade plan local --workspace=$HOME/Development/GO/src/github.com/goliatone
 cascade update local --dry-run
+cascade watch "$HOME/Development/GO/src/github.com/goliatone"/*/.version --exec 'echo "$AUTOMATION_EVENT_PATH"'
 cascade release --manifest=.cascade.yaml
 cascade resume go-errors@v1.4.0
 cascade revert go-errors@v1.4.0
