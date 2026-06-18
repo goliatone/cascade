@@ -110,6 +110,40 @@ func TestWatchCommandOnceRunsCommand(t *testing.T) {
 	}
 }
 
+func TestWatchCommandVerboseOnceWritesLifecycleLogs(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, ".version")
+	marker := filepath.Join(dir, "marker")
+	if err := os.WriteFile(target, []byte("v1.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	root := newRootCommand()
+	root.SetArgs([]string{
+		"watch", target,
+		"--once",
+		"--verbose",
+		"--exec", fmt.Sprintf("printf changed > %s", shellQuote(marker)),
+		"--workspace", dir,
+	})
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&stderr)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	got := stderr.String()
+	for _, want := range []string{
+		"automation: starting run-1 for " + target,
+		"automation: finished run-1 with exit code 0",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stderr = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestWatchCommandRunsOnFileChange(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, ".version")

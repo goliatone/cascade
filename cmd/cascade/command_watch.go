@@ -19,6 +19,7 @@ type watchOptions struct {
 	recursive       bool
 	once            bool
 	allowConcurrent bool
+	verbose         bool
 }
 
 func newWatchCommand() *cobra.Command {
@@ -45,6 +46,7 @@ persist workflow configuration.`,
 	cmd.Flags().BoolVar(&opts.recursive, "recursive", false, "watch existing subdirectories under directory targets")
 	cmd.Flags().BoolVar(&opts.once, "once", false, "validate inputs and run the command once without starting a watcher")
 	cmd.Flags().BoolVar(&opts.allowConcurrent, "allow-concurrent", false, "allow overlapping command executions")
+	cmd.Flags().BoolVar(&opts.verbose, "verbose", false, "print watcher lifecycle logs to stderr")
 
 	return cmd
 }
@@ -88,7 +90,15 @@ func runWatch(cmd *cobra.Command, args []string, opts watchOptions) error {
 		return newFileError("invalid watch working directory", err)
 	}
 
+	var logger automation.Logger
+	if opts.verbose {
+		logger = automation.NewTextLogger(cmd.ErrOrStderr())
+	}
+
 	if opts.once {
+		if logger != nil {
+			logger.Printf("starting run-1 for %s", targets[0].Path)
+		}
 		result, err := automation.NewShellExecutor().Execute(ctx, automation.RunRequest{
 			ID: "run-1",
 			Event: automation.Event{
@@ -100,15 +110,23 @@ func runWatch(cmd *cobra.Command, args []string, opts watchOptions) error {
 			Exec: workflow.Exec,
 		})
 		if err != nil {
+			if logger != nil {
+				logger.Printf("failed run-1: %v", err)
+			}
 			if result.TimedOut || result.Canceled {
 				return newExecutionError("watch command execution failed", err)
 			}
 			return newExecutionError("watch command exited unsuccessfully", err)
 		}
+		if logger != nil {
+			logger.Printf("finished run-1 with exit code %d", result.ExitCode)
+		}
 		return nil
 	}
 
-	runner, err := automation.NewRunner(workflow, automation.RunnerOptions{})
+	runner, err := automation.NewRunner(workflow, automation.RunnerOptions{
+		Logger: logger,
+	})
 	if err != nil {
 		return newValidationError("invalid watch workflow", err)
 	}
