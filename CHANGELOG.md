@@ -2,6 +2,24 @@
 
 # [unreleased]
 
+## <!-- 1 -->🐛 Bug Fixes
+
+- Command watch handler ([71e952b](https://github.com/goliatone/cascade/commit/71e952b11424407999b1298eb32d6cbb24c4717e))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Automation log ([852bcf3](https://github.com/goliatone/cascade/commit/852bcf35ca224927012fbadf3710d5f094992653))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([f41933f](https://github.com/goliatone/cascade/commit/f41933f50add7306bb3bebf1e4c70f8f4af30ef5))  - (goliatone)
+
+# [0.4.0](https://github.com/goliatone/cascade/compare/v0.3.0...v0.4.0) - (2026-06-12)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.4.0 ([986a42a](https://github.com/goliatone/cascade/commit/986a42aa86ce5aca16ab5c6354294d2d2cf5bea0))  - (goliatone)
+
 ## <!-- 16 -->➕ Add
 
 - Locale update resolver ([e1c7523](https://github.com/goliatone/cascade/commit/e1c7523cc1043f8ee6c599e7496da0eb43af9104))  - (goliatone)
