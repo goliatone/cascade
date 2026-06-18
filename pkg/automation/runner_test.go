@@ -176,6 +176,63 @@ func TestRunnerReturnsWatcherErrors(t *testing.T) {
 	}
 }
 
+func TestRunnerWritesVerboseLifecycleLogs(t *testing.T) {
+	var logs bytes.Buffer
+	source := newFakeEventSource()
+	executor := newRecordingExecutor(false)
+	runner := newTestRunnerWithOptions(t, source, executor, Workflow{Debounce: time.Millisecond}, RunnerOptions{
+		Logger: NewTextLogger(&logs),
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errs := runInBackground(ctx, runner)
+
+	source.events <- Event{Path: ".version", Op: OperationWrite}
+	waitStarted(t, executor)
+
+	cancel()
+	if err := <-errs; err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	got := logs.String()
+	for _, want := range []string{
+		"automation: watching 1 target(s)",
+		"automation: event write .version",
+		"automation: starting run-1 for .version",
+		"automation: finished run-1 with exit code 0",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("logs = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestSchedulerLogsQueuedFollowUpRun(t *testing.T) {
+	var logs bytes.Buffer
+	executor := newRecordingExecutor(true)
+	scheduler := NewScheduler(executor, ExecSpec{}, SchedulerOptions{
+		Logger: NewTextLogger(&logs),
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	scheduler.Submit(ctx, Event{Path: "first", Op: OperationWrite})
+	waitStarted(t, executor)
+	scheduler.Submit(ctx, Event{Path: "second", Op: OperationWrite})
+
+	executor.release <- struct{}{}
+	executor.release <- struct{}{}
+	scheduler.Wait()
+
+	got := logs.String()
+	if !strings.Contains(got, "automation: queued follow-up run for second") {
+		t.Fatalf("logs = %q, want queued follow-up log", got)
+	}
+}
+
 func TestSchedulerWritesExecutorErrorsToStderr(t *testing.T) {
 	var stderr bytes.Buffer
 	scheduler := NewScheduler(errorExecutor{}, ExecSpec{Stderr: &stderr}, SchedulerOptions{})
@@ -195,12 +252,16 @@ func (errorExecutor) Execute(ctx context.Context, req RunRequest) (RunResult, er
 
 func newTestRunner(t *testing.T, source *fakeEventSource, executor *recordingExecutor, workflow Workflow) *Runner {
 	t.Helper()
+	return newTestRunnerWithOptions(t, source, executor, workflow, RunnerOptions{})
+}
+
+func newTestRunnerWithOptions(t *testing.T, source *fakeEventSource, executor *recordingExecutor, workflow Workflow, opts RunnerOptions) *Runner {
+	t.Helper()
 	workflow.Targets = []WatchTarget{{Path: ".version"}}
 	workflow.Exec = ExecSpec{Command: "echo changed"}
-	runner, err := NewRunner(workflow, RunnerOptions{
-		Source:   source,
-		Executor: executor,
-	})
+	opts.Source = source
+	opts.Executor = executor
+	runner, err := NewRunner(workflow, opts)
 	if err != nil {
 		t.Fatalf("NewRunner() error = %v", err)
 	}

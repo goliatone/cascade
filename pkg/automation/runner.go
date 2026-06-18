@@ -9,6 +9,7 @@ type Runner struct {
 	workflow Workflow
 	source   EventSource
 	executor Executor
+	logger   Logger
 }
 
 func NewRunner(workflow Workflow, opts RunnerOptions) (*Runner, error) {
@@ -29,6 +30,7 @@ func NewRunner(workflow Workflow, opts RunnerOptions) (*Runner, error) {
 		workflow: workflow,
 		source:   source,
 		executor: executor,
+		logger:   opts.Logger,
 	}, nil
 }
 
@@ -37,9 +39,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	logf(r.logger, "watching %d target(s)", len(r.workflow.Targets))
 
 	scheduler := NewScheduler(r.executor, r.workflow.Exec, SchedulerOptions{
 		AllowConcurrent: r.workflow.AllowConcurrent,
+		Logger:          r.logger,
 	})
 	defer scheduler.Wait()
 
@@ -92,6 +96,7 @@ func (r *Runner) Run(ctx context.Context) error {
 				}
 				continue
 			}
+			logf(r.logger, "event %s %s", event.Op, event.Path)
 			if r.workflow.Debounce == 0 {
 				submit(event)
 				continue

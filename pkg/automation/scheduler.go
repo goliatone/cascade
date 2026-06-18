@@ -9,12 +9,14 @@ import (
 
 type SchedulerOptions struct {
 	AllowConcurrent bool
+	Logger          Logger
 }
 
 type Scheduler struct {
 	executor        Executor
 	exec            ExecSpec
 	allowConcurrent bool
+	logger          Logger
 
 	seq uint64
 
@@ -29,6 +31,7 @@ func NewScheduler(executor Executor, exec ExecSpec, opts SchedulerOptions) *Sche
 		executor:        executor,
 		exec:            exec,
 		allowConcurrent: opts.AllowConcurrent,
+		logger:          opts.Logger,
 	}
 }
 
@@ -44,6 +47,7 @@ func (s *Scheduler) Submit(ctx context.Context, event Event) {
 	s.mu.Lock()
 	if s.running {
 		s.pending = cloneEvent(event)
+		logf(s.logger, "queued follow-up run for %s", event.Path)
 		s.mu.Unlock()
 		return
 	}
@@ -98,9 +102,16 @@ func (s *Scheduler) execute(ctx context.Context, event Event) {
 		Event: event,
 		Exec:  s.exec,
 	}
-	if _, err := s.executor.Execute(ctx, req); err != nil && req.Exec.Stderr != nil {
-		fmt.Fprintf(req.Exec.Stderr, "automation: %v\n", err)
+	logf(s.logger, "starting %s for %s", req.ID, event.Path)
+	result, err := s.executor.Execute(ctx, req)
+	if err != nil {
+		logf(s.logger, "failed %s: %v", req.ID, err)
+		if req.Exec.Stderr != nil {
+			fmt.Fprintf(req.Exec.Stderr, "automation: %v\n", err)
+		}
+		return
 	}
+	logf(s.logger, "finished %s with exit code %d", req.ID, result.ExitCode)
 }
 
 func (s *Scheduler) nextRunID() string {

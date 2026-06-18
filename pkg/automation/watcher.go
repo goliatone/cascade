@@ -87,8 +87,12 @@ func (s *FilesystemEventSource) Watch(ctx context.Context, targets []WatchTarget
 				if !ok {
 					return
 				}
+				watchErr := wrapWatchError(err)
+				if watchErr == nil {
+					continue
+				}
 				select {
-				case errs <- fmt.Errorf("%w: %v", ErrWatchFailed, err):
+				case errs <- watchErr:
 				case <-ctx.Done():
 					return
 				}
@@ -97,6 +101,13 @@ func (s *FilesystemEventSource) Watch(ctx context.Context, targets []WatchTarget
 	}()
 
 	return events, errs, nil
+}
+
+func wrapWatchError(err error) error {
+	if isInterruptedSystemCall(err) {
+		return nil
+	}
+	return fmt.Errorf("%w: %v", ErrWatchFailed, err)
 }
 
 func (s *FilesystemEventSource) prepare(targets []WatchTarget) ([]watchBinding, map[string]struct{}, error) {

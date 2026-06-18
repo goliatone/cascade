@@ -52,6 +52,11 @@ type Workflow struct {
 type RunnerOptions struct {
 	Source   EventSource
 	Executor Executor
+	Logger   Logger
+}
+
+type Logger interface {
+	Printf(format string, args ...any)
 }
 
 type EventSource interface {
