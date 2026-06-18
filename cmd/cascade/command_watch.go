@@ -32,7 +32,7 @@ func newWatchCommand() *cobra.Command {
 The watch command is foreground local automation. It does not install a daemon or
 persist workflow configuration.`,
 		Example: `  cascade watch .version --exec 'echo changed'
-  cascade watch "$WORKSPACE/*/.version" --exec 'codex "update ../GOLIATONE.md"'`,
+  cascade watch "$WORKSPACE/*/.version" --exec 'codex --ask-for-approval never exec --sandbox workspace-write --cd "$WORKSPACE" --skip-git-repo-check "update GOLIATONE.md"'`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWatch(cmd, args, opts)
