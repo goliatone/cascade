@@ -2,9 +2,23 @@
 
 # [unreleased]
 
+## <!-- 16 -->➕ Add
+
+- Command watch option ([ab1aa79](https://github.com/goliatone/cascade/commit/ab1aa7928af99abe53b6918f06aff3a93fa98e08))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([3ccb4b2](https://github.com/goliatone/cascade/commit/3ccb4b2f06f4a2d5800a0c55768e65c44248d720))  - (goliatone)
+
+# [0.5.0](https://github.com/goliatone/cascade/compare/v0.4.0...v0.5.0) - (2026-06-18)
+
 ## <!-- 1 -->🐛 Bug Fixes
 
 - Command watch handler ([71e952b](https://github.com/goliatone/cascade/commit/71e952b11424407999b1298eb32d6cbb24c4717e))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.5.0 ([abc7fe8](https://github.com/goliatone/cascade/commit/abc7fe8f9df1d53e4d31fe91942bd7702f6da79f))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 
