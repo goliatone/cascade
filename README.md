@@ -222,7 +222,7 @@ cascade watch "$WORKSPACE"/*/.version \
   --exec 'codex "Update ../GOLIATONE.md from the changed package version files"'
 ```
 
-The command runs through the system shell, streams stdout and stderr, and receives event metadata such as `AUTOMATION_EVENT_PATH`, `AUTOMATION_EVENT_OP`, `AUTOMATION_WATCH_ROOT`, and `AUTOMATION_RUN_ID`. By default, Cascade debounces bursty editor writes and avoids overlapping executions by queueing at most one follow-up run while a command is active. Use `--allow-concurrent` only when overlapping runs are intentional.
+The command runs through the system shell, streams stdout and stderr, and receives event metadata such as `AUTOMATION_EVENT_PATH`, `AUTOMATION_EVENT_OP`, `AUTOMATION_WATCH_ROOT`, and `AUTOMATION_RUN_ID`. By default, Cascade debounces bursty editor writes and avoids overlapping executions by queueing at most one follow-up run while a command is active. Use `--verbose` to print watcher lifecycle logs to stderr while troubleshooting, and use `--allow-concurrent` only when overlapping runs are intentional.
 
 #### 4. Execute the Release
 
