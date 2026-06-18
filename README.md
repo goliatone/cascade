@@ -219,10 +219,10 @@ WORKSPACE=$HOME/Development/GO/src/github.com/goliatone
 cascade watch "$WORKSPACE"/*/.version \
   --debounce=750ms \
   --dir="$WORKSPACE" \
-  --exec 'codex "Update ../GOLIATONE.md from the changed package version files"'
+  --exec 'codex --ask-for-approval never exec --sandbox workspace-write --cd "$WORKSPACE" --skip-git-repo-check "Update GOLIATONE.md from the changed package version files"'
 ```
 
-The command runs through the system shell, streams stdout and stderr, and receives event metadata such as `AUTOMATION_EVENT_PATH`, `AUTOMATION_EVENT_OP`, `AUTOMATION_WATCH_ROOT`, and `AUTOMATION_RUN_ID`. By default, Cascade debounces bursty editor writes and avoids overlapping executions by queueing at most one follow-up run while a command is active. Use `--verbose` to print watcher lifecycle logs to stderr while troubleshooting, and use `--allow-concurrent` only when overlapping runs are intentional.
+The command runs through the system shell, streams stdout and stderr, and receives event metadata such as `AUTOMATION_EVENT_PATH`, `AUTOMATION_EVENT_OP`, `AUTOMATION_WATCH_ROOT`, and `AUTOMATION_RUN_ID`. Use non-interactive commands for unattended watcher automation; for Codex, prefer `codex exec` instead of the interactive `codex` entrypoint, and pass `--sandbox workspace-write` so the run can edit files under the workspace. By default, Cascade debounces bursty editor writes and avoids overlapping executions by queueing at most one follow-up run while a command is active. Use `--verbose` to print watcher lifecycle logs to stderr while troubleshooting, and use `--allow-concurrent` only when overlapping runs are intentional.
 
 #### 4. Execute the Release
 
