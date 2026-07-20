@@ -21,6 +21,11 @@ shift || true
 case "$cmd" in
     get)
         module="${1:-}"
+		if echo "$module" | grep -q "emit/output"; then
+			echo "download progress"
+			echo "resolution detail" >&2
+			exit 0
+		fi
         if echo "$module" | grep -q "invalid/nonexistent/module"; then
             echo "go: module $module: not found" >&2
             exit 1
@@ -124,6 +129,47 @@ func TestGoOperations_Get(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGoOperations_GetBatch(t *testing.T) {
+	cleanup := setupFakeGoBinary(t)
+	defer cleanup()
+
+	tempDir := t.TempDir()
+	createTestModule(t, tempDir, "test-module", "v1.0.0")
+	goOps := NewGoOperations()
+	batchOps, ok := goOps.(GoBatchOperations)
+	if !ok {
+		t.Fatal("NewGoOperations does not implement GoBatchOperations")
+	}
+
+	err := batchOps.GetBatch(context.Background(), tempDir, []ModuleVersion{
+		{Module: "github.com/goliatone/a", Version: "v1.1.0"},
+		{Module: "github.com/goliatone/b", Version: "v1.2.0"},
+	})
+	if err != nil {
+		t.Fatalf("GetBatch() unexpected error = %v", err)
+	}
+}
+
+func TestGoOperationsStreamsConfiguredOutput(t *testing.T) {
+	cleanup := setupFakeGoBinary(t)
+	defer cleanup()
+
+	tempDir := t.TempDir()
+	createTestModule(t, tempDir, "test-module", "v1.0.0")
+	var stdout, stderr strings.Builder
+	goOps := NewGoOperationsWithOutput(&stdout, &stderr)
+
+	if err := goOps.Get(context.Background(), tempDir, "emit/output", "v1.0.0"); err != nil {
+		t.Fatalf("Get() unexpected error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "download progress") {
+		t.Fatalf("stdout was not streamed: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "resolution detail") {
+		t.Fatalf("stderr was not streamed: %q", stderr.String())
 	}
 }
 

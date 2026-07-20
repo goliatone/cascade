@@ -136,6 +136,38 @@ func TestRunUpdateLocalWithoutContainerDoesNotPanic(t *testing.T) {
 	}
 }
 
+func TestRunUpdateLocalReportsPlainProgressOnStderr(t *testing.T) {
+	moduleDir, _ := writeLocalCommandWorkspace(t)
+	t.Chdir(moduleDir)
+
+	originalContainer := container
+	originalConfig := cfg
+	container = nil
+	cfg = config.New()
+	defer func() {
+		container = originalContainer
+		cfg = originalConfig
+	}()
+
+	cmd := newUpdateLocalCommand()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+
+	if err := runUpdateLocal(cmd, localCommandOptions{Only: []string{"current"}}); err != nil {
+		t.Fatalf("run update local failed: %v", err)
+	}
+	progress := errOut.String()
+	for _, want := range []string{"→ Planning local dependency updates", "✓ Planned 0 updates across 1 candidates"} {
+		if !strings.Contains(progress, want) {
+			t.Fatalf("progress missing %q: %q", want, progress)
+		}
+	}
+	if strings.Contains(progress, "\x1b[") {
+		t.Fatalf("redirected progress contains ANSI escapes: %q", progress)
+	}
+}
+
 func TestRunUpdateLocalRunsConfiguredSuccessHooks(t *testing.T) {
 	moduleDir, _ := writeLocalCommandWorkspace(t)
 	t.Chdir(moduleDir)

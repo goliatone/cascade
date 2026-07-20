@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/goliatone/cascade/internal/executor"
 )
 
 type mockGoOps struct {
@@ -11,6 +13,17 @@ type mockGoOps struct {
 	tidyCalls []string
 	getErrors map[string]error
 	tidyError error
+}
+
+type mockBatchGoOps struct {
+	mockGoOps
+	batchCalls [][]executor.ModuleVersion
+	batchError error
+}
+
+func (m *mockBatchGoOps) GetBatch(_ context.Context, _ string, targets []executor.ModuleVersion) error {
+	m.batchCalls = append(m.batchCalls, append([]executor.ModuleVersion(nil), targets...))
+	return m.batchError
 }
 
 type getCall struct {
@@ -68,6 +81,80 @@ func TestApplyPlanRunsGoGetAndTidyOnce(t *testing.T) {
 	}
 	assertApplyStatus(t, result, "github.com/goliatone/a", StatusApplied)
 	assertApplyStatus(t, result, "github.com/goliatone/b", StatusApplied)
+}
+
+func TestApplyPlanBatchesMultipleUpdates(t *testing.T) {
+	ops := &mockBatchGoOps{}
+	var events []ApplyEvent
+
+	result, err := ApplyPlan(context.Background(), applyTestPlan(), ops, ApplyOptions{
+		Tidy:   true,
+		Notify: func(event ApplyEvent) { events = append(events, event) },
+	})
+	if err != nil {
+		t.Fatalf("apply failed: %v", err)
+	}
+	if len(ops.batchCalls) != 1 {
+		t.Fatalf("expected one batch call, got %#v", ops.batchCalls)
+	}
+	if len(ops.batchCalls[0]) != 2 {
+		t.Fatalf("expected two batch targets, got %#v", ops.batchCalls[0])
+	}
+	if len(ops.getCalls) != 0 {
+		t.Fatalf("expected no individual get calls, got %#v", ops.getCalls)
+	}
+	if result.GoCommandCount != 1 || result.GoGetCount != 2 {
+		t.Fatalf("unexpected command/update counts: %#v", result)
+	}
+	if len(events) != 4 || events[0].Kind != ApplyBatchStarted || events[1].Kind != ApplyBatchFinished || events[2].Kind != ApplyTidyStarted || events[3].Kind != ApplyTidyFinished {
+		t.Fatalf("unexpected apply events: %#v", events)
+	}
+}
+
+func TestApplyPlanFallsBackAfterBatchFailure(t *testing.T) {
+	ops := &mockBatchGoOps{batchError: errors.New("batch failed")}
+	ops.getErrors = map[string]error{"github.com/goliatone/a": errors.New("get a failed")}
+	var events []ApplyEvent
+
+	result, err := ApplyPlan(context.Background(), applyTestPlan(), ops, ApplyOptions{
+		Tidy:   true,
+		Notify: func(event ApplyEvent) { events = append(events, event) },
+	})
+	if err == nil {
+		t.Fatal("expected individual fallback failure")
+	}
+	if len(ops.batchCalls) != 1 || len(ops.getCalls) != 2 {
+		t.Fatalf("expected one batch and two fallback calls, got batches=%#v gets=%#v", ops.batchCalls, ops.getCalls)
+	}
+	if result.GoCommandCount != 3 || result.GoGetCount != 1 {
+		t.Fatalf("unexpected command/update counts: %#v", result)
+	}
+	assertApplyStatus(t, result, "github.com/goliatone/a", StatusApplyFailed)
+	assertApplyStatus(t, result, "github.com/goliatone/b", StatusApplied)
+	if len(ops.tidyCalls) != 1 {
+		t.Fatalf("expected tidy after fallback success, got %#v", ops.tidyCalls)
+	}
+	foundFallback := false
+	for _, event := range events {
+		if event.Kind == ApplyBatchFallback {
+			foundFallback = true
+		}
+	}
+	if !foundFallback {
+		t.Fatalf("expected fallback event, got %#v", events)
+	}
+}
+
+func TestApplyPlanIgnoresRecoveredBatchFailure(t *testing.T) {
+	ops := &mockBatchGoOps{batchError: errors.New("batch failed")}
+
+	result, err := ApplyPlan(context.Background(), applyTestPlan(), ops, ApplyOptions{Tidy: true})
+	if err != nil {
+		t.Fatalf("expected successful fallback to recover batch failure, got %v", err)
+	}
+	if result.HasFailures {
+		t.Fatalf("expected recovered batch failure not to mark result failed: %#v", result)
+	}
 }
 
 func TestApplyPlanSkipsTidyWhenDisabled(t *testing.T) {
