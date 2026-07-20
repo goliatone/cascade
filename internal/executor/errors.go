@@ -33,7 +33,14 @@ type GoOperationError struct {
 }
 
 func (e *GoOperationError) Error() string {
-	return fmt.Sprintf("executor: go operation failed for %s@%s: %v", e.Module, e.Version, e.Err)
+	target := e.Module
+	if e.Version != "" {
+		target += "@" + e.Version
+	}
+	if target == "" {
+		target = "go command"
+	}
+	return fmt.Sprintf("executor: go operation failed for %s: %v", target, e.Err)
 }
 
 func (e *GoOperationError) Unwrap() error {

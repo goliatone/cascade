@@ -40,6 +40,18 @@ type GoOperations interface {
 	Tidy(ctx context.Context, repoPath string) error
 }
 
+// ModuleVersion identifies a module target for a Go dependency update.
+type ModuleVersion struct {
+	Module  string
+	Version string
+}
+
+// GoBatchOperations is an optional extension implemented by GoOperations that
+// can update several module targets with one go command.
+type GoBatchOperations interface {
+	GetBatch(ctx context.Context, repoPath string, targets []ModuleVersion) error
+}
+
 // CommandRunner defines the interface for executing commands.
 type CommandRunner interface {
 	Run(ctx context.Context, repoPath string, cmd manifest.Command, env map[string]string, timeout time.Duration) (CommandResult, error)

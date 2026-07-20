@@ -1,6 +1,9 @@
 package localupdate
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 const DefaultPrefix = "github.com/goliatone/"
 
@@ -66,16 +69,39 @@ func (p Plan) Updates() []Item {
 type ApplyOptions struct {
 	DryRun bool
 	Tidy   bool
+	Notify func(ApplyEvent)
+}
+
+type ApplyEventKind string
+
+const (
+	ApplyBatchStarted  ApplyEventKind = "batch-started"
+	ApplyBatchFinished ApplyEventKind = "batch-finished"
+	ApplyBatchFallback ApplyEventKind = "batch-fallback"
+	ApplyItemStarted   ApplyEventKind = "item-started"
+	ApplyItemFinished  ApplyEventKind = "item-finished"
+	ApplyTidyStarted   ApplyEventKind = "tidy-started"
+	ApplyTidyFinished  ApplyEventKind = "tidy-finished"
+)
+
+type ApplyEvent struct {
+	Kind     ApplyEventKind
+	Item     Item
+	Index    int
+	Total    int
+	Err      error
+	Duration time.Duration
 }
 
 type ApplyResult struct {
-	Plan        Plan
-	Items       []Item
-	GoGetCount  int
-	TidyRun     bool
-	TidyFailed  bool
-	TidyError   error
-	HasFailures bool
+	Plan           Plan
+	Items          []Item
+	GoGetCount     int
+	GoCommandCount int
+	TidyRun        bool
+	TidyFailed     bool
+	TidyError      error
+	HasFailures    bool
 }
 
 func NormalizeRequest(req Request) Request {

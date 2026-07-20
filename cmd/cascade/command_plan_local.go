@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goliatone/cascade/internal/cliui"
 	"github.com/goliatone/cascade/internal/executor"
 	"github.com/goliatone/cascade/internal/hooks"
 	"github.com/goliatone/cascade/internal/localupdate"
@@ -43,27 +44,37 @@ direct dependencies against sibling repositories in the local workspace.`,
 }
 
 func runPlanLocal(cmd *cobra.Command, opts localCommandOptions) error {
+	progress := newLocalProgress(cmd)
+	planning := progress.Start("Planning local dependency updates")
 	req, err := buildLocalRequest(cmd, opts)
 	if err != nil {
+		planning.Fail("Could not prepare local dependency plan")
 		return err
 	}
 	plan, err := localupdate.PlanLocal(req)
 	if err != nil {
+		planning.Fail("Could not resolve local dependencies")
 		return newPlanningError("failed to plan local dependency updates", err)
 	}
+	planning.Success(localPlanProgressMessage(plan))
 	renderLocalPlan(cmd.OutOrStdout(), plan, "Local dependency plan")
 	return nil
 }
 
 func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
+	progress := newLocalProgress(cmd)
+	planning := progress.Start("Planning local dependency updates")
 	req, err := buildLocalRequest(cmd, opts)
 	if err != nil {
+		planning.Fail("Could not prepare local dependency plan")
 		return err
 	}
 	plan, err := localupdate.PlanLocal(req)
 	if err != nil {
+		planning.Fail("Could not resolve local dependencies")
 		return newPlanningError("failed to plan local dependency updates", err)
 	}
+	planning.Success(localPlanProgressMessage(plan))
 
 	localCfg := localCommandConfig()
 	dryRun := false
@@ -83,13 +94,27 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	}
 
 	ctx := commandContext(cmd)
-	result, applyErr := localupdate.ApplyPlan(ctx, plan, executor.NewGoOperations(), localupdate.ApplyOptions{
-		Tidy: !opts.NoTidy,
+	goOps := executor.NewGoOperations()
+	if localCfg != nil && localCfg.Logging.Verbose {
+		goOps = executor.NewGoOperationsWithOutput(cmd.ErrOrStderr(), cmd.ErrOrStderr())
+	}
+	applyProgress := newLocalApplyProgress(progress)
+	result, applyErr := localupdate.ApplyPlan(ctx, plan, goOps, localupdate.ApplyOptions{
+		Tidy:   !opts.NoTidy,
+		Notify: applyProgress.Notify,
 	})
 	renderLocalApplyResult(cmd.OutOrStdout(), result)
 	var hookErr error
 	if !opts.NoHooks && !hookPlan.Empty() {
-		hookResults, err := hooks.NewRunner(executorTimeout).Run(ctx, hookPlan.SelectedPhases(applyErr == nil), localHookContext(plan, result, applyErr))
+		phases := hookPlan.SelectedPhases(applyErr == nil)
+		hookCount := countLocalHooks(phases)
+		hookTask := progress.Start(fmt.Sprintf("Running %d local update %s", hookCount, pluralize(hookCount, "hook", "hooks")))
+		hookResults, err := hooks.NewRunner(executorTimeout).Run(ctx, phases, localHookContext(plan, result, applyErr))
+		if err != nil {
+			hookTask.Fail("Local update hooks failed")
+		} else {
+			hookTask.Success(fmt.Sprintf("Completed %d local update %s", hookCount, pluralize(hookCount, "hook", "hooks")))
+		}
 		renderLocalHookResults(cmd.OutOrStdout(), hookResults)
 		hookErr = err
 	}
@@ -103,6 +128,78 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 		return newExecutionError("failed to run local update hooks", hookErr)
 	}
 	return nil
+}
+
+func newLocalProgress(cmd *cobra.Command) *cliui.Progress {
+	options := cliui.Options{}
+	if localCfg := localCommandConfig(); localCfg != nil {
+		options.Quiet = localCfg.Logging.Quiet
+		options.Verbose = localCfg.Logging.Verbose
+	}
+	return cliui.NewProgress(cmd.ErrOrStderr(), options)
+}
+
+func localPlanProgressMessage(plan localupdate.Plan) string {
+	updates := len(plan.Updates())
+	return fmt.Sprintf("Planned %d %s across %d candidates", updates, pluralize(updates, "update", "updates"), len(plan.Items))
+}
+
+func pluralize(count int, singular, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
+}
+
+func countLocalHooks(phases []hooks.PhaseHooks) int {
+	count := 0
+	for _, phase := range phases {
+		count += len(phase.Hooks)
+	}
+	return count
+}
+
+type localApplyProgress struct {
+	progress *cliui.Progress
+	current  *cliui.Task
+}
+
+func newLocalApplyProgress(progress *cliui.Progress) *localApplyProgress {
+	return &localApplyProgress{progress: progress}
+}
+
+func (p *localApplyProgress) Notify(event localupdate.ApplyEvent) {
+	switch event.Kind {
+	case localupdate.ApplyBatchStarted:
+		p.current = p.progress.Start(fmt.Sprintf("Updating %d dependencies with one go get", event.Total))
+	case localupdate.ApplyBatchFinished:
+		if event.Err != nil {
+			p.current.Warn("Combined dependency update did not complete")
+		} else {
+			p.current.Success(fmt.Sprintf("Updated %d dependencies", event.Total))
+		}
+		p.current = nil
+	case localupdate.ApplyBatchFallback:
+		p.progress.Warn(fmt.Sprintf("Retrying %d dependencies individually", event.Total))
+	case localupdate.ApplyItemStarted:
+		p.current = p.progress.Start(fmt.Sprintf("Updating %s to %s (%d/%d)", event.Item.Module, event.Item.LocalVersion, event.Index, event.Total))
+	case localupdate.ApplyItemFinished:
+		if event.Err != nil {
+			p.current.Fail(fmt.Sprintf("Failed to update %s", event.Item.Module))
+		} else {
+			p.current.Success(fmt.Sprintf("Updated %s to %s", event.Item.Module, event.Item.LocalVersion))
+		}
+		p.current = nil
+	case localupdate.ApplyTidyStarted:
+		p.current = p.progress.Start("Running go mod tidy")
+	case localupdate.ApplyTidyFinished:
+		if event.Err != nil {
+			p.current.Fail("go mod tidy failed")
+		} else {
+			p.current.Success("go mod tidy completed")
+		}
+		p.current = nil
+	}
 }
 
 func commandContext(cmd *cobra.Command) context.Context {
@@ -345,7 +442,8 @@ func truncateHookOutput(output string) string {
 func renderLocalItem(out io.Writer, item localupdate.Item) {
 	current := valueOrDash(item.CurrentVersion)
 	local := valueOrDash(item.LocalVersion)
-	fmt.Fprintf(out, "  - %s %s -> %s [%s]", item.Module, current, local, item.Status)
+	styler := cliui.NewStyler(out)
+	fmt.Fprintf(out, "  - %s %s -> %s [%s]", item.Module, current, local, styledLocalStatus(styler, item.Status))
 	if strings.TrimSpace(item.Reason) != "" {
 		fmt.Fprintf(out, " - %s", item.Reason)
 	}
@@ -353,6 +451,7 @@ func renderLocalItem(out io.Writer, item localupdate.Item) {
 }
 
 func renderLocalSummary(out io.Writer, items []localupdate.Item) {
+	styler := cliui.NewStyler(out)
 	counts := map[localupdate.Status]int{}
 	for _, item := range items {
 		counts[item.Status]++
@@ -374,8 +473,24 @@ func renderLocalSummary(out io.Writer, items []localupdate.Item) {
 		localupdate.StatusApplyFailed,
 	} {
 		if count := counts[status]; count > 0 {
-			fmt.Fprintf(out, "  %s: %d\n", status, count)
+			fmt.Fprintf(out, "  %s: %d\n", styledLocalStatus(styler, status), count)
 		}
+	}
+}
+
+func styledLocalStatus(styler cliui.Styler, status localupdate.Status) string {
+	value := string(status)
+	switch status {
+	case localupdate.StatusApplied, localupdate.StatusCurrent:
+		return styler.Success(value)
+	case localupdate.StatusUpdate:
+		return styler.Info(value)
+	case localupdate.StatusApplyFailed, localupdate.StatusComparisonFailed, localupdate.StatusInvalidVersion, localupdate.StatusInvalidLocalModule, localupdate.StatusAmbiguousLocalModule:
+		return styler.Error(value)
+	case localupdate.StatusSkippedIndirect, localupdate.StatusSkippedFilter, localupdate.StatusSkippedReplace, localupdate.StatusMissingLocalRepo, localupdate.StatusMissingVersionFile:
+		return styler.Warning(value)
+	default:
+		return styler.Muted(value)
 	}
 }
 
