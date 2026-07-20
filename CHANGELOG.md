@@ -4,6 +4,21 @@
 
 ## <!-- 16 -->➕ Add
 
+- Provide feedback on sync ([9873d00](https://github.com/goliatone/cascade/commit/9873d00ac6fa2ef5bb65fc93e8014a6fdb246902))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([634ec17](https://github.com/goliatone/cascade/commit/634ec17e686da6487b40f8c3194b180d43b3f6bc))  - (goliatone)
+- Update tests ([9fe7e05](https://github.com/goliatone/cascade/commit/9fe7e05d7e291100139d0c98ce9a4d898e22c80d))  - (goliatone)
+
+# [0.6.0](https://github.com/goliatone/cascade/compare/v0.5.0...v0.6.0) - (2026-06-18)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.6.0 ([4e7e014](https://github.com/goliatone/cascade/commit/4e7e014f13133be863e4549873bf600dd8071078))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Command watch option ([ab1aa79](https://github.com/goliatone/cascade/commit/ab1aa7928af99abe53b6918f06aff3a93fa98e08))  - (goliatone)
 
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
