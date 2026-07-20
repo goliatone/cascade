@@ -139,7 +139,9 @@ Useful filters:
 - `--no-tidy` - for `update local`, skip the default `go mod tidy`
 - `--no-hooks` - for `update local`, skip configured local update hooks
 
-`cascade update local` runs one `go get <module>@<local-version>` per outdated candidate and then runs `go mod tidy` once after at least one successful update unless `--no-tidy` is set. If one `go get` fails, later candidates are still attempted; the command prints the summary and exits with a failure.
+`cascade update local` combines outdated candidates into one `go get` command so Go resolves the module graph once on the normal success path. If that combined command fails, Cascade retries candidates individually to preserve partial updates and identify the failing modules. It then runs `go mod tidy` once after at least one successful update unless `--no-tidy` is set.
+
+Interactive terminals show colored spinner progress while Cascade plans, updates dependencies, tidies the module, and runs hooks. Redirected output uses stable plain-text progress on stderr with no ANSI animation, while the final result remains on stdout. Use `--quiet` to suppress progress, `NO_COLOR=1` to disable colors, or `--verbose` to replace animation with detailed progress and stream `go` command output.
 
 #### Local Update Hooks
 
