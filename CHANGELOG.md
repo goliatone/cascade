@@ -4,6 +4,20 @@
 
 ## <!-- 16 -->➕ Add
 
+- Local plan ([d378bc7](https://github.com/goliatone/cascade/commit/d378bc745799b41b530b5c491b4fac82fd06b22b))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([c87ccb0](https://github.com/goliatone/cascade/commit/c87ccb08e95e0db1d6c37b6746e09c2a8fc9ead1))  - (goliatone)
+
+# [0.7.0](https://github.com/goliatone/cascade/compare/v0.6.0...v0.7.0) - (2026-07-20)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.7.0 ([8ebe19d](https://github.com/goliatone/cascade/commit/8ebe19daa0439430bafd21360091f672e0827096))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Provide feedback on sync ([9873d00](https://github.com/goliatone/cascade/commit/9873d00ac6fa2ef5bb65fc93e8014a6fdb246902))  - (goliatone)
 
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
