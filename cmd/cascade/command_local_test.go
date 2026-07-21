@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -166,6 +167,120 @@ func TestRunUpdateLocalReportsPlainProgressOnStderr(t *testing.T) {
 	if strings.Contains(progress, "\x1b[") {
 		t.Fatalf("redirected progress contains ANSI escapes: %q", progress)
 	}
+}
+
+func TestRunUpdateLocalEnforcesConfiguredTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a POSIX shell script")
+	}
+	moduleDir, workspace := writeLocalCommandWorkspace(t)
+	t.Chdir(moduleDir)
+	prependBlockingGoBinary(t)
+	marker := filepath.Join(t.TempDir(), "failure-hook")
+	projectConfig := `hooks:
+  update:
+    local:
+      after_failure:
+        - name: failure
+          cmd: [` + strconvQuote(os.Args[0]) + `, -test.run=TestCommandLocalHookHelperProcess]
+          timeout: 10s
+          env:
+            CASCADE_COMMAND_HOOK_HELPER: "1"
+            CASCADE_HOOK_MARKER: ` + strconvQuote(marker) + `
+            CASCADE_HOOK_VALUE: failure
+`
+	if err := os.WriteFile(filepath.Join(moduleDir, ".cascade.yaml"), []byte(projectConfig), 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	originalContainer := container
+	originalConfig := cfg
+	container = nil
+	cfg = nil
+	defer func() {
+		container = originalContainer
+		cfg = originalConfig
+	}()
+
+	cmd := newRootCommand()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"update", "local", "--workspace", workspace, "--only", "old", "--no-tidy", "--timeout", "40ms"})
+
+	started := time.Now()
+	err := cmd.Execute()
+	elapsed := time.Since(started)
+	if err == nil {
+		t.Fatal("expected timed out update to fail")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("configured timeout was not enforced; command took %s", elapsed)
+	}
+	if !strings.Contains(err.Error(), "local dependency update timed out after 40ms") {
+		t.Fatalf("expected clear timeout error, got %v", err)
+	}
+	if !strings.Contains(out.String(), "local update interrupted: context deadline exceeded") {
+		t.Fatalf("expected timeout in result summary, got:\n%s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "Failed to update github.com/goliatone/old") {
+		t.Fatalf("expected failed update progress, got:\n%s", errOut.String())
+	}
+	assertMarker(t, marker, "failure|failure")
+	if !strings.Contains(errOut.String(), "Completed 1 local update hook") {
+		t.Fatalf("expected failure hook to run after the apply timeout, got:\n%s", errOut.String())
+	}
+}
+
+func TestRunUpdateLocalSkipsUnselectedHookProgress(t *testing.T) {
+	moduleDir, _ := writeLocalCommandWorkspace(t)
+	t.Chdir(moduleDir)
+	marker := filepath.Join(t.TempDir(), "failure-hook")
+
+	withLocalHookConfig(t, config.LocalUpdateHooksConfig{
+		AfterFailure: []config.HookConfig{hookMarker("failure", marker, false)},
+	}, false, func() {
+		cmd := newUpdateLocalCommand()
+		var out, errOut bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&errOut)
+
+		if err := runUpdateLocal(cmd, localCommandOptions{Only: []string{"current"}}); err != nil {
+			t.Fatalf("run update local failed: %v", err)
+		}
+		assertNoFile(t, marker)
+		if strings.Contains(errOut.String(), "local update hook") || strings.Contains(out.String(), "Hooks:") {
+			t.Fatalf("expected unselected hooks to stay silent, stdout=%q stderr=%q", out.String(), errOut.String())
+		}
+	})
+}
+
+func TestRunUpdateLocalSkipsUnselectedSuccessHookProgressAfterFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a POSIX shell script")
+	}
+	moduleDir, _ := writeLocalCommandWorkspace(t)
+	t.Chdir(moduleDir)
+	prependGoBinary(t, "#!/bin/sh\nexit 1\n")
+	marker := filepath.Join(t.TempDir(), "success-hook")
+
+	withLocalHookConfig(t, config.LocalUpdateHooksConfig{
+		AfterSuccess: []config.HookConfig{hookMarker("success", marker, false)},
+	}, false, func() {
+		cmd := newUpdateLocalCommand()
+		var out, errOut bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&errOut)
+
+		err := runUpdateLocal(cmd, localCommandOptions{Only: []string{"old"}, NoTidy: true})
+		if err == nil {
+			t.Fatal("expected update failure")
+		}
+		assertNoFile(t, marker)
+		if strings.Contains(errOut.String(), "local update hook") || strings.Contains(out.String(), "Hooks:") {
+			t.Fatalf("expected unselected hooks to stay silent, stdout=%q stderr=%q", out.String(), errOut.String())
+		}
+	})
 }
 
 func TestRunUpdateLocalRunsConfiguredSuccessHooks(t *testing.T) {
@@ -928,6 +1043,21 @@ replace github.com/goliatone/replaced => ../replaced
 	writeLocalCommandSibling(t, workspace, "old", "v1.1.0")
 	writeLocalCommandSibling(t, workspace, "replaced", "v1.1.0")
 	return moduleDir, workspace
+}
+
+func prependBlockingGoBinary(t *testing.T) {
+	t.Helper()
+	prependGoBinary(t, "#!/bin/sh\nexec sleep 30\n")
+}
+
+func prependGoBinary(t *testing.T, script string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "go")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write go helper: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func writeDetachedLocalCommandWorkspace(t *testing.T) (moduleDir, workspace string) {

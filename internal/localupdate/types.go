@@ -101,6 +101,7 @@ type ApplyResult struct {
 	TidyRun        bool
 	TidyFailed     bool
 	TidyError      error
+	Interruption   error
 	HasFailures    bool
 }
 

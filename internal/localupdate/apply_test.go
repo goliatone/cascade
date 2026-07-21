@@ -3,7 +3,9 @@ package localupdate
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/goliatone/cascade/internal/executor"
 )
@@ -19,6 +21,37 @@ type mockBatchGoOps struct {
 	mockGoOps
 	batchCalls [][]executor.ModuleVersion
 	batchError error
+}
+
+type blockingGoOps struct {
+	mockGoOps
+}
+
+func (m *blockingGoOps) Get(ctx context.Context, repoPath, module, version string) error {
+	m.getCalls = append(m.getCalls, getCall{repoPath: repoPath, module: module, version: version})
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type blockingBatchGoOps struct {
+	mockGoOps
+	batchCalls int
+}
+
+func (m *blockingBatchGoOps) GetBatch(ctx context.Context, _ string, _ []executor.ModuleVersion) error {
+	m.batchCalls++
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type blockingTidyGoOps struct {
+	mockGoOps
+}
+
+func (m *blockingTidyGoOps) Tidy(ctx context.Context, repoPath string) error {
+	m.tidyCalls = append(m.tidyCalls, repoPath)
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (m *mockBatchGoOps) GetBatch(_ context.Context, _ string, targets []executor.ModuleVersion) error {
@@ -154,6 +187,72 @@ func TestApplyPlanIgnoresRecoveredBatchFailure(t *testing.T) {
 	}
 	if result.HasFailures {
 		t.Fatalf("expected recovered batch failure not to mark result failed: %#v", result)
+	}
+}
+
+func TestApplyPlanBatchTimeoutDoesNotFallBackOrRunTidy(t *testing.T) {
+	ops := &blockingBatchGoOps{}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	result, err := ApplyPlan(ctx, applyTestPlan(), ops, ApplyOptions{Tidy: true})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline error, got %v", err)
+	}
+	if ops.batchCalls != 1 {
+		t.Fatalf("expected one batch attempt, got %d", ops.batchCalls)
+	}
+	if len(ops.getCalls) != 0 {
+		t.Fatalf("expected no sequential fallback after timeout, got %#v", ops.getCalls)
+	}
+	if len(ops.tidyCalls) != 0 || result.TidyRun {
+		t.Fatalf("expected no tidy after timeout, got %#v", result)
+	}
+	if !errors.Is(result.Interruption, context.DeadlineExceeded) {
+		t.Fatalf("expected result interruption, got %#v", result.Interruption)
+	}
+	assertApplyStatus(t, result, "github.com/goliatone/a", StatusApplyFailed)
+	assertApplyStatus(t, result, "github.com/goliatone/b", StatusApplyFailed)
+}
+
+func TestApplyPlanSequentialTimeoutStopsRemainingUpdatesAndTidy(t *testing.T) {
+	ops := &blockingGoOps{}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	result, err := ApplyPlan(ctx, applyTestPlan(), ops, ApplyOptions{Tidy: true})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline error, got %v", err)
+	}
+	if len(ops.getCalls) != 1 {
+		t.Fatalf("expected timeout to stop later updates, got %#v", ops.getCalls)
+	}
+	if len(ops.tidyCalls) != 0 || result.TidyRun {
+		t.Fatalf("expected no tidy after timeout, got %#v", result)
+	}
+	assertApplyStatus(t, result, "github.com/goliatone/a", StatusApplyFailed)
+	assertApplyStatus(t, result, "github.com/goliatone/b", StatusApplyFailed)
+}
+
+func TestApplyPlanTidyTimeoutIsReportedAsInterruption(t *testing.T) {
+	ops := &blockingTidyGoOps{}
+	plan := applyTestPlan()
+	plan.Items = plan.Items[:1]
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	result, err := ApplyPlan(ctx, plan, ops, ApplyOptions{Tidy: true})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline error, got %v", err)
+	}
+	if len(ops.getCalls) != 1 || len(ops.tidyCalls) != 1 {
+		t.Fatalf("expected one get and one tidy attempt, got gets=%#v tidy=%#v", ops.getCalls, ops.tidyCalls)
+	}
+	if !result.TidyRun || !result.TidyFailed || !errors.Is(result.Interruption, context.DeadlineExceeded) {
+		t.Fatalf("expected interrupted tidy result, got %#v", result)
+	}
+	if result.TidyError == nil || !strings.Contains(result.TidyError.Error(), context.DeadlineExceeded.Error()) {
+		t.Fatalf("expected tidy deadline detail, got %v", result.TidyError)
 	}
 }
 

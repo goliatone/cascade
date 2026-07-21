@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -251,6 +252,25 @@ func TestGoOperations_GetWithContext(t *testing.T) {
 	if !strings.Contains(err.Error(), "context canceled") {
 		t.Errorf("Get() expected context cancellation error, got %v", err)
 	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Get() did not preserve context cancellation: %v", err)
+	}
+}
+
+func TestGoOperations_GetPreservesDeadlineError(t *testing.T) {
+	cleanup := setupFakeGoBinary(t)
+	defer cleanup()
+
+	tempDir := t.TempDir()
+	createTestModule(t, tempDir, "test-module", "v1.0.0")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+
+	err := NewGoOperations().Get(ctx, tempDir, "github.com/stretchr/testify", "v1.8.0")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Get() did not preserve deadline error: %v", err)
+	}
 }
 
 func TestGoOperations_TidyWithContext(t *testing.T) {
@@ -273,6 +293,9 @@ func TestGoOperations_TidyWithContext(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "context canceled") {
 		t.Errorf("Tidy() expected context cancellation error, got %v", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Tidy() did not preserve context cancellation: %v", err)
 	}
 }
 

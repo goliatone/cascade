@@ -94,40 +94,63 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	}
 
 	ctx := commandContext(cmd)
+	applyCtx, cancelApply := localApplyContext(ctx, executorTimeout)
 	goOps := executor.NewGoOperations()
 	if localCfg != nil && localCfg.Logging.Verbose {
 		goOps = executor.NewGoOperationsWithOutput(cmd.ErrOrStderr(), cmd.ErrOrStderr())
 	}
 	applyProgress := newLocalApplyProgress(progress)
-	result, applyErr := localupdate.ApplyPlan(ctx, plan, goOps, localupdate.ApplyOptions{
+	result, applyErr := localupdate.ApplyPlan(applyCtx, plan, goOps, localupdate.ApplyOptions{
 		Tidy:   !opts.NoTidy,
 		Notify: applyProgress.Notify,
 	})
+	cancelApply()
 	renderLocalApplyResult(cmd.OutOrStdout(), result)
 	var hookErr error
-	if !opts.NoHooks && !hookPlan.Empty() {
+	if !opts.NoHooks {
 		phases := hookPlan.SelectedPhases(applyErr == nil)
-		hookCount := countLocalHooks(phases)
-		hookTask := progress.Start(fmt.Sprintf("Running %d local update %s", hookCount, pluralize(hookCount, "hook", "hooks")))
-		hookResults, err := hooks.NewRunner(executorTimeout).Run(ctx, phases, localHookContext(plan, result, applyErr))
-		if err != nil {
-			hookTask.Fail("Local update hooks failed")
-		} else {
-			hookTask.Success(fmt.Sprintf("Completed %d local update %s", hookCount, pluralize(hookCount, "hook", "hooks")))
+		if len(phases) > 0 {
+			hookCount := countLocalHooks(phases)
+			hookTask := progress.Start(fmt.Sprintf("Running %d local update %s", hookCount, pluralize(hookCount, "hook", "hooks")))
+			hookResults, err := hooks.NewRunner(executorTimeout).Run(ctx, phases, localHookContext(plan, result, applyErr))
+			if err != nil {
+				hookTask.Fail("Local update hooks failed")
+			} else {
+				hookTask.Success(fmt.Sprintf("Completed %d local update %s", hookCount, pluralize(hookCount, "hook", "hooks")))
+			}
+			renderLocalHookResults(cmd.OutOrStdout(), hookResults)
+			hookErr = err
 		}
-		renderLocalHookResults(cmd.OutOrStdout(), hookResults)
-		hookErr = err
 	}
 	if applyErr != nil {
+		message := localApplyFailureMessage(applyErr, executorTimeout)
 		if hookErr != nil {
-			return newExecutionError("failed to apply local dependency updates and run local update hooks", errors.Join(applyErr, hookErr))
+			return newExecutionError(message+" and failed to run local update hooks", errors.Join(applyErr, hookErr))
 		}
-		return newExecutionError("failed to apply local dependency updates", applyErr)
+		return newExecutionError(message, applyErr)
 	}
 	if hookErr != nil {
 		return newExecutionError("failed to run local update hooks", hookErr)
 	}
 	return nil
+}
+
+func localApplyContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, timeout)
+}
+
+func localApplyFailureMessage(err error, timeout time.Duration) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded) && timeout > 0:
+		return fmt.Sprintf("local dependency update timed out after %s", timeout)
+	case errors.Is(err, context.Canceled):
+		return "local dependency update canceled"
+	default:
+		return "failed to apply local dependency updates"
+	}
 }
 
 func newLocalProgress(cmd *cobra.Command) *cliui.Progress {
@@ -369,6 +392,9 @@ func renderLocalApplyResult(out io.Writer, result *localupdate.ApplyResult) {
 		} else {
 			fmt.Fprintln(out, "\ngo mod tidy: completed")
 		}
+	}
+	if result.Interruption != nil {
+		fmt.Fprintf(out, "\nlocal update interrupted: %v\n", result.Interruption)
 	}
 	renderLocalSummary(out, result.Items)
 }

@@ -8,7 +8,10 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
+
+const goCommandWaitDelay = time.Second
 
 // goOperations implements GoOperations using the system go tool.
 type goOperations struct {
@@ -56,6 +59,7 @@ func (g *goOperations) runGet(ctx context.Context, repoPath string, targets []Mo
 	// Execute go get command
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = repoPath
+	cmd.WaitDelay = goCommandWaitDelay
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = bufferedWriter(&stdout, g.stdout, &g.streamMu)
@@ -63,6 +67,9 @@ func (g *goOperations) runGet(ctx context.Context, repoPath string, targets []Mo
 
 	err := cmd.Run()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+		}
 		// Include both stdout and stderr in error for diagnostics
 		output := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
 		moduleLabel := strings.Join(labels, " ")
@@ -86,6 +93,7 @@ func (g *goOperations) Tidy(ctx context.Context, repoPath string) error {
 	// Execute go mod tidy command
 	cmd := exec.CommandContext(ctx, "go", "mod", "tidy")
 	cmd.Dir = repoPath
+	cmd.WaitDelay = goCommandWaitDelay
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = bufferedWriter(&stdout, g.stdout, &g.streamMu)
@@ -93,6 +101,9 @@ func (g *goOperations) Tidy(ctx context.Context, repoPath string) error {
 
 	err := cmd.Run()
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+		}
 		// Include both stdout and stderr in error for diagnostics
 		output := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
 		return &GoOperationError{
