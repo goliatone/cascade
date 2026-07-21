@@ -138,8 +138,9 @@ Useful filters:
 - `--exclude` - skip specific module paths or basenames
 - `--no-tidy` - for `update local`, skip the default `go mod tidy`
 - `--no-hooks` - for `update local`, skip configured local update hooks
+- `--timeout` - bound the complete `go get` and `go mod tidy` apply phase (default: 5 minutes)
 
-`cascade update local` combines outdated candidates into one `go get` command so Go resolves the module graph once on the normal success path. If that combined command fails, Cascade retries candidates individually to preserve partial updates and identify the failing modules. It then runs `go mod tidy` once after at least one successful update unless `--no-tidy` is set.
+`cascade update local` combines outdated candidates into one `go get` command so Go resolves the module graph once on the normal success path. If that combined command fails, Cascade retries candidates individually to preserve partial updates and identify the failing modules. It then runs `go mod tidy` once after at least one successful update unless `--no-tidy` is set. The configured `--timeout` covers this complete apply phase; timeout or cancellation stops new fallback work and prevents tidy from starting after interruption.
 
 Interactive terminals show colored spinner progress while Cascade plans, updates dependencies, tidies the module, and runs hooks. Redirected output uses stable plain-text progress on stderr with no ANSI animation, while the final result remains on stdout. Use `--quiet` to suppress progress, `NO_COLOR=1` to disable colors, or `--verbose` to replace animation with detailed progress and stream `go` command output.
 
