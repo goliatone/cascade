@@ -42,7 +42,7 @@ func DiscoverRepository(startDir string) (Repository, error) {
 	}
 
 	repository := Repository{Root: repositoryRoot}
-	if workFile := findUpwardFile(startDir, repositoryRoot, "go.work"); workFile != "" {
+	if workFile := repositoryWorkFile(repositoryRoot); workFile != "" {
 		repository.WorkFile = workFile
 		repository.Modules, repository.ExternalUses, err = modulesFromWorkFile(repositoryRoot, workFile)
 	} else {
@@ -56,6 +56,14 @@ func DiscoverRepository(startDir string) (Repository, error) {
 	}
 	sortModuleTargets(repositoryRoot, repository.Modules)
 	return repository, nil
+}
+
+func repositoryWorkFile(repositoryRoot string) string {
+	path := filepath.Join(repositoryRoot, "go.work")
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		return path
+	}
+	return ""
 }
 
 func findRepositoryRoot(startDir string) (string, error) {
@@ -113,22 +121,28 @@ func modulesFromWorkFile(repositoryRoot, workFilePath string) ([]ModuleTarget, [
 		if !filepath.IsAbs(moduleDir) {
 			moduleDir = filepath.Join(filepath.Dir(workFilePath), moduleDir)
 		}
-		moduleDir, err = canonicalExistingDir(moduleDir)
+		moduleDir, err = filepath.Abs(moduleDir)
 		if err != nil {
 			return nil, nil, fmt.Errorf("resolve go.work use %q: %w", use.Path, err)
 		}
+		moduleDir = filepath.Clean(moduleDir)
 		if !pathWithin(repositoryRoot, moduleDir) {
 			external = append(external, moduleDir)
 			continue
 		}
-		if seen[moduleDir] {
+		moduleDir, err = canonicalExistingDir(moduleDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolve go.work use %q: %w", use.Path, err)
+		}
+		moduleKey := physicalPath(moduleDir)
+		if seen[moduleKey] {
 			continue
 		}
 		target, err := readModuleTarget(moduleDir)
 		if err != nil {
 			return nil, nil, fmt.Errorf("validate go.work use %q: %w", use.Path, err)
 		}
-		seen[moduleDir] = true
+		seen[moduleKey] = true
 		modules = append(modules, target)
 	}
 	sort.Strings(external)
@@ -184,26 +198,33 @@ func canonicalExistingDir(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resolved, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(resolved)
+	cleaned := filepath.Clean(abs)
+	info, err := os.Stat(cleaned)
 	if err != nil {
 		return "", err
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("%s is not a directory", resolved)
+		return "", fmt.Errorf("%s is not a directory", cleaned)
 	}
-	return filepath.Clean(resolved), nil
+	return cleaned, nil
 }
 
 func pathWithin(root, candidate string) bool {
+	root = physicalPath(root)
+	candidate = physicalPath(candidate)
 	rel, err := filepath.Rel(root, candidate)
 	if err != nil {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func physicalPath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return filepath.Clean(resolved)
+	}
+	return filepath.Clean(path)
 }
 
 func sortModuleTargets(repositoryRoot string, modules []ModuleTarget) {

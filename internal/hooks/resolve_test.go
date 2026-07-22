@@ -46,6 +46,24 @@ func TestResolveLocalUpdatePlan_MatchesRuleCriteria(t *testing.T) {
 	}
 }
 
+func TestResolveLocalUpdatePlanMatchesAnyRepositoryModule(t *testing.T) {
+	local := config.LocalUpdateHooksConfig{Rules: []config.LocalUpdateHookRule{{
+		Name: "nested-module",
+		Match: config.LocalUpdateHookMatch{
+			Modules: []string{"github.com/goliatone/app/adapter"},
+		},
+		AfterSuccess: []config.HookConfig{{Run: "echo matched"}},
+	}}}
+
+	plan := ResolveLocalUpdatePlan(local, Context{
+		Module:  "github.com/goliatone/app",
+		Modules: []string{"github.com/goliatone/app", "github.com/goliatone/app/adapter"},
+	}, nil)
+	if len(plan.MatchedRules) != 1 || len(plan.AfterSuccess) != 1 {
+		t.Fatalf("expected nested repository module to match, got %#v", plan)
+	}
+}
+
 func TestResolveLocalUpdatePlan_EmptyMatchIsUnconditional(t *testing.T) {
 	local := config.LocalUpdateHooksConfig{
 		Rules: []config.LocalUpdateHookRule{{
