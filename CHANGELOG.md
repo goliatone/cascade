@@ -4,6 +4,21 @@
 
 ## <!-- 16 -->➕ Add
 
+- Update local workspaces ([a7d7819](https://github.com/goliatone/cascade/commit/a7d7819705200d99dc290508b06b76d9171e2a25))  - (goliatone)
+- Local discovery and repo support ([53e2854](https://github.com/goliatone/cascade/commit/53e2854ae16628acf91287407ee4eafddf795206))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([ee79dba](https://github.com/goliatone/cascade/commit/ee79dbaf176e2fbf051b6dc8df952a78eca2eadd))  - (goliatone)
+
+# [0.7.1](https://github.com/goliatone/cascade/compare/v0.7.0...v0.7.1) - (2026-07-21)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.7.1 ([daf8b05](https://github.com/goliatone/cascade/commit/daf8b053c2e2021d50df35d2d21db7f3d79cf6d3))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Local plan ([d378bc7](https://github.com/goliatone/cascade/commit/d378bc745799b41b530b5c491b4fac82fd06b22b))  - (goliatone)
 
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
