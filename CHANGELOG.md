@@ -4,6 +4,20 @@
 
 ## <!-- 16 -->➕ Add
 
+- Gitignore support ([4c9e990](https://github.com/goliatone/cascade/commit/4c9e990d55d005b4bc937feb647c3b9f5ef900f7))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([ce546b6](https://github.com/goliatone/cascade/commit/ce546b69e3aacebc494a2460bd2835587d0cc36f))  - (goliatone)
+
+# [0.8.0](https://github.com/goliatone/cascade/compare/v0.7.1...v0.8.0) - (2026-07-22)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.8.0 ([d2d0b8a](https://github.com/goliatone/cascade/commit/d2d0b8a8b7d5e723b928e2c337d33cfcfb07e62b))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
 - Update local workspaces ([a7d7819](https://github.com/goliatone/cascade/commit/a7d7819705200d99dc290508b06b76d9171e2a25))  - (goliatone)
 - Local discovery and repo support ([53e2854](https://github.com/goliatone/cascade/commit/53e2854ae16628acf91287407ee4eafddf795206))  - (goliatone)
 
