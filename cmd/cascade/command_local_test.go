@@ -60,6 +60,74 @@ func TestRunPlanLocalRendersCandidates(t *testing.T) {
 	}
 }
 
+func TestRunPlanLocalDiscoversGoWorkModulesFromNestedDirectory(t *testing.T) {
+	repositoryRoot, nestedDir, workspace := writeLocalCommandGoWorkRepository(t)
+	t.Chdir(filepath.Join(nestedDir, "pkg"))
+
+	cmd := newPlanLocalCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+
+	originalContainer := container
+	container = nil
+	defer func() { container = originalContainer }()
+
+	if err := runPlanLocal(cmd, localCommandOptions{}); err != nil {
+		t.Fatalf("run repository plan local failed: %v", err)
+	}
+	output := out.String()
+	for _, want := range []string{
+		"Local dependency plan for repository " + repositoryRoot,
+		"Modules: 2",
+		"Go workspace: " + filepath.Join(repositoryRoot, "go.work"),
+		"Dependency workspace: " + workspace,
+		"Module: github.com/goliatone/app",
+		"Module: github.com/goliatone/app/adapter",
+		"Repository summary:",
+		"updates: 2",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected output to contain %q, got:\n%s", want, output)
+		}
+	}
+}
+
+func TestRunUpdateLocalDryRunDoesNotMutateAnyGoWorkModule(t *testing.T) {
+	repositoryRoot, nestedDir, _ := writeLocalCommandGoWorkRepository(t)
+	t.Chdir(repositoryRoot)
+	paths := []string{filepath.Join(repositoryRoot, "go.mod"), filepath.Join(nestedDir, "go.mod")}
+	before := map[string][]byte{}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		before[path] = data
+	}
+
+	withLocalHookConfig(t, config.LocalUpdateHooksConfig{}, true, func() {
+		cmd := newUpdateLocalCommand()
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		if err := runUpdateLocal(cmd, localCommandOptions{}); err != nil {
+			t.Fatalf("run repository dry-run: %v", err)
+		}
+		if !strings.Contains(out.String(), "DRY RUN: Local dependency update plan for repository") {
+			t.Fatalf("expected aggregate dry-run output, got:\n%s", out.String())
+		}
+	})
+
+	for _, path := range paths {
+		after, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s after dry-run: %v", path, err)
+		}
+		if !bytes.Equal(before[path], after) {
+			t.Fatalf("dry-run mutated %s", path)
+		}
+	}
+}
+
 func TestRunPlanLocalDoesNotRunConfiguredHooks(t *testing.T) {
 	moduleDir, _ := writeLocalCommandWorkspace(t)
 	t.Chdir(moduleDir)
@@ -1043,6 +1111,43 @@ replace github.com/goliatone/replaced => ../replaced
 	writeLocalCommandSibling(t, workspace, "old", "v1.1.0")
 	writeLocalCommandSibling(t, workspace, "replaced", "v1.1.0")
 	return moduleDir, workspace
+}
+
+func writeLocalCommandGoWorkRepository(t *testing.T) (repositoryRoot, nestedDir, workspace string) {
+	t.Helper()
+	workspace = t.TempDir()
+	repositoryRoot = filepath.Join(workspace, "app")
+	nestedDir = filepath.Join(repositoryRoot, "adapter")
+	if err := os.MkdirAll(filepath.Join(repositoryRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("create repository metadata: %v", err)
+	}
+	rootMod := `module github.com/goliatone/app
+
+go 1.24
+
+require github.com/goliatone/old v1.0.0
+`
+	nestedMod := `module github.com/goliatone/app/adapter
+
+go 1.24
+
+require github.com/goliatone/older v1.0.0
+`
+	if err := os.MkdirAll(filepath.Join(nestedDir, "pkg"), 0o755); err != nil {
+		t.Fatalf("create nested module: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repositoryRoot, "go.mod"), []byte(rootMod), 0o644); err != nil {
+		t.Fatalf("write root go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, "go.mod"), []byte(nestedMod), 0o644); err != nil {
+		t.Fatalf("write nested go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repositoryRoot, "go.work"), []byte("go 1.24\nuse (\n.\n./adapter\n)\n"), 0o644); err != nil {
+		t.Fatalf("write go.work: %v", err)
+	}
+	writeLocalCommandSibling(t, workspace, "old", "v1.1.0")
+	writeLocalCommandSibling(t, workspace, "older", "v1.2.0")
+	return repositoryRoot, nestedDir, workspace
 }
 
 func prependBlockingGoBinary(t *testing.T) {

@@ -108,20 +108,22 @@ The plan output lists repositories, branches, commands, and PR metadata without 
 
 ### Local Dependency Updates
 
-Use the local workflow when the current Go module depends on sibling repositories in the same workspace and you want to update those dependencies from each sibling's local `.version` or `VERSION` file. This does not use manifests, GitHub, branches, pull requests, or release state.
+Use the local workflow when one or more Go modules in the current repository depend on sibling repositories and you want to update those dependencies from each sibling's local `.version` or `VERSION` file. The same command works from any directory in a single-module, nested multi-module, or `go.work` repository. This does not use manifests, GitHub, branches, pull requests, or release state.
 
 ```bash
 # Preview outdated direct github.com/goliatone/* dependencies
 cascade plan local
 
-# Apply the same local plan from the current module
+# Apply the same plan across every module in the repository
 cascade update local
 
-# Preview the update path without changing go.mod or go.sum
+# Preview the repository-wide update without changing any go.mod or go.sum
 cascade update local --dry-run
 ```
 
-By default, local commands inspect direct `require` entries matching `github.com/goliatone/*`, skip indirect dependencies, and skip dependencies with `replace` directives. Workspace resolution uses `--workspace`, `CASCADE_WORKSPACE`, config file `workspace.path`, then local detection. If the workspace cannot be detected from the current module location, pass it explicitly:
+Cascade determines the enclosing repository automatically. When that repository contains `go.work`, its in-repository `use` entries define the modules to process. Without `go.work`, Cascade discovers valid `go.mod` files under the repository while excluding `.git`, `vendor`, `node_modules`, cache directories, and test-fixture trees. External `go.work use` entries are reported and skipped so this repository-local command does not mutate other repositories.
+
+By default, local commands inspect direct `require` entries matching `github.com/goliatone/*` in every discovered module, skip indirect dependencies, and skip dependencies with `replace` directives. `--workspace` is independent from Go's `go.work`: it selects the directory containing sibling dependency repositories. Resolution uses `--workspace`, `CASCADE_WORKSPACE`, config file `workspace.path`, then local detection. If that sibling workspace cannot be detected, pass it explicitly:
 
 ```bash
 cascade plan local --workspace="$HOME/Development/GO/src/github.com/goliatone"
@@ -140,13 +142,13 @@ Useful filters:
 - `--no-hooks` - for `update local`, skip configured local update hooks
 - `--timeout` - bound the complete `go get` and `go mod tidy` apply phase (default: 5 minutes)
 
-`cascade update local` combines outdated candidates into one `go get` command so Go resolves the module graph once on the normal success path. If that combined command fails, Cascade retries candidates individually to preserve partial updates and identify the failing modules. It then runs `go mod tidy` once after at least one successful update unless `--no-tidy` is set. The configured `--timeout` covers this complete apply phase; timeout or cancellation stops new fallback work and prevents tidy from starting after interruption.
+Cascade plans every repository module before making changes. `cascade update local` then processes modules in deterministic order. Within each module it combines outdated candidates into one `go get` command so Go resolves that module graph once on the normal success path. If the combined command fails, Cascade retries that module's candidates individually to preserve partial updates and identify failures. It runs `go mod tidy` once in each changed module unless `--no-tidy` is set. Ordinary failures do not prevent later modules from being attempted, but the final command fails after reporting all results. The configured `--timeout` covers the complete repository-wide apply phase; timeout or cancellation stops new module work. Cascade does not run `go work sync` implicitly.
 
 Interactive terminals show colored spinner progress while Cascade plans, updates dependencies, tidies the module, and runs hooks. Redirected output uses stable plain-text progress on stderr with no ANSI animation, while the final result remains on stdout. Use `--quiet` to suppress progress, `NO_COLOR=1` to disable colors, or `--verbose` to replace animation with detailed progress and stream `go` command output.
 
 #### Local Update Hooks
 
-Configure optional post-update hooks in `.cascade.yaml` under `hooks.update.local`. Hooks run from the current module directory by default, in the order listed for each phase:
+Configure optional post-update hooks in `.cascade.yaml` under `hooks.update.local`. Hooks run once for the aggregate repository result, from the repository root by default, in the order listed for each phase:
 
 ```yaml
 hooks:
@@ -196,7 +198,9 @@ hooks:
               run: go test ./...
 ```
 
-Rule matchers support `modules`, `module_prefixes`, `workspaces`, `workspace_prefixes`, `module_dirs`, `module_dir_prefixes`, `exclude_modules`, and `exclude_module_prefixes`. Module prefixes match complete module path segments, so `github.com/acme/app` matches `github.com/acme/app/pkg` but not `github.com/acme/application`. Empty `match` criteria are unconditional for that rule. Unsupported local hook fields or phases are rejected during config loading instead of being ignored.
+Rule matchers support `modules`, `module_prefixes`, `workspaces`, `workspace_prefixes`, `module_dirs`, `module_dir_prefixes`, `exclude_modules`, and `exclude_module_prefixes`. Repository-wide rules match when any discovered module satisfies positive module or module-directory criteria; an exclusion matching any discovered module excludes the rule. Module prefixes match complete module path segments, so `github.com/acme/app` matches `github.com/acme/app/pkg` but not `github.com/acme/application`. Empty `match` criteria are unconditional for that rule. Unsupported local hook fields or phases are rejected during config loading instead of being ignored.
+
+Hook environments retain the existing `CASCADE_MODULE`, `CASCADE_MODULE_DIR`, and update status values. Repository-wide runs also expose `CASCADE_MODULES` (comma-separated), `CASCADE_MODULE_DIRS` (path-list separated), `CASCADE_MODULE_COUNT`, and `CASCADE_TIDY_COUNT`. `CASCADE_MODULE_DIR` is the repository root and `CASCADE_UPDATED_COUNT` is the aggregate applied update count.
 
 A project can override an inherited rule by reusing the same `name`, or disable inherited rules by name:
 
@@ -258,8 +262,8 @@ cascade revert go-errors@v1.4.0
 
 - `cascade manifest generate` – scaffold manifests with defaults, dependents, and notifications
 - `cascade plan` – preview work items from a manifest or flags
-- `cascade plan local` – preview local sibling dependency updates
-- `cascade update local` – apply local sibling dependency updates
+- `cascade plan local` – preview local sibling dependency updates across the current repository
+- `cascade update local` – apply local sibling dependency updates across the current repository
 - `cascade watch` – run a local shell command when watched files change
 - `cascade release` – execute the plan (honors `--dry-run`)
 - `cascade resume` – resume an interrupted release using `module@version`

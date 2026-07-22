@@ -201,18 +201,18 @@ func (p *localApplyProgress) Notify(event localupdate.ApplyEvent) {
 		p.current = p.progress.Start(p.withModule(event, fmt.Sprintf("Updating %s to %s (%d/%d)", event.Item.Module, event.Item.LocalVersion, event.Index, event.Total)))
 	case localupdate.ApplyItemFinished:
 		if event.Err != nil {
-			p.current.Fail(fmt.Sprintf("Failed to update %s", event.Item.Module))
+			p.current.Fail(p.withModule(event, fmt.Sprintf("Failed to update %s", event.Item.Module)))
 		} else {
-			p.current.Success(fmt.Sprintf("Updated %s to %s", event.Item.Module, event.Item.LocalVersion))
+			p.current.Success(p.withModule(event, fmt.Sprintf("Updated %s to %s", event.Item.Module, event.Item.LocalVersion)))
 		}
 		p.current = nil
 	case localupdate.ApplyTidyStarted:
 		p.current = p.progress.Start(p.withModule(event, "Running go mod tidy"))
 	case localupdate.ApplyTidyFinished:
 		if event.Err != nil {
-			p.current.Fail("go mod tidy failed")
+			p.current.Fail(p.withModule(event, "go mod tidy failed"))
 		} else {
-			p.current.Success("go mod tidy completed")
+			p.current.Success(p.withModule(event, "go mod tidy completed"))
 		}
 		p.current = nil
 	}
@@ -415,7 +415,7 @@ func renderLocalRepositoryPlan(out io.Writer, plan localupdate.RepositoryPlan, t
 		}
 		renderLocalSummary(out, modulePlan.Items)
 	}
-	renderRepositorySummary(out, len(plan.Plans), aggregatePlanItems(plan), plan.Updates(), 0)
+	renderRepositorySummary(out, len(plan.Plans), aggregatePlanItems(plan), plan.Updates(), 0, 0)
 }
 
 func renderLocalApplyResult(out io.Writer, result *localupdate.ApplyResult) {
@@ -493,7 +493,7 @@ func renderLocalRepositoryApplyResult(out io.Writer, result *localupdate.Reposit
 		}
 		renderLocalSummary(out, moduleResult.Items)
 	}
-	renderRepositorySummary(out, len(result.Plan.Plans), items, result.UpdatedCount(), result.TidyCount())
+	renderRepositorySummary(out, len(result.Plan.Plans), items, result.UpdatedCount(), result.TidyCount(), repositoryFailureCount(result))
 }
 
 func aggregatePlanItems(plan localupdate.RepositoryPlan) []localupdate.Item {
@@ -504,14 +504,39 @@ func aggregatePlanItems(plan localupdate.RepositoryPlan) []localupdate.Item {
 	return items
 }
 
-func renderRepositorySummary(out io.Writer, modules int, items []localupdate.Item, updates, tidies int) {
+func renderRepositorySummary(out io.Writer, modules int, items []localupdate.Item, updates, tidies, failures int) {
 	fmt.Fprintln(out, "\nRepository summary:")
 	fmt.Fprintf(out, "  modules: %d\n", modules)
 	fmt.Fprintf(out, "  candidates: %d\n", len(items))
 	fmt.Fprintf(out, "  updates: %d\n", updates)
-	if tidies > 0 {
-		fmt.Fprintf(out, "  tidied-modules: %d\n", tidies)
+	fmt.Fprintf(out, "  tidied-modules: %d\n", tidies)
+	fmt.Fprintf(out, "  failures: %d\n", failures)
+}
+
+func repositoryFailureCount(result *localupdate.RepositoryApplyResult) int {
+	if result == nil {
+		return 0
 	}
+	count := 0
+	for _, moduleResult := range result.Results {
+		if moduleResult == nil {
+			continue
+		}
+		moduleFailures := 0
+		for _, item := range moduleResult.Items {
+			if item.Status == localupdate.StatusApplyFailed {
+				moduleFailures++
+			}
+		}
+		if moduleResult.TidyFailed {
+			moduleFailures++
+		}
+		if moduleResult.HasFailures && moduleFailures == 0 {
+			moduleFailures = 1
+		}
+		count += moduleFailures
+	}
+	return count
 }
 
 func renderExternalWorkUses(out io.Writer, paths []string) {
