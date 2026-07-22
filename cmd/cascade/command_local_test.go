@@ -17,16 +17,60 @@ import (
 
 func TestLocalCommandsRegistered(t *testing.T) {
 	root := newRootCommand()
-	if _, _, err := root.Find([]string{"plan", "local"}); err != nil {
+	planLocal, _, err := root.Find([]string{"plan", "local"})
+	if err != nil {
 		t.Fatalf("plan local not registered: %v", err)
 	}
-	if _, _, err := root.Find([]string{"update", "local"}); err != nil {
+	updateLocal, _, err := root.Find([]string{"update", "local"})
+	if err != nil {
 		t.Fatalf("update local not registered: %v", err)
+	}
+	if planLocal.Flags().Lookup("gitignore") == nil || updateLocal.Flags().Lookup("gitignore") == nil {
+		t.Fatal("plan local and update local must expose --gitignore")
 	}
 	for _, subcmd := range root.Commands() {
 		if subcmd.Name() == "update" && isProductionCommand(subcmd) {
 			t.Fatalf("update command must not require production credentials")
 		}
+	}
+}
+
+func TestPlanLocalGitIgnoreFlagExcludesIgnoredModules(t *testing.T) {
+	moduleDir, _ := writeLocalCommandWorkspace(t)
+	if err := os.MkdirAll(filepath.Join(moduleDir, ".ignored", "nested"), 0o755); err != nil {
+		t.Fatalf("create ignored module: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(moduleDir, ".ignored", "nested", "go.mod"), []byte("module github.com/goliatone/ignored\n\ngo 1.24\n"), 0o644); err != nil {
+		t.Fatalf("write ignored go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(moduleDir, ".gitignore"), []byte(".ignored/\n"), 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+	t.Chdir(moduleDir)
+
+	cmd := newPlanLocalCommand()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"--gitignore"})
+
+	originalContainer := container
+	originalConfig := cfg
+	container = nil
+	cfg = config.New()
+	defer func() {
+		container = originalContainer
+		cfg = originalConfig
+	}()
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute plan local --gitignore: %v\n%s", err, errOut.String())
+	}
+	if strings.Contains(out.String(), "github.com/goliatone/ignored") {
+		t.Fatalf("ignored module was included in plan:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "Local dependency plan for github.com/goliatone/app") {
+		t.Fatalf("expected single-module output after pruning ignored module:\n%s", out.String())
 	}
 }
 

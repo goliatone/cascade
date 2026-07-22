@@ -1,6 +1,7 @@
 package localupdate
 
 import (
+	"bufio"
 	"fmt"
 	"io/fs"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"golang.org/x/mod/modfile"
 )
 
@@ -15,14 +17,20 @@ var repositoryScanExcludedDirs = map[string]bool{
 	".cache":       true,
 	".git":         true,
 	".gocache":     true,
+	".gomodcache":  true,
 	".gopath":      true,
+	".tmp":         true,
 	"fixtures":     true,
 	"node_modules": true,
 	"testdata":     true,
 	"vendor":       true,
 }
 
-func DiscoverRepository(startDir string) (Repository, error) {
+type DiscoveryOptions struct {
+	RespectGitIgnore bool
+}
+
+func DiscoverRepository(startDir string, options DiscoveryOptions) (Repository, error) {
 	startDir = strings.TrimSpace(startDir)
 	if startDir == "" {
 		cwd, err := os.Getwd()
@@ -46,7 +54,7 @@ func DiscoverRepository(startDir string) (Repository, error) {
 		repository.WorkFile = workFile
 		repository.Modules, repository.ExternalUses, err = modulesFromWorkFile(repositoryRoot, workFile)
 	} else {
-		repository.Modules, err = modulesFromRepositoryTree(repositoryRoot)
+		repository.Modules, err = modulesFromRepositoryTree(repositoryRoot, options)
 	}
 	if err != nil {
 		return Repository{}, err
@@ -149,16 +157,39 @@ func modulesFromWorkFile(repositoryRoot, workFilePath string) ([]ModuleTarget, [
 	return modules, external, nil
 }
 
-func modulesFromRepositoryTree(repositoryRoot string) ([]ModuleTarget, error) {
+func modulesFromRepositoryTree(repositoryRoot string, options DiscoveryOptions) ([]ModuleTarget, error) {
 	modules := make([]ModuleTarget, 0, 1)
+	ignorePatterns := make([]gitignore.Pattern, 0)
+	ignoreMatcher := gitignore.NewMatcher(ignorePatterns)
 	err := filepath.WalkDir(repositoryRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
+		relativePath, err := filepath.Rel(repositoryRoot, path)
+		if err != nil {
+			return fmt.Errorf("resolve repository-relative path for %s: %w", path, err)
+		}
+		pathParts := repositoryPathParts(relativePath)
 		if entry.IsDir() {
 			if path != repositoryRoot && repositoryScanExcludedDirs[entry.Name()] {
 				return filepath.SkipDir
 			}
+			if path != repositoryRoot && options.RespectGitIgnore && ignoreMatcher.Match(pathParts, true) {
+				return filepath.SkipDir
+			}
+			if options.RespectGitIgnore {
+				patterns, err := readGitIgnorePatterns(path, pathParts)
+				if err != nil {
+					return err
+				}
+				if len(patterns) > 0 {
+					ignorePatterns = append(ignorePatterns, patterns...)
+					ignoreMatcher = gitignore.NewMatcher(ignorePatterns)
+				}
+			}
+			return nil
+		}
+		if options.RespectGitIgnore && ignoreMatcher.Match(pathParts, false) {
 			return nil
 		}
 		if entry.Name() != "go.mod" {
@@ -175,6 +206,39 @@ func modulesFromRepositoryTree(repositoryRoot string) ([]ModuleTarget, error) {
 		return nil, fmt.Errorf("discover repository Go modules: %w", err)
 	}
 	return modules, nil
+}
+
+func readGitIgnorePatterns(directory string, domain []string) ([]gitignore.Pattern, error) {
+	ignorePath := filepath.Join(directory, ".gitignore")
+	file, err := os.Open(ignorePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", ignorePath, err)
+	}
+	defer file.Close()
+
+	patterns := make([]gitignore.Pattern, 0)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, gitignore.ParsePattern(line, domain))
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read %s: %w", ignorePath, err)
+	}
+	return patterns, nil
+}
+
+func repositoryPathParts(relativePath string) []string {
+	if relativePath == "." || relativePath == "" {
+		return nil
+	}
+	return strings.Split(filepath.ToSlash(relativePath), "/")
 }
 
 func readModuleTarget(moduleDir string) (ModuleTarget, error) {

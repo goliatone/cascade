@@ -23,6 +23,7 @@ type localCommandOptions struct {
 	IncludeIndirect bool
 	Only            []string
 	Exclude         []string
+	GitIgnore       bool
 	NoTidy          bool
 	NoHooks         bool
 }
@@ -270,7 +271,9 @@ func buildLocalRepositoryPlan(cmd *cobra.Command, opts localCommandOptions) (loc
 	if err != nil {
 		return localupdate.RepositoryPlan{}, newValidationError("could not determine the current directory", err)
 	}
-	repository, err := localupdate.DiscoverRepository(cwd)
+	repository, err := localupdate.DiscoverRepository(cwd, localupdate.DiscoveryOptions{
+		RespectGitIgnore: opts.GitIgnore,
+	})
 	if err != nil {
 		return localupdate.RepositoryPlan{}, newValidationError("could not discover repository Go modules", err)
 	}
@@ -371,6 +374,7 @@ func addLocalPlanFlags(cmd *cobra.Command, opts *localCommandOptions) {
 	cmd.Flags().BoolVar(&opts.IncludeIndirect, "include-indirect", false, "Include indirect require entries")
 	cmd.Flags().StringSliceVar(&opts.Only, "only", []string{}, "Only include these module paths or basenames (repeatable or comma-separated)")
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", []string{}, "Exclude these module paths or basenames (repeatable or comma-separated)")
+	cmd.Flags().BoolVar(&opts.GitIgnore, "gitignore", false, "Exclude files and directories matched by repository .gitignore files")
 }
 
 func renderLocalPlan(out io.Writer, plan localupdate.Plan, title string) {

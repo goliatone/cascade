@@ -26,7 +26,7 @@ use (
 	startDir := filepath.Join(repositoryRoot, "adapters", "admin", "pkg")
 	mustMkdirAll(t, startDir)
 
-	repository, err := DiscoverRepository(startDir)
+	repository, err := DiscoverRepository(startDir, DiscoveryOptions{})
 	if err != nil {
 		t.Fatalf("discover repository: %v", err)
 	}
@@ -52,11 +52,11 @@ func TestDiscoverRepositoryScansNestedModulesWithoutGoWork(t *testing.T) {
 	mustMkdirAll(t, filepath.Join(repositoryRoot, ".git"))
 	mustWriteModuleFile(t, repositoryRoot, "github.com/goliatone/app", "")
 	mustWriteModuleFile(t, filepath.Join(repositoryRoot, "adapters", "admin"), "github.com/goliatone/app/adapters/admin", "")
-	for _, excluded := range []string{"vendor", "node_modules", "testdata", "fixtures", ".cache"} {
+	for _, excluded := range []string{"vendor", "node_modules", "testdata", "fixtures", ".cache", ".gomodcache", ".tmp"} {
 		mustWriteModuleFile(t, filepath.Join(repositoryRoot, excluded, "ignored"), "github.com/goliatone/ignored/"+excluded, "")
 	}
 
-	repository, err := DiscoverRepository(repositoryRoot)
+	repository, err := DiscoverRepository(repositoryRoot, DiscoveryOptions{})
 	if err != nil {
 		t.Fatalf("discover repository: %v", err)
 	}
@@ -68,13 +68,61 @@ func TestDiscoverRepositoryScansNestedModulesWithoutGoWork(t *testing.T) {
 	}
 }
 
+func TestDiscoverRepositoryRespectsGitIgnoreWhenEnabled(t *testing.T) {
+	repositoryRoot := filepath.Join(t.TempDir(), "app")
+	mustMkdirAll(t, filepath.Join(repositoryRoot, ".git"))
+	mustWriteModuleFile(t, repositoryRoot, "github.com/goliatone/app", "")
+	mustWriteModuleFile(t, filepath.Join(repositoryRoot, "ignored", "module"), "github.com/goliatone/ignored", "")
+	mustWriteModuleFile(t, filepath.Join(repositoryRoot, "custom", "dropped"), "github.com/goliatone/dropped", "")
+	mustWriteModuleFile(t, filepath.Join(repositoryRoot, "custom", "kept"), "github.com/goliatone/kept", "")
+	mustWriteModuleFile(t, filepath.Join(repositoryRoot, "custom", "kept", "nested-ignored"), "github.com/goliatone/nested-ignored", "")
+	mustWriteFile(t, filepath.Join(repositoryRoot, ".gitignore"), "ignored/\ncustom/*\n!custom/kept/\n")
+	mustWriteFile(t, filepath.Join(repositoryRoot, "custom", "kept", ".gitignore"), "nested-ignored/\n")
+
+	withoutIgnore, err := DiscoverRepository(repositoryRoot, DiscoveryOptions{})
+	if err != nil {
+		t.Fatalf("discover repository without gitignore: %v", err)
+	}
+	if len(withoutIgnore.Modules) != 5 {
+		t.Fatalf("expected every module without gitignore matching, got %#v", withoutIgnore.Modules)
+	}
+
+	withIgnore, err := DiscoverRepository(repositoryRoot, DiscoveryOptions{RespectGitIgnore: true})
+	if err != nil {
+		t.Fatalf("discover repository with gitignore: %v", err)
+	}
+	if len(withIgnore.Modules) != 2 {
+		t.Fatalf("expected root and negated module, got %#v", withIgnore.Modules)
+	}
+	if withIgnore.Modules[0].ModulePath != "github.com/goliatone/app" || withIgnore.Modules[1].ModulePath != "github.com/goliatone/kept" {
+		t.Fatalf("unexpected modules after gitignore matching: %#v", withIgnore.Modules)
+	}
+}
+
+func TestDiscoverRepositoryKeepsGoWorkModulesAuthoritativeWithGitIgnore(t *testing.T) {
+	repositoryRoot := filepath.Join(t.TempDir(), "app")
+	mustMkdirAll(t, filepath.Join(repositoryRoot, ".git"))
+	mustWriteModuleFile(t, repositoryRoot, "github.com/goliatone/app", "")
+	mustWriteModuleFile(t, filepath.Join(repositoryRoot, "ignored"), "github.com/goliatone/ignored", "")
+	mustWriteFile(t, filepath.Join(repositoryRoot, ".gitignore"), "ignored/\n")
+	mustWriteFile(t, filepath.Join(repositoryRoot, "go.work"), "go 1.24\nuse (\n.\n./ignored\n)\n")
+
+	repository, err := DiscoverRepository(repositoryRoot, DiscoveryOptions{RespectGitIgnore: true})
+	if err != nil {
+		t.Fatalf("discover repository: %v", err)
+	}
+	if len(repository.Modules) != 2 || repository.Modules[1].ModulePath != "github.com/goliatone/ignored" {
+		t.Fatalf("expected explicit go.work module to remain authoritative, got %#v", repository.Modules)
+	}
+}
+
 func TestDiscoverRepositoryFallsBackToSingleEnclosingModuleWithoutGit(t *testing.T) {
 	moduleDir := filepath.Join(t.TempDir(), "app")
 	mustWriteModuleFile(t, moduleDir, "github.com/goliatone/app", "")
 	startDir := filepath.Join(moduleDir, "pkg", "feature")
 	mustMkdirAll(t, startDir)
 
-	repository, err := DiscoverRepository(startDir)
+	repository, err := DiscoverRepository(startDir, DiscoveryOptions{})
 	if err != nil {
 		t.Fatalf("discover repository: %v", err)
 	}
@@ -90,7 +138,7 @@ func TestDiscoverRepositoryRejectsInvalidInRepositoryWorkModule(t *testing.T) {
 	mustMkdirAll(t, filepath.Join(repositoryRoot, "broken"))
 	mustWriteFile(t, filepath.Join(repositoryRoot, "go.work"), "go 1.24\nuse (\n.\n./broken\n)\n")
 
-	if _, err := DiscoverRepository(repositoryRoot); err == nil {
+	if _, err := DiscoverRepository(repositoryRoot, DiscoveryOptions{}); err == nil {
 		t.Fatal("expected invalid go.work module to fail discovery")
 	}
 }
