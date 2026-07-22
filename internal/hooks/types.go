@@ -52,11 +52,15 @@ func (p LocalUpdatePlan) SelectedPhases(updateSucceeded bool) []PhaseHooks {
 type Context struct {
 	Command      string
 	Module       string
+	Modules      []string
 	ModuleDir    string
+	ModuleDirs   []string
+	ModuleCount  int
 	Workspace    string
 	UpdateStatus string
 	UpdatedCount int
 	TidyRan      bool
+	TidyCount    int
 	TidyFailed   bool
 	Env          map[string]string
 }

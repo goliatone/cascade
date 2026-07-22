@@ -66,6 +66,46 @@ func (p Plan) Updates() []Item {
 	return items
 }
 
+type ModuleTarget struct {
+	ModulePath string
+	ModuleDir  string
+}
+
+type Repository struct {
+	Root         string
+	WorkFile     string
+	Modules      []ModuleTarget
+	ExternalUses []string
+}
+
+type RepositoryPlan struct {
+	Repository Repository
+	Plans      []Plan
+}
+
+func (p RepositoryPlan) Updates() int {
+	count := 0
+	for _, plan := range p.Plans {
+		count += len(plan.Updates())
+	}
+	return count
+}
+
+func (p RepositoryPlan) Candidates() int {
+	count := 0
+	for _, plan := range p.Plans {
+		count += len(plan.Items)
+	}
+	return count
+}
+
+func (p RepositoryPlan) Workspace() string {
+	if len(p.Plans) == 0 {
+		return ""
+	}
+	return p.Plans[0].Workspace
+}
+
 type ApplyOptions struct {
 	DryRun bool
 	Tidy   bool
@@ -85,12 +125,14 @@ const (
 )
 
 type ApplyEvent struct {
-	Kind     ApplyEventKind
-	Item     Item
-	Index    int
-	Total    int
-	Err      error
-	Duration time.Duration
+	Kind      ApplyEventKind
+	Module    string
+	ModuleDir string
+	Item      Item
+	Index     int
+	Total     int
+	Err       error
+	Duration  time.Duration
 }
 
 type ApplyResult struct {
@@ -103,6 +145,51 @@ type ApplyResult struct {
 	TidyError      error
 	Interruption   error
 	HasFailures    bool
+}
+
+type RepositoryApplyResult struct {
+	Plan         RepositoryPlan
+	Results      []*ApplyResult
+	Interruption error
+	HasFailures  bool
+}
+
+func (r *RepositoryApplyResult) UpdatedCount() int {
+	count := 0
+	if r == nil {
+		return count
+	}
+	for _, result := range r.Results {
+		if result != nil {
+			count += result.GoGetCount
+		}
+	}
+	return count
+}
+
+func (r *RepositoryApplyResult) TidyCount() int {
+	count := 0
+	if r == nil {
+		return count
+	}
+	for _, result := range r.Results {
+		if result != nil && result.TidyRun {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *RepositoryApplyResult) TidyFailed() bool {
+	if r == nil {
+		return false
+	}
+	for _, result := range r.Results {
+		if result != nil && result.TidyFailed {
+			return true
+		}
+	}
+	return false
 }
 
 func NormalizeRequest(req Request) Request {

@@ -137,11 +137,15 @@ func buildEnv(hookCtx Context, hookEnv map[string]string) []string {
 	env = append(env,
 		"CASCADE_COMMAND="+valueOrDefault(hookCtx.Command, "update local"),
 		"CASCADE_MODULE="+hookCtx.Module,
+		"CASCADE_MODULES="+strings.Join(hookCtx.Modules, ","),
 		"CASCADE_MODULE_DIR="+hookCtx.ModuleDir,
+		"CASCADE_MODULE_DIRS="+strings.Join(hookCtx.ModuleDirs, string(os.PathListSeparator)),
+		"CASCADE_MODULE_COUNT="+strconv.Itoa(hookCtx.ModuleCount),
 		"CASCADE_WORKSPACE="+hookCtx.Workspace,
 		"CASCADE_UPDATE_STATUS="+hookCtx.UpdateStatus,
 		"CASCADE_UPDATED_COUNT="+strconv.Itoa(hookCtx.UpdatedCount),
 		"CASCADE_TIDY_RAN="+strconv.FormatBool(hookCtx.TidyRan),
+		"CASCADE_TIDY_COUNT="+strconv.Itoa(hookCtx.TidyCount),
 		"CASCADE_TIDY_FAILED="+strconv.FormatBool(hookCtx.TidyFailed),
 	)
 	for key, value := range hookEnv {

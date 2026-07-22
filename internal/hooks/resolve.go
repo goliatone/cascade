@@ -120,21 +120,21 @@ func matchedRule(candidate ruleCandidate) MatchedRule {
 }
 
 func ruleMatches(match config.LocalUpdateHookMatch, hookCtx Context, baseDir string) (bool, string) {
-	module := strings.TrimSpace(hookCtx.Module)
+	modules := normalizedModuleValues(hookCtx.Module, hookCtx.Modules)
 	workspace := normalizePathForMatch(hookCtx.Workspace, "")
-	moduleDir := normalizePathForMatch(hookCtx.ModuleDir, "")
+	moduleDirs := normalizedPathValues(hookCtx.ModuleDir, hookCtx.ModuleDirs)
 
-	if matchesAnyString(module, match.ExcludeModules) {
+	if anyStringMatches(modules, match.ExcludeModules) {
 		return false, "module excluded"
 	}
-	if matchesAnyModulePrefix(module, match.ExcludeModulePrefixes) {
+	if anyModulePrefixMatches(modules, match.ExcludeModulePrefixes) {
 		return false, "module prefix excluded"
 	}
 
-	if len(match.Modules) > 0 && !matchesAnyString(module, match.Modules) {
+	if len(match.Modules) > 0 && !anyStringMatches(modules, match.Modules) {
 		return false, "module did not match"
 	}
-	if len(match.ModulePrefixes) > 0 && !matchesAnyModulePrefix(module, match.ModulePrefixes) {
+	if len(match.ModulePrefixes) > 0 && !anyModulePrefixMatches(modules, match.ModulePrefixes) {
 		return false, "module prefix did not match"
 	}
 	if len(match.Workspaces) > 0 && !matchesAnyPath(workspace, match.Workspaces, baseDir) {
@@ -143,13 +143,79 @@ func ruleMatches(match config.LocalUpdateHookMatch, hookCtx Context, baseDir str
 	if len(match.WorkspacePrefixes) > 0 && !matchesAnyPathPrefix(workspace, match.WorkspacePrefixes, baseDir) {
 		return false, "workspace prefix did not match"
 	}
-	if len(match.ModuleDirs) > 0 && !matchesAnyPath(moduleDir, match.ModuleDirs, baseDir) {
+	if len(match.ModuleDirs) > 0 && !anyPathMatches(moduleDirs, match.ModuleDirs, baseDir) {
 		return false, "module dir did not match"
 	}
-	if len(match.ModuleDirPrefixes) > 0 && !matchesAnyPathPrefix(moduleDir, match.ModuleDirPrefixes, baseDir) {
+	if len(match.ModuleDirPrefixes) > 0 && !anyPathPrefixMatches(moduleDirs, match.ModuleDirPrefixes, baseDir) {
 		return false, "module dir prefix did not match"
 	}
 	return true, ""
+}
+
+func normalizedModuleValues(primary string, values []string) []string {
+	all := append([]string{primary}, values...)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(all))
+	for _, value := range all {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func normalizedPathValues(primary string, values []string) []string {
+	all := append([]string{primary}, values...)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(all))
+	for _, value := range all {
+		value = normalizePathForMatch(value, "")
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func anyStringMatches(values, candidates []string) bool {
+	for _, value := range values {
+		if matchesAnyString(value, candidates) {
+			return true
+		}
+	}
+	return false
+}
+
+func anyModulePrefixMatches(values, prefixes []string) bool {
+	for _, value := range values {
+		if matchesAnyModulePrefix(value, prefixes) {
+			return true
+		}
+	}
+	return false
+}
+
+func anyPathMatches(values, candidates []string, baseDir string) bool {
+	for _, value := range values {
+		if matchesAnyPath(value, candidates, baseDir) {
+			return true
+		}
+	}
+	return false
+}
+
+func anyPathPrefixMatches(values, prefixes []string, baseDir string) bool {
+	for _, value := range values {
+		if matchesAnyPathPrefix(value, prefixes, baseDir) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchesAnyString(value string, candidates []string) bool {
