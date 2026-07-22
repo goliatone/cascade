@@ -121,7 +121,7 @@ cascade update local
 cascade update local --dry-run
 ```
 
-Cascade determines the enclosing repository automatically. When that repository contains `go.work`, its in-repository `use` entries define the modules to process. Without `go.work`, Cascade discovers valid `go.mod` files under the repository while excluding `.git`, `vendor`, `node_modules`, cache directories, and test-fixture trees. External `go.work use` entries are reported and skipped so this repository-local command does not mutate other repositories.
+Cascade determines the enclosing repository automatically. When that repository contains `go.work`, its in-repository `use` entries define the modules to process. Without `go.work`, Cascade discovers valid `go.mod` files under the repository while excluding `.git`, `vendor`, `node_modules`, known cache directories such as `.gomodcache`, temporary dependency trees such as `.tmp`, and test-fixture trees. Pass `--gitignore` to additionally exclude paths matched by repository-root or nested `.gitignore` files. External `go.work use` entries are reported and skipped so this repository-local command does not mutate other repositories.
 
 By default, local commands inspect direct `require` entries matching `github.com/goliatone/*` in every discovered module, skip indirect dependencies, and skip dependencies with `replace` directives. `--workspace` is independent from Go's `go.work`: it selects the directory containing sibling dependency repositories. Resolution uses `--workspace`, `CASCADE_WORKSPACE`, config file `workspace.path`, then local detection. If that sibling workspace cannot be detected, pass it explicitly:
 
@@ -138,13 +138,14 @@ Useful filters:
 - `--include-indirect` - include indirect `require` entries
 - `--only` - include only specific module paths or basenames
 - `--exclude` - skip specific module paths or basenames
+- `--gitignore` - exclude repository paths matched by root or nested `.gitignore` files during fallback module discovery
 - `--no-tidy` - for `update local`, skip the default `go mod tidy`
 - `--no-hooks` - for `update local`, skip configured local update hooks
 - `--timeout` - bound the complete `go get` and `go mod tidy` apply phase (default: 5 minutes)
 
 Cascade plans every repository module before making changes. `cascade update local` then processes modules in deterministic order. Within each module it combines outdated candidates into one `go get` command so Go resolves that module graph once on the normal success path. If the combined command fails, Cascade retries that module's candidates individually to preserve partial updates and identify failures. It runs `go mod tidy` once in each changed module unless `--no-tidy` is set. Ordinary failures do not prevent later modules from being attempted, but the final command fails after reporting all results. The configured `--timeout` covers the complete repository-wide apply phase; timeout or cancellation stops new module work. Cascade does not run `go work sync` implicitly.
 
-Interactive terminals show colored spinner progress while Cascade plans, updates dependencies, tidies the module, and runs hooks. Redirected output uses stable plain-text progress on stderr with no ANSI animation, while the final result remains on stdout. Use `--quiet` to suppress progress, `NO_COLOR=1` to disable colors, or `--verbose` to replace animation with detailed progress and stream `go` command output.
+Interactive terminals show colored spinner progress while Cascade plans, updates dependencies, tidies the module, and runs hooks. Long progress labels are truncated to the current terminal width so animation stays on one row. Redirected output uses stable plain-text progress on stderr with no ANSI animation, while the final result remains on stdout. Use `--quiet` to suppress progress, `NO_COLOR=1` to disable colors, or `--verbose` to replace animation with detailed progress and stream `go` command output.
 
 #### Local Update Hooks
 
