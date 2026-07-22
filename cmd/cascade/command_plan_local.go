@@ -32,8 +32,9 @@ func newPlanLocalCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "local",
 		Short: "Preview local sibling dependency updates",
-		Long: `Preview local Go dependency updates by comparing the current module's
-direct dependencies against sibling repositories in the local workspace.`,
+		Long: `Preview local Go dependency updates across every module in the current
+repository. Cascade uses go.work when present and discovers repository go.mod
+files otherwise, then compares their dependencies with sibling repositories.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPlanLocal(cmd, opts)
@@ -46,35 +47,25 @@ direct dependencies against sibling repositories in the local workspace.`,
 func runPlanLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	progress := newLocalProgress(cmd)
 	planning := progress.Start("Planning local dependency updates")
-	req, err := buildLocalRequest(cmd, opts)
+	plan, err := buildLocalRepositoryPlan(cmd, opts)
 	if err != nil {
 		planning.Fail("Could not prepare local dependency plan")
 		return err
 	}
-	plan, err := localupdate.PlanLocal(req)
-	if err != nil {
-		planning.Fail("Could not resolve local dependencies")
-		return newPlanningError("failed to plan local dependency updates", err)
-	}
-	planning.Success(localPlanProgressMessage(plan))
-	renderLocalPlan(cmd.OutOrStdout(), plan, "Local dependency plan")
+	planning.Success(localRepositoryPlanProgressMessage(plan))
+	renderLocalRepositoryPlan(cmd.OutOrStdout(), plan, "Local dependency plan")
 	return nil
 }
 
 func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	progress := newLocalProgress(cmd)
 	planning := progress.Start("Planning local dependency updates")
-	req, err := buildLocalRequest(cmd, opts)
+	plan, err := buildLocalRepositoryPlan(cmd, opts)
 	if err != nil {
 		planning.Fail("Could not prepare local dependency plan")
 		return err
 	}
-	plan, err := localupdate.PlanLocal(req)
-	if err != nil {
-		planning.Fail("Could not resolve local dependencies")
-		return newPlanningError("failed to plan local dependency updates", err)
-	}
-	planning.Success(localPlanProgressMessage(plan))
+	planning.Success(localRepositoryPlanProgressMessage(plan))
 
 	localCfg := localCommandConfig()
 	dryRun := false
@@ -83,10 +74,10 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	if localCfg != nil {
 		dryRun = localCfg.Executor.DryRun
 		executorTimeout = localCfg.Executor.Timeout
-		hookPlan = hooks.ResolveLocalUpdatePlan(localCfg.Hooks.Update.Local, localHookContext(plan, nil, nil), localCfg.ConfigLayers())
+		hookPlan = hooks.ResolveLocalUpdatePlan(localCfg.Hooks.Update.Local, localRepositoryHookContext(plan, nil, nil), localCfg.ConfigLayers())
 	}
 	if dryRun {
-		renderLocalPlan(cmd.OutOrStdout(), plan, "DRY RUN: Local dependency update plan")
+		renderLocalRepositoryPlan(cmd.OutOrStdout(), plan, "DRY RUN: Local dependency update plan")
 		if !hookPlan.Empty() && !opts.NoHooks {
 			renderLocalDryRunHookPlan(cmd.OutOrStdout(), hookPlan)
 		}
@@ -99,20 +90,20 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	if localCfg != nil && localCfg.Logging.Verbose {
 		goOps = executor.NewGoOperationsWithOutput(cmd.ErrOrStderr(), cmd.ErrOrStderr())
 	}
-	applyProgress := newLocalApplyProgress(progress)
-	result, applyErr := localupdate.ApplyPlan(applyCtx, plan, goOps, localupdate.ApplyOptions{
+	applyProgress := newLocalApplyProgress(progress, len(plan.Plans) > 1)
+	result, applyErr := localupdate.ApplyRepository(applyCtx, plan, goOps, localupdate.ApplyOptions{
 		Tidy:   !opts.NoTidy,
 		Notify: applyProgress.Notify,
 	})
 	cancelApply()
-	renderLocalApplyResult(cmd.OutOrStdout(), result)
+	renderLocalRepositoryApplyResult(cmd.OutOrStdout(), result)
 	var hookErr error
 	if !opts.NoHooks {
 		phases := hookPlan.SelectedPhases(applyErr == nil)
 		if len(phases) > 0 {
 			hookCount := countLocalHooks(phases)
 			hookTask := progress.Start(fmt.Sprintf("Running %d local update %s", hookCount, pluralize(hookCount, "hook", "hooks")))
-			hookResults, err := hooks.NewRunner(executorTimeout).Run(ctx, phases, localHookContext(plan, result, applyErr))
+			hookResults, err := hooks.NewRunner(executorTimeout).Run(ctx, phases, localRepositoryHookContext(plan, result, applyErr))
 			if err != nil {
 				hookTask.Fail("Local update hooks failed")
 			} else {
@@ -162,9 +153,10 @@ func newLocalProgress(cmd *cobra.Command) *cliui.Progress {
 	return cliui.NewProgress(cmd.ErrOrStderr(), options)
 }
 
-func localPlanProgressMessage(plan localupdate.Plan) string {
-	updates := len(plan.Updates())
-	return fmt.Sprintf("Planned %d %s across %d candidates", updates, pluralize(updates, "update", "updates"), len(plan.Items))
+func localRepositoryPlanProgressMessage(plan localupdate.RepositoryPlan) string {
+	updates := plan.Updates()
+	modules := len(plan.Plans)
+	return fmt.Sprintf("Planned %d %s across %d candidates in %d %s", updates, pluralize(updates, "update", "updates"), plan.Candidates(), modules, pluralize(modules, "module", "modules"))
 }
 
 func pluralize(count int, singular, plural string) string {
@@ -185,27 +177,28 @@ func countLocalHooks(phases []hooks.PhaseHooks) int {
 type localApplyProgress struct {
 	progress *cliui.Progress
 	current  *cliui.Task
+	multi    bool
 }
 
-func newLocalApplyProgress(progress *cliui.Progress) *localApplyProgress {
-	return &localApplyProgress{progress: progress}
+func newLocalApplyProgress(progress *cliui.Progress, multi bool) *localApplyProgress {
+	return &localApplyProgress{progress: progress, multi: multi}
 }
 
 func (p *localApplyProgress) Notify(event localupdate.ApplyEvent) {
 	switch event.Kind {
 	case localupdate.ApplyBatchStarted:
-		p.current = p.progress.Start(fmt.Sprintf("Updating %d dependencies with one go get", event.Total))
+		p.current = p.progress.Start(p.withModule(event, fmt.Sprintf("Updating %d dependencies with one go get", event.Total)))
 	case localupdate.ApplyBatchFinished:
 		if event.Err != nil {
-			p.current.Warn("Combined dependency update did not complete")
+			p.current.Warn(p.withModule(event, "Combined dependency update did not complete"))
 		} else {
-			p.current.Success(fmt.Sprintf("Updated %d dependencies", event.Total))
+			p.current.Success(p.withModule(event, fmt.Sprintf("Updated %d dependencies", event.Total)))
 		}
 		p.current = nil
 	case localupdate.ApplyBatchFallback:
-		p.progress.Warn(fmt.Sprintf("Retrying %d dependencies individually", event.Total))
+		p.progress.Warn(p.withModule(event, fmt.Sprintf("Retrying %d dependencies individually", event.Total)))
 	case localupdate.ApplyItemStarted:
-		p.current = p.progress.Start(fmt.Sprintf("Updating %s to %s (%d/%d)", event.Item.Module, event.Item.LocalVersion, event.Index, event.Total))
+		p.current = p.progress.Start(p.withModule(event, fmt.Sprintf("Updating %s to %s (%d/%d)", event.Item.Module, event.Item.LocalVersion, event.Index, event.Total)))
 	case localupdate.ApplyItemFinished:
 		if event.Err != nil {
 			p.current.Fail(fmt.Sprintf("Failed to update %s", event.Item.Module))
@@ -214,7 +207,7 @@ func (p *localApplyProgress) Notify(event localupdate.ApplyEvent) {
 		}
 		p.current = nil
 	case localupdate.ApplyTidyStarted:
-		p.current = p.progress.Start("Running go mod tidy")
+		p.current = p.progress.Start(p.withModule(event, "Running go mod tidy"))
 	case localupdate.ApplyTidyFinished:
 		if event.Err != nil {
 			p.current.Fail("go mod tidy failed")
@@ -225,6 +218,13 @@ func (p *localApplyProgress) Notify(event localupdate.ApplyEvent) {
 	}
 }
 
+func (p *localApplyProgress) withModule(event localupdate.ApplyEvent, message string) string {
+	if !p.multi || strings.TrimSpace(event.Module) == "" {
+		return message
+	}
+	return fmt.Sprintf("%s: %s", event.Module, message)
+}
+
 func commandContext(cmd *cobra.Command) context.Context {
 	if cmd == nil || cmd.Context() == nil {
 		return context.Background()
@@ -232,35 +232,51 @@ func commandContext(cmd *cobra.Command) context.Context {
 	return cmd.Context()
 }
 
-func localHookContext(plan localupdate.Plan, result *localupdate.ApplyResult, applyErr error) hooks.Context {
+func localRepositoryHookContext(plan localupdate.RepositoryPlan, result *localupdate.RepositoryApplyResult, applyErr error) hooks.Context {
+	modules := make([]string, 0, len(plan.Plans))
+	moduleDirs := make([]string, 0, len(plan.Plans))
+	module := ""
+	for _, modulePlan := range plan.Plans {
+		modules = append(modules, modulePlan.CurrentModule)
+		moduleDirs = append(moduleDirs, modulePlan.ModuleDir)
+		if modulePlan.ModuleDir == plan.Repository.Root || len(plan.Plans) == 1 {
+			module = modulePlan.CurrentModule
+		}
+	}
 	hookCtx := hooks.Context{
 		Command:      "update local",
-		Module:       plan.CurrentModule,
-		ModuleDir:    plan.ModuleDir,
-		Workspace:    plan.Workspace,
+		Module:       module,
+		Modules:      modules,
+		ModuleDir:    plan.Repository.Root,
+		ModuleDirs:   moduleDirs,
+		ModuleCount:  len(plan.Plans),
+		Workspace:    plan.Workspace(),
 		UpdateStatus: "success",
 	}
 	if applyErr != nil {
 		hookCtx.UpdateStatus = "failure"
 	}
 	if result != nil {
-		hookCtx.UpdatedCount = result.GoGetCount
-		hookCtx.TidyRan = result.TidyRun
-		hookCtx.TidyFailed = result.TidyFailed
+		hookCtx.UpdatedCount = result.UpdatedCount()
+		hookCtx.TidyCount = result.TidyCount()
+		hookCtx.TidyRan = hookCtx.TidyCount > 0
+		hookCtx.TidyFailed = result.TidyFailed()
 	}
 	return hookCtx
 }
 
-func buildLocalRequest(cmd *cobra.Command, opts localCommandOptions) (localupdate.Request, error) {
-	modulePath, moduleDir, err := detectModuleInfo()
+func buildLocalRepositoryPlan(cmd *cobra.Command, opts localCommandOptions) (localupdate.RepositoryPlan, error) {
+	cwd, err := os.Getwd()
 	if err != nil {
-		return localupdate.Request{}, newValidationError("go.mod must be present in the current directory tree", err)
+		return localupdate.RepositoryPlan{}, newValidationError("could not determine the current directory", err)
+	}
+	repository, err := localupdate.DiscoverRepository(cwd)
+	if err != nil {
+		return localupdate.RepositoryPlan{}, newValidationError("could not discover repository Go modules", err)
 	}
 
 	workspacePath, workspaceExplicit := localWorkspace(cmd)
-	return localupdate.Request{
-		CurrentModule:     modulePath,
-		ModuleDir:         moduleDir,
+	plan, err := localupdate.PlanRepository(repository, localupdate.Request{
 		Workspace:         workspacePath,
 		WorkspaceExplicit: workspaceExplicit,
 		Prefixes:          opts.Prefixes,
@@ -268,7 +284,11 @@ func buildLocalRequest(cmd *cobra.Command, opts localCommandOptions) (localupdat
 		Only:              opts.Only,
 		Exclude:           opts.Exclude,
 		Tidy:              !opts.NoTidy,
-	}, nil
+	})
+	if err != nil {
+		return localupdate.RepositoryPlan{}, newPlanningError("failed to plan local dependency updates", err)
+	}
+	return plan, nil
 }
 
 func localWorkspace(cmd *cobra.Command) (string, bool) {
@@ -369,6 +389,35 @@ func renderLocalPlan(out io.Writer, plan localupdate.Plan, title string) {
 	renderLocalSummary(out, plan.Items)
 }
 
+func renderLocalRepositoryPlan(out io.Writer, plan localupdate.RepositoryPlan, title string) {
+	if len(plan.Plans) == 1 {
+		renderLocalPlan(out, plan.Plans[0], title)
+		renderExternalWorkUses(out, plan.Repository.ExternalUses)
+		return
+	}
+	fmt.Fprintf(out, "%s for repository %s\n", title, plan.Repository.Root)
+	fmt.Fprintf(out, "Modules: %d\n", len(plan.Plans))
+	if plan.Repository.WorkFile != "" {
+		fmt.Fprintf(out, "Go workspace: %s\n", plan.Repository.WorkFile)
+	}
+	fmt.Fprintf(out, "Dependency workspace: %s\n", plan.Workspace())
+	renderExternalWorkUses(out, plan.Repository.ExternalUses)
+	for _, modulePlan := range plan.Plans {
+		fmt.Fprintf(out, "\nModule: %s\n", modulePlan.CurrentModule)
+		fmt.Fprintf(out, "Module dir: %s\n", modulePlan.ModuleDir)
+		if len(modulePlan.Items) == 0 {
+			fmt.Fprintln(out, "No local dependency candidates found.")
+			continue
+		}
+		fmt.Fprintln(out, "Candidates:")
+		for _, item := range modulePlan.Items {
+			renderLocalItem(out, item)
+		}
+		renderLocalSummary(out, modulePlan.Items)
+	}
+	renderRepositorySummary(out, len(plan.Plans), aggregatePlanItems(plan), plan.Updates(), 0)
+}
+
 func renderLocalApplyResult(out io.Writer, result *localupdate.ApplyResult) {
 	if result == nil {
 		fmt.Fprintln(out, "No local update result available.")
@@ -397,6 +446,82 @@ func renderLocalApplyResult(out io.Writer, result *localupdate.ApplyResult) {
 		fmt.Fprintf(out, "\nlocal update interrupted: %v\n", result.Interruption)
 	}
 	renderLocalSummary(out, result.Items)
+}
+
+func renderLocalRepositoryApplyResult(out io.Writer, result *localupdate.RepositoryApplyResult) {
+	if result == nil {
+		fmt.Fprintln(out, "No local update result available.")
+		return
+	}
+	if len(result.Results) == 1 {
+		renderLocalApplyResult(out, result.Results[0])
+		renderExternalWorkUses(out, result.Plan.Repository.ExternalUses)
+		return
+	}
+	fmt.Fprintf(out, "Local dependency update for repository %s\n", result.Plan.Repository.Root)
+	fmt.Fprintf(out, "Modules: %d\n", len(result.Plan.Plans))
+	if result.Plan.Repository.WorkFile != "" {
+		fmt.Fprintf(out, "Go workspace: %s\n", result.Plan.Repository.WorkFile)
+	}
+	fmt.Fprintf(out, "Dependency workspace: %s\n", result.Plan.Workspace())
+	renderExternalWorkUses(out, result.Plan.Repository.ExternalUses)
+	items := make([]localupdate.Item, 0)
+	for _, moduleResult := range result.Results {
+		if moduleResult == nil {
+			continue
+		}
+		fmt.Fprintf(out, "\nModule: %s\n", moduleResult.Plan.CurrentModule)
+		fmt.Fprintf(out, "Module dir: %s\n", moduleResult.Plan.ModuleDir)
+		if len(moduleResult.Items) == 0 {
+			fmt.Fprintln(out, "No local dependency candidates found.")
+			continue
+		}
+		fmt.Fprintln(out, "Results:")
+		for _, item := range moduleResult.Items {
+			renderLocalItem(out, item)
+		}
+		items = append(items, moduleResult.Items...)
+		if moduleResult.TidyRun {
+			if moduleResult.TidyFailed {
+				fmt.Fprintf(out, "go mod tidy: failed - %v\n", moduleResult.TidyError)
+			} else {
+				fmt.Fprintln(out, "go mod tidy: completed")
+			}
+		}
+		if moduleResult.Interruption != nil {
+			fmt.Fprintf(out, "local update interrupted: %v\n", moduleResult.Interruption)
+		}
+		renderLocalSummary(out, moduleResult.Items)
+	}
+	renderRepositorySummary(out, len(result.Plan.Plans), items, result.UpdatedCount(), result.TidyCount())
+}
+
+func aggregatePlanItems(plan localupdate.RepositoryPlan) []localupdate.Item {
+	items := make([]localupdate.Item, 0, plan.Candidates())
+	for _, modulePlan := range plan.Plans {
+		items = append(items, modulePlan.Items...)
+	}
+	return items
+}
+
+func renderRepositorySummary(out io.Writer, modules int, items []localupdate.Item, updates, tidies int) {
+	fmt.Fprintln(out, "\nRepository summary:")
+	fmt.Fprintf(out, "  modules: %d\n", modules)
+	fmt.Fprintf(out, "  candidates: %d\n", len(items))
+	fmt.Fprintf(out, "  updates: %d\n", updates)
+	if tidies > 0 {
+		fmt.Fprintf(out, "  tidied-modules: %d\n", tidies)
+	}
+}
+
+func renderExternalWorkUses(out io.Writer, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "External go.work modules skipped:")
+	for _, path := range paths {
+		fmt.Fprintf(out, "  - %s\n", path)
+	}
 }
 
 func renderLocalHookResults(out io.Writer, results hooks.Results) {
