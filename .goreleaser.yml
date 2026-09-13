@@ -65,12 +65,14 @@ homebrew_casks:
     directory: Casks
     description: managed release cycles.
     homepage: https://github.com/goliatone/cascade
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/cascade"]
-          end
+    # Escape the Homebrew path token so GoReleaser leaves it for install time.
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr",
+              args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/cascade"]
+        end
+      end
 nfpms:
   - id: cascade
     file_name_template: >-
