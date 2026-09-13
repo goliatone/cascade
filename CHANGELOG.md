@@ -2,6 +2,16 @@
 
 # [unreleased]
 
+## <!-- 1 -->🐛 Bug Fixes
+
+- Goreleaser setup ([d9cb81b](https://github.com/goliatone/cascade/commit/d9cb81b8b202dd3347f47d4511d669c192f8b633))  - (goliatone)
+
+# [0.9.0](https://github.com/goliatone/cascade/compare/v0.8.0...v0.9.0) - (2026-07-22)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.9.0 ([4f2318f](https://github.com/goliatone/cascade/commit/4f2318fb6140b26ee996b5d72ff40a98a866abf3))  - (goliatone)
+
 ## <!-- 16 -->➕ Add
 
 - Gitignore support ([4c9e990](https://github.com/goliatone/cascade/commit/4c9e990d55d005b4bc937feb647c3b9f5ef900f7))  - (goliatone)
