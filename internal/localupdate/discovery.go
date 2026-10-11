@@ -174,15 +174,15 @@ func modulesFromRepositoryTree(repositoryRoot string, options DiscoveryOptions) 
 			if path != repositoryRoot && repositoryScanExcludedDirs[entry.Name()] {
 				return filepath.SkipDir
 			}
+			if path != repositoryRoot && options.RespectGitIgnore && ignoreMatcher.Match(pathParts, true) {
+				return filepath.SkipDir
+			}
 			if path != repositoryRoot {
 				if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil {
 					return filepath.SkipDir
 				} else if !os.IsNotExist(err) {
 					return fmt.Errorf("inspect repository metadata at %s: %w", path, err)
 				}
-			}
-			if path != repositoryRoot && options.RespectGitIgnore && ignoreMatcher.Match(pathParts, true) {
-				return filepath.SkipDir
 			}
 			if options.RespectGitIgnore {
 				patterns, err := readGitIgnorePatterns(path, pathParts)

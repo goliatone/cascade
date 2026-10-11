@@ -1,6 +1,7 @@
 package localupdate
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -96,6 +97,50 @@ func TestDiscoverRepositoryRespectsGitIgnoreWhenEnabled(t *testing.T) {
 	}
 	if withIgnore.Modules[0].ModulePath != "github.com/goliatone/app" || withIgnore.Modules[1].ModulePath != "github.com/goliatone/kept" {
 		t.Fatalf("unexpected modules after gitignore matching: %#v", withIgnore.Modules)
+	}
+}
+
+func TestDiscoverRepositoryPrunesIgnoredDirectoriesBeforeInspectingMetadata(t *testing.T) {
+	for _, parent := range []string{".", "custom"} {
+		t.Run(parent, func(t *testing.T) {
+			root := t.TempDir()
+			mustMkdirAll(t, filepath.Join(root, ".git"))
+			mustWriteModuleFile(t, root, "github.com/goliatone/app", "")
+			nested := filepath.Join(root, "adapter")
+			mustWriteModuleFile(t, nested, "github.com/goliatone/app/adapter", "")
+			blocked := filepath.Join(root, parent, "private-cache")
+			mustMkdirAll(t, blocked)
+			ignoreFile := filepath.Join(root, parent, ".gitignore")
+			mustWriteFile(t, ignoreFile, "private-cache/\n")
+			t.Cleanup(func() {
+				if err := os.Chmod(blocked, 0o755); err != nil {
+					t.Errorf("restore directory permissions: %v", err)
+				}
+			})
+			if err := os.Chmod(blocked, 0); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Lstat(filepath.Join(blocked, ".git")); !errors.Is(err, os.ErrPermission) {
+				if err == nil || errors.Is(err, os.ErrNotExist) {
+					t.Skip("host does not enforce directory search permissions")
+				}
+				t.Fatalf("probe blocked directory: %v", err)
+			}
+			repository, err := DiscoverRepository(root, DiscoveryOptions{RespectGitIgnore: true})
+			if err != nil {
+				t.Fatalf("ignored directory must be pruned without inspecting it: %v", err)
+			}
+			if len(repository.Modules) != 2 || repository.Modules[0].ModuleDir != root || repository.Modules[1].ModuleDir != nested {
+				t.Fatalf("expected root and accessible nested module, got %#v", repository.Modules)
+			}
+			if _, err := DiscoverRepository(root, DiscoveryOptions{}); !errors.Is(err, os.ErrPermission) {
+				t.Fatalf("disabled ignore matching must retain permission errors: %v", err)
+			}
+			mustWriteFile(t, ignoreFile, "")
+			if _, err := DiscoverRepository(root, DiscoveryOptions{RespectGitIgnore: true}); !errors.Is(err, os.ErrPermission) {
+				t.Fatalf("nonignored directories must retain permission errors: %v", err)
+			}
+		})
 	}
 }
 
