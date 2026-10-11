@@ -4,7 +4,17 @@
 
 ## <!-- 1 -->🐛 Bug Fixes
 
+- Discovery prune ignored directories ([b6cd4d1](https://github.com/goliatone/cascade/commit/b6cd4d1eb79b7f5b89db96db867881171e2a75a1))  - (goliatone)
+
+# [0.9.2](https://github.com/goliatone/cascade/compare/v0.9.1...v0.9.2) - (2026-10-11)
+
+## <!-- 1 -->🐛 Bug Fixes
+
 - Discovery exlucde git checkouts ([6111c49](https://github.com/goliatone/cascade/commit/6111c490e1baae5506ca764c83732cd22ff3cdf4))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.9.2 ([88e0709](https://github.com/goliatone/cascade/commit/88e07094723e9d1f1492142de636867893399723))  - (goliatone)
 
 # [0.9.1](https://github.com/goliatone/cascade/compare/v0.9.0...v0.9.1) - (2026-09-13)
 
