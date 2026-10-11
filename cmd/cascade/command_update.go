@@ -23,7 +23,8 @@ func newUpdateLocalCommand() *cobra.Command {
 		Short: "Update local sibling dependencies",
 		Long: `Update local Go dependencies across every module in the current
 repository. Cascade uses go.work when present and discovers repository go.mod
-files otherwise, then runs go get in each module with outdated local candidates.`,
+files otherwise, stopping at nested Git checkouts. Explicit in-repository
+go.work entries remain authoritative. It then runs go get in each module with outdated local candidates.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpdateLocal(cmd, opts)

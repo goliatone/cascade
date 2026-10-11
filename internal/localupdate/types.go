@@ -167,6 +167,7 @@ func (r *RepositoryApplyResult) UpdatedCount() int {
 	return count
 }
 
+// TidyCount counts attempts, including failures, for the hook context contract.
 func (r *RepositoryApplyResult) TidyCount() int {
 	count := 0
 	if r == nil {
@@ -181,15 +182,20 @@ func (r *RepositoryApplyResult) TidyCount() int {
 }
 
 func (r *RepositoryApplyResult) TidyFailed() bool {
+	return r.TidyFailedCount() > 0
+}
+
+func (r *RepositoryApplyResult) TidyFailedCount() int {
+	count := 0
 	if r == nil {
-		return false
+		return count
 	}
 	for _, result := range r.Results {
 		if result != nil && result.TidyFailed {
-			return true
+			count++
 		}
 	}
-	return false
+	return count
 }
 
 func NormalizeRequest(req Request) Request {

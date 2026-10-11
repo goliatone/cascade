@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goliatone/cascade/internal/localupdate"
 	"github.com/goliatone/cascade/pkg/config"
 	"github.com/goliatone/cascade/pkg/di"
 )
@@ -169,6 +170,106 @@ func TestRunUpdateLocalDryRunDoesNotMutateAnyGoWorkModule(t *testing.T) {
 		if !bytes.Equal(before[path], after) {
 			t.Fatalf("dry-run mutated %s", path)
 		}
+	}
+}
+
+func TestRunUpdateLocalProtectsNestedCheckoutsAndReportsPartialFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX Go command stub")
+	}
+	root, nested, _ := writeLocalCommandGoWorkRepository(t)
+	if err := os.Remove(filepath.Join(root, "go.work")); err != nil {
+		t.Fatal(err)
+	}
+	untouched := map[string]string{}
+	for _, name := range []string{".claude/worktrees/broken", "clones/other"} {
+		dir := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(name, ".claude") {
+			if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: /missing/worktree\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for file, content := range map[string]string{"go.mod": "malformed module must not be parsed\n", "go.sum": "must not be touched\n"} {
+			path := filepath.Join(dir, file)
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			untouched[path] = content
+		}
+	}
+	t.Chdir(root)
+	prependGoBinary(t, `#!/bin/sh
+case "$1 $2" in
+  "get "*) printf '\n// applied update\n' >> go.mod ;;
+  "mod tidy")
+    case "$PWD" in
+      */adapter) exit 0 ;;
+      *) echo 'missing internal package' >&2; exit 1 ;;
+    esac ;;
+  *) exit 9 ;;
+esac
+`)
+	withLocalHookConfig(t, config.LocalUpdateHooksConfig{}, false, func() {
+		cmd := newUpdateLocalCommand()
+		var out, progress bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&progress)
+		err := runUpdateLocal(cmd, localCommandOptions{})
+		if err == nil || !strings.Contains(err.Error(), "github.com/goliatone/app ("+root+")") {
+			t.Fatalf("expected failing module directory in aggregate error, got %v", err)
+		}
+		for _, want := range []string{"modules: 2", "updates: 2", "tidy-attempted-modules: 2", "tidied-modules: 1", "tidy-failed-modules: 1", "failures: 1", "no rollback was performed"} {
+			if !strings.Contains(out.String(), want) {
+				t.Fatalf("missing %q in output:\n%s", want, out.String())
+			}
+		}
+		for _, want := range []string{". (github.com/goliatone/app): go mod tidy failed", "adapter (github.com/goliatone/app/adapter): go mod tidy completed"} {
+			if !strings.Contains(progress.String(), want) {
+				t.Fatalf("missing %q in progress:\n%s", want, progress.String())
+			}
+		}
+	})
+	for _, dir := range []string{root, nested} {
+		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+		if err != nil || !strings.Contains(string(data), "// applied update") {
+			t.Fatalf("expected updates retained in %s after failure: %s (%v)", dir, data, err)
+		}
+	}
+	for path, before := range untouched {
+		after, err := os.ReadFile(path)
+		if err != nil || string(after) != before {
+			t.Fatalf("foreign checkout file changed: %s (%v)", path, err)
+		}
+	}
+}
+
+func TestLocalApplyReportingDistinguishesDuplicateModules(t *testing.T) {
+	root := t.TempDir()
+	plan := localupdate.RepositoryPlan{Repository: localupdate.Repository{Root: root}}
+	result := &localupdate.RepositoryApplyResult{Plan: plan, HasFailures: true}
+	presenter := newLocalApplyProgress(nil, root, true)
+	for _, dir := range []string{"first", "second"} {
+		moduleDir := filepath.Join(root, dir)
+		message := presenter.withModule(localupdate.ApplyEvent{Module: "example.com/app", ModuleDir: moduleDir}, "go mod tidy failed")
+		if message != dir+" (example.com/app): go mod tidy failed" {
+			t.Fatalf("ambiguous progress: %s", message)
+		}
+		result.Results = append(result.Results, &localupdate.ApplyResult{TidyRun: true, TidyFailed: true})
+	}
+	hookCtx := localRepositoryHookContext(plan, result, fmt.Errorf("tidy failed"))
+	if hookCtx.TidyCount != 2 || !hookCtx.TidyRan || !hookCtx.TidyFailed || hookCtx.UpdateStatus != "failure" {
+		t.Fatalf("hook attempt contract changed: %#v", hookCtx)
+	}
+	result.Results = result.Results[:1]
+	var out bytes.Buffer
+	renderLocalRepositoryApplyResult(&out, result)
+	if !strings.Contains(out.String(), "no rollback was performed") {
+		t.Fatalf("single-module failure must also explain retained changes: %s", out.String())
 	}
 }
 

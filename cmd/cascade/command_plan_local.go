@@ -35,7 +35,8 @@ func newPlanLocalCommand() *cobra.Command {
 		Short: "Preview local sibling dependency updates",
 		Long: `Preview local Go dependency updates across every module in the current
 repository. Cascade uses go.work when present and discovers repository go.mod
-files otherwise, then compares their dependencies with sibling repositories.`,
+files otherwise, stopping at nested Git checkouts. Explicit in-repository
+go.work entries remain authoritative. It then compares their dependencies with sibling repositories.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPlanLocal(cmd, opts)
@@ -91,7 +92,7 @@ func runUpdateLocal(cmd *cobra.Command, opts localCommandOptions) error {
 	if localCfg != nil && localCfg.Logging.Verbose {
 		goOps = executor.NewGoOperationsWithOutput(cmd.ErrOrStderr(), cmd.ErrOrStderr())
 	}
-	applyProgress := newLocalApplyProgress(progress, len(plan.Plans) > 1)
+	applyProgress := newLocalApplyProgress(progress, plan.Repository.Root, len(plan.Plans) > 1)
 	result, applyErr := localupdate.ApplyRepository(applyCtx, plan, goOps, localupdate.ApplyOptions{
 		Tidy:   !opts.NoTidy,
 		Notify: applyProgress.Notify,
@@ -178,11 +179,12 @@ func countLocalHooks(phases []hooks.PhaseHooks) int {
 type localApplyProgress struct {
 	progress *cliui.Progress
 	current  *cliui.Task
+	root     string
 	multi    bool
 }
 
-func newLocalApplyProgress(progress *cliui.Progress, multi bool) *localApplyProgress {
-	return &localApplyProgress{progress: progress, multi: multi}
+func newLocalApplyProgress(progress *cliui.Progress, root string, multi bool) *localApplyProgress {
+	return &localApplyProgress{progress: progress, root: root, multi: multi}
 }
 
 func (p *localApplyProgress) Notify(event localupdate.ApplyEvent) {
@@ -223,7 +225,11 @@ func (p *localApplyProgress) withModule(event localupdate.ApplyEvent, message st
 	if !p.multi || strings.TrimSpace(event.Module) == "" {
 		return message
 	}
-	return fmt.Sprintf("%s: %s", event.Module, message)
+	directory := event.ModuleDir
+	if relative, err := filepath.Rel(p.root, directory); err == nil {
+		directory = filepath.ToSlash(relative)
+	}
+	return fmt.Sprintf("%s (%s): %s", directory, event.Module, message)
 }
 
 func commandContext(cmd *cobra.Command) context.Context {
@@ -419,7 +425,7 @@ func renderLocalRepositoryPlan(out io.Writer, plan localupdate.RepositoryPlan, t
 		}
 		renderLocalSummary(out, modulePlan.Items)
 	}
-	renderRepositorySummary(out, len(plan.Plans), aggregatePlanItems(plan), plan.Updates(), 0, 0)
+	renderRepositorySummary(out, len(plan.Plans), aggregatePlanItems(plan), plan.Updates(), 0, 0, 0)
 }
 
 func renderLocalApplyResult(out io.Writer, result *localupdate.ApplyResult) {
@@ -456,6 +462,9 @@ func renderLocalRepositoryApplyResult(out io.Writer, result *localupdate.Reposit
 	if result == nil {
 		fmt.Fprintln(out, "No local update result available.")
 		return
+	}
+	if result.HasFailures {
+		defer fmt.Fprintln(out, "\nLocal update failed. Changes already written to go.mod/go.sum are retained; no rollback was performed.")
 	}
 	if len(result.Results) == 1 {
 		renderLocalApplyResult(out, result.Results[0])
@@ -497,7 +506,7 @@ func renderLocalRepositoryApplyResult(out io.Writer, result *localupdate.Reposit
 		}
 		renderLocalSummary(out, moduleResult.Items)
 	}
-	renderRepositorySummary(out, len(result.Plan.Plans), items, result.UpdatedCount(), result.TidyCount(), repositoryFailureCount(result))
+	renderRepositorySummary(out, len(result.Plan.Plans), items, result.UpdatedCount(), result.TidyCount(), result.TidyFailedCount(), repositoryFailureCount(result))
 }
 
 func aggregatePlanItems(plan localupdate.RepositoryPlan) []localupdate.Item {
@@ -508,12 +517,14 @@ func aggregatePlanItems(plan localupdate.RepositoryPlan) []localupdate.Item {
 	return items
 }
 
-func renderRepositorySummary(out io.Writer, modules int, items []localupdate.Item, updates, tidies, failures int) {
+func renderRepositorySummary(out io.Writer, modules int, items []localupdate.Item, updates, tidies, tidyFailures, failures int) {
 	fmt.Fprintln(out, "\nRepository summary:")
 	fmt.Fprintf(out, "  modules: %d\n", modules)
 	fmt.Fprintf(out, "  candidates: %d\n", len(items))
 	fmt.Fprintf(out, "  updates: %d\n", updates)
-	fmt.Fprintf(out, "  tidied-modules: %d\n", tidies)
+	fmt.Fprintf(out, "  tidy-attempted-modules: %d\n", tidies)
+	fmt.Fprintf(out, "  tidied-modules: %d\n", tidies-tidyFailures)
+	fmt.Fprintf(out, "  tidy-failed-modules: %d\n", tidyFailures)
 	fmt.Fprintf(out, "  failures: %d\n", failures)
 }
 

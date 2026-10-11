@@ -99,11 +99,56 @@ func TestDiscoverRepositoryRespectsGitIgnoreWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestDiscoverRepositoryStopsAtNestedGitCheckouts(t *testing.T) {
+	for _, gitFile := range []bool{false, true} {
+		name := "clone"
+		if gitFile {
+			name = "worktree"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			mustMkdirAll(t, filepath.Join(root, ".git"))
+			mustWriteModuleFile(t, root, "github.com/goliatone/app", "")
+			nested := filepath.Join(root, "adapter")
+			mustWriteModuleFile(t, nested, "github.com/goliatone/app/adapter", "")
+			checkout := filepath.Join(root, "checkouts", name)
+			moduleDir := filepath.Join(checkout, "module")
+			mustWriteModuleFile(t, moduleDir, "github.com/goliatone/app", "")
+			if gitFile {
+				mustWriteFile(t, filepath.Join(checkout, ".git"), "gitdir: /unavailable/metadata\n")
+			} else {
+				mustMkdirAll(t, filepath.Join(checkout, ".git"))
+			}
+			for _, respectIgnore := range []bool{false, true} {
+				repository, err := DiscoverRepository(root, DiscoveryOptions{RespectGitIgnore: respectIgnore})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(repository.Modules) != 2 || repository.Modules[0].ModuleDir != root || repository.Modules[1].ModuleDir != nested {
+					t.Fatalf("expected only root and ordinary nested module, got %#v", repository.Modules)
+				}
+			}
+			repository, err := DiscoverRepository(moduleDir, DiscoveryOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if repository.Root != checkout || len(repository.Modules) != 1 || repository.Modules[0].ModuleDir != moduleDir {
+				t.Fatalf("direct invocation must target the nested checkout: %#v", repository)
+			}
+			mustWriteFile(t, filepath.Join(moduleDir, "go.mod"), "invalid go.mod\n")
+			if _, err := DiscoverRepository(root, DiscoveryOptions{}); err != nil {
+				t.Fatalf("must not parse modules inside a foreign checkout: %v", err)
+			}
+		})
+	}
+}
+
 func TestDiscoverRepositoryKeepsGoWorkModulesAuthoritativeWithGitIgnore(t *testing.T) {
 	repositoryRoot := filepath.Join(t.TempDir(), "app")
 	mustMkdirAll(t, filepath.Join(repositoryRoot, ".git"))
 	mustWriteModuleFile(t, repositoryRoot, "github.com/goliatone/app", "")
 	mustWriteModuleFile(t, filepath.Join(repositoryRoot, "ignored"), "github.com/goliatone/ignored", "")
+	mustWriteFile(t, filepath.Join(repositoryRoot, "ignored", ".git"), "gitdir: ../.git/worktrees/ignored\n")
 	mustWriteFile(t, filepath.Join(repositoryRoot, ".gitignore"), "ignored/\n")
 	mustWriteFile(t, filepath.Join(repositoryRoot, "go.work"), "go 1.24\nuse (\n.\n./ignored\n)\n")
 

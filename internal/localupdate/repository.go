@@ -26,7 +26,7 @@ func PlanRepository(repository Repository, req Request) (RepositoryPlan, error) 
 		moduleRequest.Workspace = resolvedWorkspace
 		plan, err := PlanLocal(moduleRequest)
 		if err != nil {
-			return RepositoryPlan{}, fmt.Errorf("plan local dependencies for %s: %w", target.ModulePath, err)
+			return RepositoryPlan{}, fmt.Errorf("plan local dependencies for %s (%s): %w", target.ModulePath, target.ModuleDir, err)
 		}
 		if resolvedWorkspace == "" {
 			resolvedWorkspace = plan.Workspace
@@ -70,7 +70,7 @@ func ApplyRepository(ctx context.Context, plan RepositoryPlan, goOps executor.Go
 		result.Results = append(result.Results, moduleResult)
 		if err != nil {
 			result.HasFailures = true
-			failures = append(failures, fmt.Errorf("%s: %w", modulePlan.CurrentModule, err))
+			failures = append(failures, fmt.Errorf("%s (%s): %w", modulePlan.CurrentModule, modulePlan.ModuleDir, err))
 			if ctx.Err() != nil {
 				result.Interruption = ctx.Err()
 			}
