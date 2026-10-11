@@ -4,7 +4,17 @@
 
 ## <!-- 1 -->🐛 Bug Fixes
 
+- Discovery exlucde git checkouts ([6111c49](https://github.com/goliatone/cascade/commit/6111c490e1baae5506ca764c83732cd22ff3cdf4))  - (goliatone)
+
+# [0.9.1](https://github.com/goliatone/cascade/compare/v0.9.0...v0.9.1) - (2026-09-13)
+
+## <!-- 1 -->🐛 Bug Fixes
+
 - Goreleaser setup ([d9cb81b](https://github.com/goliatone/cascade/commit/d9cb81b8b202dd3347f47d4511d669c192f8b633))  - (goliatone)
+
+## <!-- 12 -->🔖 Releases
+
+- V0.9.1 ([f71b79a](https://github.com/goliatone/cascade/commit/f71b79ab0fa2e0c61d7ae1ca25b6c7a86a9aad0e))  - (goliatone)
 
 # [0.9.0](https://github.com/goliatone/cascade/compare/v0.8.0...v0.9.0) - (2026-07-22)
 
